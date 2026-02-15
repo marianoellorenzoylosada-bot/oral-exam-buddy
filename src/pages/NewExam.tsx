@@ -6,10 +6,14 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Mic, Square, Pause, Play, Upload, FileText, BookOpen, Trash2, Clock, Users, ExternalLink, Info } from "lucide-react";
+import { Mic, Square, Pause, Play, Upload, FileText, BookOpen, Trash2, Clock, Users, ExternalLink, Info, Loader2, AlertCircle } from "lucide-react";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { useExamStore } from "@/hooks/useExamStore";
 import { TeacherAuthGate } from "@/components/TeacherAuthGate";
+import { DraftReport, type AssessmentResult } from "@/components/DraftReport";
+import { extractTextFromFile } from "@/lib/extractText";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 const LANGUAGES = [
   { value: "en", label: "English" },
@@ -35,17 +39,24 @@ function formatTime(seconds: number) {
   return `${m}:${s}`;
 }
 
-function FileDropZone({ label, icon: Icon, file, onFile, onClear, accept }: {
-  label: string; icon: React.ElementType; file: File | null;
+function FileDropZone({ label, icon: Icon, file, extractedText, onFile, onClear, accept }: {
+  label: string; icon: React.ElementType; file: File | null; extractedText?: string;
   onFile: (f: File) => void; onClear: () => void; accept: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [extracting, setExtracting] = useState(false);
+
+  const handleFile = useCallback(async (f: File) => {
+    setExtracting(true);
+    onFile(f);
+    setExtracting(false);
+  }, [onFile]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     const f = e.dataTransfer.files[0];
-    if (f) onFile(f);
-  }, [onFile]);
+    if (f) handleFile(f);
+  }, [handleFile]);
 
   return (
     <div
@@ -61,17 +72,27 @@ function FileDropZone({ label, icon: Icon, file, onFile, onClear, accept }: {
         type="file"
         accept={accept}
         className="hidden"
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); }}
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
       />
       {file ? (
         <>
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-success/10">
-            <Icon className="h-6 w-6 text-success" />
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent/10">
+            <Icon className="h-6 w-6 text-accent" />
           </div>
           <div>
             <p className="font-medium text-sm">{file.name}</p>
             <p className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(0)} KB</p>
           </div>
+          {extractedText && (
+            <Badge variant="secondary" className="gap-1">
+              <FileText className="h-3 w-3" /> Text extracted
+            </Badge>
+          )}
+          {extracting && (
+            <Badge variant="outline" className="gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" /> Extracting…
+            </Badge>
+          )}
           <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onClear(); }}>
             <Trash2 className="h-3.5 w-3.5 mr-1" /> Remove
           </Button>
@@ -83,7 +104,7 @@ function FileDropZone({ label, icon: Icon, file, onFile, onClear, accept }: {
           </div>
           <div>
             <p className="font-medium text-sm">{label}</p>
-            <p className="text-xs text-muted-foreground">PDF or images · Drag & drop or click</p>
+            <p className="text-xs text-muted-foreground">PDF, DOCX, or images · Drag & drop or click</p>
           </div>
         </>
       )}
@@ -92,12 +113,90 @@ function FileDropZone({ label, icon: Icon, file, onFile, onClear, accept }: {
 }
 
 export default function NewExamPage() {
-  const { exam, update } = useExamStore();
+  const { exam, update, reset } = useExamStore();
   const recorder = useAudioRecorder();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("setup");
+  const [analyzing, setAnalyzing] = useState(false);
+  const [report, setReport] = useState<AssessmentResult | null>(null);
 
   const selectedLevel = EXAM_LEVELS.find(l => l.value === exam.title);
   const selectedLang = LANGUAGES.find(l => l.value === exam.language);
+
+  const handleFileUpload = useCallback(async (file: File, type: "booklet" | "rubric") => {
+    const text = await extractTextFromFile(file);
+    if (type === "booklet") {
+      update({ bookletFile: file, bookletText: text });
+    } else {
+      update({ rubricFile: file, rubricText: text });
+    }
+    toast({ title: "Text extracted", description: `Content extracted from ${file.name}` });
+  }, [update, toast]);
+
+  const handleSubmitForAnalysis = useCallback(async () => {
+    if (!recorder.audioBlob) return;
+    if (!exam.title) {
+      toast({ title: "Missing exam level", description: "Please select a CEFR level in the Setup tab.", variant: "destructive" });
+      return;
+    }
+
+    setAnalyzing(true);
+    try {
+      // Convert audio to base64
+      const arrayBuffer = await recorder.audioBlob.arrayBuffer();
+      const uint8 = new Uint8Array(arrayBuffer);
+      let binary = "";
+      for (let i = 0; i < uint8.length; i++) {
+        binary += String.fromCharCode(uint8[i]);
+      }
+      const audioBase64 = btoa(binary);
+
+      const { data, error } = await supabase.functions.invoke("analyze-exam", {
+        body: {
+          level: exam.title,
+          language: selectedLang?.label ?? "English",
+          bookletText: exam.bookletText,
+          rubricText: exam.rubricText,
+          audioBase64,
+        },
+      });
+
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
+
+      setReport(data as AssessmentResult);
+    } catch (err: any) {
+      console.error("Analysis error:", err);
+      toast({
+        title: "Analysis failed",
+        description: err.message || "Could not process the exam. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setAnalyzing(false);
+    }
+  }, [recorder.audioBlob, exam, selectedLang, toast]);
+
+  const handleReset = useCallback(() => {
+    reset();
+    recorder.reset();
+    setReport(null);
+    setActiveTab("setup");
+  }, [reset, recorder]);
+
+  // Show draft report if available
+  if (report) {
+    return (
+      <TeacherAuthGate>
+        <DraftReport
+          result={report}
+          level={selectedLevel?.label ?? exam.title}
+          language={selectedLang?.label ?? "English"}
+          onReset={handleReset}
+        />
+      </TeacherAuthGate>
+    );
+  }
 
   return (
     <TeacherAuthGate>
@@ -163,7 +262,6 @@ export default function NewExamPage() {
                   </div>
                 </div>
 
-                {/* Rubric auto-adapt note */}
                 <div className="sm:col-span-2 rounded-lg border border-accent/20 bg-accent/5 p-3 flex items-start gap-3">
                   <Info className="h-5 w-5 text-accent mt-0.5 shrink-0" />
                   <div className="text-sm">
@@ -194,25 +292,46 @@ export default function NewExamPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="font-display">Booklet & Rubric</CardTitle>
-                <CardDescription>Upload the exam booklet and rubric. The AI will extract target vocabulary and scoring criteria.</CardDescription>
+                <CardDescription>Upload the exam booklet and rubric. Text is automatically extracted to give the AI full context.</CardDescription>
               </CardHeader>
               <CardContent className="grid gap-6 sm:grid-cols-2">
                 <FileDropZone
                   label="Exam Booklet"
                   icon={BookOpen}
                   file={exam.bookletFile}
-                  onFile={(f) => update({ bookletFile: f })}
+                  extractedText={exam.bookletText}
+                  onFile={(f) => handleFileUpload(f, "booklet")}
                   onClear={() => update({ bookletFile: null, bookletText: "" })}
-                  accept=".pdf,image/*"
+                  accept=".pdf,.docx,image/*"
                 />
                 <FileDropZone
                   label="Custom Rubric"
                   icon={FileText}
                   file={exam.rubricFile}
-                  onFile={(f) => update({ rubricFile: f })}
+                  extractedText={exam.rubricText}
+                  onFile={(f) => handleFileUpload(f, "rubric")}
                   onClear={() => update({ rubricFile: null, rubricText: "" })}
-                  accept=".pdf,image/*"
+                  accept=".pdf,.docx,image/*"
                 />
+
+                {/* Extracted text previews */}
+                {(exam.bookletText || exam.rubricText) && (
+                  <div className="sm:col-span-2 space-y-3">
+                    {exam.bookletText && (
+                      <details className="rounded-lg border bg-muted/30 p-3">
+                        <summary className="text-sm font-medium cursor-pointer">Preview: Booklet text ({exam.bookletText.length} chars)</summary>
+                        <p className="mt-2 text-xs text-muted-foreground whitespace-pre-wrap max-h-40 overflow-auto">{exam.bookletText.slice(0, 2000)}{exam.bookletText.length > 2000 ? "…" : ""}</p>
+                      </details>
+                    )}
+                    {exam.rubricText && (
+                      <details className="rounded-lg border bg-muted/30 p-3">
+                        <summary className="text-sm font-medium cursor-pointer">Preview: Rubric text ({exam.rubricText.length} chars)</summary>
+                        <p className="mt-2 text-xs text-muted-foreground whitespace-pre-wrap max-h-40 overflow-auto">{exam.rubricText.slice(0, 2000)}{exam.rubricText.length > 2000 ? "…" : ""}</p>
+                      </details>
+                    )}
+                  </div>
+                )}
+
                 <div className="sm:col-span-2 flex justify-between">
                   <Button variant="outline" onClick={() => setActiveTab("setup")}>← Back</Button>
                   <Button onClick={() => setActiveTab("record")}>Next: Record →</Button>
@@ -226,7 +345,7 @@ export default function NewExamPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="font-display">Live Recording</CardTitle>
-                <CardDescription>Record the oral examination. Audio is cached locally for offline resilience.</CardDescription>
+                <CardDescription>Record the oral examination. Audio will be sent to the AI for transcription and assessment.</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col items-center gap-6">
                 {/* Timer */}
@@ -283,15 +402,31 @@ export default function NewExamPage() {
                 {/* Context summary */}
                 <div className="w-full max-w-md rounded-lg border bg-muted/30 p-4 text-sm space-y-1">
                   <p><span className="font-medium">Level:</span> {selectedLevel?.label || "—"}</p>
-                  <p><span className="font-medium">Booklet:</span> {exam.bookletFile?.name || "Not uploaded"}</p>
-                  <p><span className="font-medium">Rubric:</span> {exam.rubricFile?.name || "Not uploaded"}</p>
+                  <p><span className="font-medium">Booklet:</span> {exam.bookletFile?.name || "Not uploaded"} {exam.bookletText ? `(${exam.bookletText.length} chars extracted)` : ""}</p>
+                  <p><span className="font-medium">Rubric:</span> {exam.rubricFile?.name || "Not uploaded"} {exam.rubricText ? `(${exam.rubricText.length} chars extracted)` : ""}</p>
                   <p><span className="font-medium">Language:</span> {selectedLang?.label}</p>
                 </div>
 
+                {/* Missing level warning */}
+                {!exam.title && (
+                  <div className="w-full max-w-md rounded-lg border border-destructive/30 bg-destructive/5 p-3 flex items-center gap-2 text-sm text-destructive">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    Please select an exam level in the Setup tab before submitting.
+                  </div>
+                )}
+
                 <div className="w-full max-w-md flex justify-between">
                   <Button variant="outline" onClick={() => setActiveTab("context")}>← Back</Button>
-                  <Button disabled={recorder.state !== "stopped"}>
-                    Submit for Analysis →
+                  <Button
+                    disabled={recorder.state !== "stopped" || analyzing || !exam.title}
+                    onClick={handleSubmitForAnalysis}
+                    className="gap-2"
+                  >
+                    {analyzing ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" /> Analyzing…</>
+                    ) : (
+                      "Submit for Analysis →"
+                    )}
                   </Button>
                 </div>
               </CardContent>
