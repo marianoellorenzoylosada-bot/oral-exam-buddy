@@ -6,8 +6,9 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { FileText, CheckCircle2, AlertTriangle, RotateCcw, Download, Printer, ShieldCheck, BookOpen, ExternalLink } from "lucide-react";
+import { FileText, CheckCircle2, AlertTriangle, RotateCcw, Download, Printer, ShieldCheck, BookOpen, ExternalLink, ImageIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { getRecommendations } from "@/lib/practiceData";
 
 export interface AssessmentResult {
   overallBand: string;
@@ -22,6 +23,7 @@ export interface AssessmentResult {
 interface DraftReportProps {
   result: AssessmentResult;
   level: string;
+  levelCode: string;
   language: string;
   onReset: () => void;
 }
@@ -44,7 +46,7 @@ function EditableScore({ value, max, onChange }: { value: number; max: number; o
 
 const COPYRIGHT_TEXT = "© 2026 [Tu Nombre/Institución]. All rights reserved. Evaluation methodology and pedagogical structure are protected intellectual property. AI results are subject to teacher supervision.";
 
-export function DraftReport({ result, level, language, onReset }: DraftReportProps) {
+export function DraftReport({ result, level, levelCode, language, onReset }: DraftReportProps) {
   const { toast } = useToast();
   const [isOfficial, setIsOfficial] = useState(false);
   const [draft, setDraft] = useState<AssessmentResult>(() => JSON.parse(JSON.stringify(result)));
@@ -75,17 +77,23 @@ export function DraftReport({ result, level, language, onReset }: DraftReportPro
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 print:space-y-4">
-      {/* Top actions */}
-      <div className="flex items-center justify-between print:hidden">
-        <div>
-          <h1 className="font-display text-3xl font-bold tracking-tight">
-            {isOfficial ? "Official Assessment Report" : "Draft Assessment Report"}
-          </h1>
-          <p className="mt-1 text-muted-foreground">
-            {isOfficial
-              ? "This report has been reviewed and signed by the examiner."
-              : "AI-generated preliminary evaluation · Review and edit before confirming."}
-          </p>
+      {/* Logo + Top actions */}
+      <div className="flex items-start justify-between print:hidden">
+        <div className="flex items-start gap-4">
+          {/* Institutional Logo Placeholder */}
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border-2 border-dashed border-border bg-muted/30">
+            <ImageIcon className="h-6 w-6 text-muted-foreground/50" />
+          </div>
+          <div>
+            <h1 className="font-display text-3xl font-bold tracking-tight">
+              {isOfficial ? "Official Assessment Report" : "Draft Assessment Report"}
+            </h1>
+            <p className="mt-1 text-muted-foreground">
+              {isOfficial
+                ? "This report has been reviewed and signed by the examiner."
+                : "AI-generated preliminary evaluation · Review and edit before confirming."}
+            </p>
+          </div>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={handlePrint} className="gap-2">
@@ -255,22 +263,41 @@ export function DraftReport({ result, level, language, onReset }: DraftReportPro
         </Card>
       )}
 
-      {/* Recommended Practice */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-display text-lg flex items-center gap-2">
-            <BookOpen className="h-5 w-5 text-primary" /> Recommended Practice
-          </CardTitle>
-          <CardDescription>Personalized resources based on assessment results (coming soon).</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-lg border border-dashed border-border bg-muted/20 p-6 text-center text-sm text-muted-foreground">
-            <BookOpen className="mx-auto h-8 w-8 mb-2 opacity-40" />
-            <p className="font-medium">Practice links will appear here</p>
-            <p className="mt-1">Based on the student's score and areas for improvement, curated exercises and resources will be recommended automatically.</p>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Recommended Practice — dynamic */}
+      {(() => {
+        const recommendations = getRecommendations(draft.criteria, levelCode, 2);
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-display text-lg flex items-center gap-2">
+                <BookOpen className="h-5 w-5 text-primary" /> Recommended Practice
+              </CardTitle>
+              <CardDescription>Personalised resources based on the lowest-scoring criteria.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {recommendations.length > 0 ? (
+                recommendations.map((link, i) => (
+                  <a
+                    key={i}
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 px-4 py-3 transition-colors hover:bg-muted/40"
+                  >
+                    <div>
+                      <p className="text-sm font-medium">{link.title}</p>
+                      <p className="text-xs text-muted-foreground">{link.source} · {link.skill} · {link.level}</p>
+                    </div>
+                    <ExternalLink className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  </a>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">No specific recommendations available for this level.</p>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Confirm & Sign */}
       {!isOfficial && (

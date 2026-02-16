@@ -191,6 +191,7 @@ export default function NewExamPage() {
         <DraftReport
           result={report}
           level={selectedLevel?.label ?? exam.title}
+          levelCode={exam.title}
           language={selectedLang?.label ?? "English"}
           onReset={handleReset}
         />
