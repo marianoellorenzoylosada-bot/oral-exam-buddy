@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Globe, Building2, Save, Cloud, CheckCircle2 } from "lucide-react";
+import { Globe, Building2, Save, Cloud, CheckCircle2, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 
@@ -20,10 +20,12 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const [defaultLang, setDefaultLang] = useState(() => localStorage.getItem("oralassess-lang") ?? "en");
   const [institution, setInstitution] = useState(() => localStorage.getItem("oralassess-institution") ?? "");
+  const [examinerName, setExaminerName] = useState(() => localStorage.getItem("oralassess-examiner") ?? "");
 
   const handleSave = () => {
     localStorage.setItem("oralassess-lang", defaultLang);
     localStorage.setItem("oralassess-institution", institution);
+    localStorage.setItem("oralassess-examiner", examinerName);
     toast({ title: "Settings saved", description: "Your preferences have been updated." });
   };
 
@@ -31,8 +33,33 @@ export default function SettingsPage() {
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
         <h1 className="font-display text-3xl font-bold tracking-tight">Settings</h1>
-        <p className="mt-1 text-muted-foreground">Configure your OralAssess AI preferences.</p>
+        <p className="mt-1 text-muted-foreground">Configure your International Oral Exam Assistant preferences.</p>
       </div>
+
+      {/* Profile */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+              <User className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <CardTitle className="font-display text-lg">Profile</CardTitle>
+              <CardDescription>Your name and institution appear on all signed reports.</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-5 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="examinerName">Examiner Name</Label>
+            <Input id="examinerName" placeholder="e.g. Dr. María López" value={examinerName} onChange={(e) => setExaminerName(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="profileInst">Institution Name</Label>
+            <Input id="profileInst" placeholder="e.g. Cambridge Academy" value={institution} onChange={(e) => setInstitution(e.target.value)} />
+          </div>
+        </CardContent>
+      </Card>
 
       {/* AI Status */}
       <Card className="border-accent/20 bg-accent/5">
@@ -65,12 +92,12 @@ export default function SettingsPage() {
             </div>
             <div>
               <CardTitle className="font-display text-lg">Defaults</CardTitle>
-              <CardDescription>Set default language and institution for new exams.</CardDescription>
+              <CardDescription>Set default language for new exams.</CardDescription>
             </div>
           </div>
         </CardHeader>
-        <CardContent className="grid gap-5 sm:grid-cols-2">
-          <div className="space-y-2">
+        <CardContent>
+          <div className="space-y-2 max-w-xs">
             <Label>Default Language</Label>
             <Select value={defaultLang} onValueChange={setDefaultLang}>
               <SelectTrigger><SelectValue /></SelectTrigger>
@@ -80,10 +107,6 @@ export default function SettingsPage() {
                 ))}
               </SelectContent>
             </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="defaultInst">Default Institution</Label>
-            <Input id="defaultInst" placeholder="e.g. Cambridge Academy" value={institution} onChange={(e) => setInstitution(e.target.value)} />
           </div>
         </CardContent>
       </Card>

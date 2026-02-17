@@ -46,8 +46,8 @@ export function AppSidebar() {
             <Mic className="h-5 w-5 text-primary-foreground" />
           </div>
           <div>
-            <h1 className="font-display text-lg font-bold leading-tight">OralAssess</h1>
-            <p className="text-xs text-muted-foreground">AI Exam Co-pilot</p>
+            <h1 className="font-display text-lg font-bold leading-tight">Int'l Oral Exam</h1>
+            <p className="text-xs text-muted-foreground">Assistant</p>
           </div>
         </div>
       </SidebarHeader>

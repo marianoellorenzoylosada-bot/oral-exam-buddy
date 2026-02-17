@@ -193,6 +193,9 @@ export default function NewExamPage() {
           level={selectedLevel?.label ?? exam.title}
           levelCode={exam.title}
           language={selectedLang?.label ?? "English"}
+          institution={exam.institution}
+          group={exam.group}
+          candidates={exam.candidates.length || 1}
           onReset={handleReset}
         />
       </TeacherAuthGate>
