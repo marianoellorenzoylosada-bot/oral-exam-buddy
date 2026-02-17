@@ -14,7 +14,63 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      exams: {
+        Row: {
+          areas_for_improvement: Json
+          candidates: number | null
+          created_at: string
+          criteria: Json
+          examiner_notes: string | null
+          group: string | null
+          id: string
+          institution: string | null
+          language: string
+          level_code: string
+          overall_band: string
+          overall_score: number
+          status: string
+          strengths: Json
+          title: string
+          transcript: string | null
+        }
+        Insert: {
+          areas_for_improvement?: Json
+          candidates?: number | null
+          created_at?: string
+          criteria?: Json
+          examiner_notes?: string | null
+          group?: string | null
+          id?: string
+          institution?: string | null
+          language: string
+          level_code: string
+          overall_band: string
+          overall_score: number
+          status?: string
+          strengths?: Json
+          title: string
+          transcript?: string | null
+        }
+        Update: {
+          areas_for_improvement?: Json
+          candidates?: number | null
+          created_at?: string
+          criteria?: Json
+          examiner_notes?: string | null
+          group?: string | null
+          id?: string
+          institution?: string | null
+          language?: string
+          level_code?: string
+          overall_band?: string
+          overall_score?: number
+          status?: string
+          strengths?: Json
+          title?: string
+          transcript?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
