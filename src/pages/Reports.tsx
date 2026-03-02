@@ -7,10 +7,11 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { FileText, Search, Filter, Clock, Printer, CheckCircle2, AlertTriangle, ShieldCheck, BookOpen, ExternalLink } from "lucide-react";
+import { FileText, Search, Filter, Clock, Printer, CheckCircle2, AlertTriangle, ShieldCheck, BookOpen, ExternalLink, Download } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getRecommendations } from "@/lib/practiceData";
+import { generateReportPdf } from "@/lib/generateReportPdf";
 
 const LEVELS = ["All", "A1", "A2", "B1", "B2", "C1", "C2"];
 const LANGUAGES = ["All", "en", "es", "fr", "de", "pt", "it"];
@@ -295,10 +296,27 @@ function ReportDetail({ exam, onClose }: { exam: Exam; onClose: () => void }) {
           </div>
         )}
 
-        {/* Print */}
-        <div className="flex justify-end">
+        {/* Export */}
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={() => generateReportPdf({
+            title: exam.title,
+            institution: exam.institution || "",
+            group: exam.group || "",
+            levelCode: exam.level_code,
+            language: exam.language,
+            overallBand: exam.overall_band,
+            overallScore: exam.overall_score,
+            criteria,
+            strengths,
+            areasForImprovement: improvements,
+            examinerNotes: exam.examiner_notes || "",
+            transcript: exam.transcript || "",
+            date: new Date(exam.created_at).toLocaleDateString(),
+          })} className="gap-2">
+            <Download className="h-4 w-4" /> Download PDF
+          </Button>
           <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-2">
-            <Printer className="h-4 w-4" /> Print / PDF
+            <Printer className="h-4 w-4" /> Print
           </Button>
         </div>
       </div>

@@ -7,10 +7,11 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { FileText, CheckCircle2, AlertTriangle, RotateCcw, Printer, ShieldCheck, BookOpen, ExternalLink, Home, Loader2 } from "lucide-react";
+import { FileText, CheckCircle2, AlertTriangle, RotateCcw, Printer, ShieldCheck, BookOpen, ExternalLink, Home, Loader2, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getRecommendations } from "@/lib/practiceData";
 import { supabase } from "@/integrations/supabase/client";
+import { generateReportPdf } from "@/lib/generateReportPdf";
 
 export interface AssessmentResult {
   overallBand: string;
@@ -106,6 +107,24 @@ export function DraftReport({ result, level, levelCode, language, institution, g
 
   const handlePrint = () => window.print();
 
+  const handleDownloadPdf = () => {
+    generateReportPdf({
+      title: `${levelCode} ${language} Oral`,
+      institution: institutionName,
+      group: group || "",
+      levelCode,
+      language,
+      overallBand: draft.overallBand,
+      overallScore: draft.overallScore,
+      criteria: draft.criteria,
+      strengths: draft.strengths,
+      areasForImprovement: draft.areasForImprovement,
+      examinerNotes: draft.examinerNotes,
+      transcript: draft.transcript,
+      date: new Date().toLocaleDateString(),
+    });
+  };
+
   return (
     <div className="mx-auto max-w-4xl space-y-6 print:space-y-4">
       {/* Logo + Top actions */}
@@ -132,8 +151,11 @@ export function DraftReport({ result, level, levelCode, language, institution, g
               <Home className="h-4 w-4" /> Return to Dashboard
             </Button>
           )}
+          <Button variant="outline" onClick={handleDownloadPdf} className="gap-2">
+            <Download className="h-4 w-4" /> Download PDF
+          </Button>
           <Button variant="outline" onClick={handlePrint} className="gap-2">
-            <Printer className="h-4 w-4" /> Print / PDF
+            <Printer className="h-4 w-4" /> Print
           </Button>
           {!isOfficial && (
             <Button variant="outline" onClick={onReset} className="gap-2">
