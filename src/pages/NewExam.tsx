@@ -14,6 +14,7 @@ import { DraftReport, type AssessmentResult } from "@/components/DraftReport";
 import { extractTextFromFile } from "@/lib/extractText";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { LiveTranscript } from "@/components/LiveTranscript";
 
 const LANGUAGES = [
   { value: "en", label: "English" },
@@ -119,6 +120,7 @@ export default function NewExamPage() {
   const [activeTab, setActiveTab] = useState("setup");
   const [analyzing, setAnalyzing] = useState(false);
   const [report, setReport] = useState<AssessmentResult | null>(null);
+  const [liveTranscript, setLiveTranscript] = useState("");
 
   const selectedLevel = EXAM_LEVELS.find(l => l.value === exam.title);
   const selectedLang = LANGUAGES.find(l => l.value === exam.language);
@@ -181,6 +183,7 @@ export default function NewExamPage() {
     reset();
     recorder.reset();
     setReport(null);
+    setLiveTranscript("");
     setActiveTab("setup");
   }, [reset, recorder]);
 
@@ -401,6 +404,16 @@ export default function NewExamPage() {
                 {/* Playback */}
                 {recorder.audioUrl && (
                   <audio controls src={recorder.audioUrl} className="w-full max-w-md" />
+                )}
+
+                {/* Live Transcription */}
+                {(recorder.state === "recording" || recorder.state === "paused" || liveTranscript) && (
+                  <div className="w-full max-w-md">
+                    <LiveTranscript
+                      isRecording={recorder.state === "recording"}
+                      onTranscriptUpdate={setLiveTranscript}
+                    />
+                  </div>
                 )}
 
                 {/* Context summary */}
