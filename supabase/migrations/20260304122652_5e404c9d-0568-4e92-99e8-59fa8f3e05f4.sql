@@ -1,0 +1,1 @@
+ALTER TABLE public.exams ADD COLUMN candidate_name text DEFAULT '';

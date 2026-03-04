@@ -27,6 +27,7 @@ type Exam = {
   language: string;
   institution: string | null;
   group: string | null;
+  candidate_name: string | null;
   candidates: number | null;
   overall_band: string;
   overall_score: number;
@@ -142,6 +143,7 @@ export default function ReportsPage() {
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">
+                      {exam.candidate_name ? <span className="font-medium text-foreground">{exam.candidate_name} · </span> : null}
                       {exam.institution || "—"} · {exam.group || "—"}
                     </p>
                   </div>
@@ -183,6 +185,7 @@ function ReportDetail({ exam, onClose }: { exam: Exam; onClose: () => void }) {
           {exam.title}
         </DialogTitle>
         <DialogDescription>
+          {exam.candidate_name && <span className="font-medium">{exam.candidate_name} · </span>}
           {exam.institution || "—"} · {exam.group || "—"} · {new Date(exam.created_at).toLocaleDateString()}
         </DialogDescription>
       </DialogHeader>
@@ -300,6 +303,7 @@ function ReportDetail({ exam, onClose }: { exam: Exam; onClose: () => void }) {
         <div className="flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={() => generateReportPdf({
             title: exam.title,
+            candidateName: exam.candidate_name || "",
             institution: exam.institution || "",
             group: exam.group || "",
             levelCode: exam.level_code,

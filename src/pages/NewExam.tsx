@@ -198,6 +198,7 @@ export default function NewExamPage() {
           language={selectedLang?.label ?? "English"}
           institution={exam.institution}
           group={exam.group}
+          candidateName={exam.candidateName}
           candidates={exam.candidates.length || 1}
           onReset={handleReset}
         />
@@ -257,6 +258,10 @@ export default function NewExamPage() {
                 <div className="space-y-2">
                   <Label htmlFor="group">Group</Label>
                   <Input id="group" placeholder="e.g. Group A" value={exam.group} onChange={(e) => update({ group: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="candidateName">Candidate Name</Label>
+                  <Input id="candidateName" placeholder="e.g. María García" value={exam.candidateName} onChange={(e) => update({ candidateName: e.target.value })} />
                 </div>
                 <div className="space-y-2">
                   <Label>Candidates</Label>

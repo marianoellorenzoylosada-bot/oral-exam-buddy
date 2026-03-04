@@ -17,6 +17,7 @@ export type Database = {
       exams: {
         Row: {
           areas_for_improvement: Json
+          candidate_name: string | null
           candidates: number | null
           created_at: string
           criteria: Json
@@ -35,6 +36,7 @@ export type Database = {
         }
         Insert: {
           areas_for_improvement?: Json
+          candidate_name?: string | null
           candidates?: number | null
           created_at?: string
           criteria?: Json
@@ -53,6 +55,7 @@ export type Database = {
         }
         Update: {
           areas_for_improvement?: Json
+          candidate_name?: string | null
           candidates?: number | null
           created_at?: string
           criteria?: Json
