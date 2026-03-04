@@ -36,6 +36,7 @@ interface DraftReportProps {
   group?: string;
   candidateName?: string;
   candidates?: number;
+  audioBlob?: Blob | null;
   onReset: () => void;
 }
 
@@ -57,7 +58,7 @@ function EditableScore({ value, max, onChange }: { value: number; max: number; o
 
 const COPYRIGHT_TEXT = "© 2026 [Tu Nombre/Institución]. All rights reserved. Evaluation methodology and pedagogical structure are protected intellectual property. AI results are subject to teacher supervision.";
 
-export function DraftReport({ result, level, levelCode, language, institution, group, candidateName, candidates, onReset }: DraftReportProps) {
+export function DraftReport({ result, level, levelCode, language, institution, group, candidateName, candidates, audioBlob, onReset }: DraftReportProps) {
   const { toast } = useToast();
   const navigate = useNavigate();
   const [isOfficial, setIsOfficial] = useState(false);
@@ -134,7 +135,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         ? `${levelCode} ${language} Oral — ${candidateName}`
         : `${levelCode} ${language} Oral`;
 
-      const { error } = await supabase.from("exams").insert({
+      const { data: insertData, error } = await supabase.from("exams").insert({
         title: examTitle,
         level_code: levelCode,
         language,
@@ -150,8 +151,19 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         transcript: draft.transcript,
         examiner_notes: finalNotes,
         status: "completed",
-      });
+      }).select("id").single();
       if (error) throw error;
+
+      // Upload audio to storage if available
+      if (audioBlob && insertData?.id) {
+        const path = `${insertData.id}.wav`;
+        const { error: uploadError } = await supabase.storage
+          .from("exam-audio")
+          .upload(path, audioBlob, { contentType: "audio/wav", upsert: true });
+        if (uploadError) {
+          console.warn("Audio upload failed:", uploadError.message);
+        }
+      }
       setIsOfficial(true);
       toast({ title: "Report confirmed & saved", description: "This report is now Official and saved to your records." });
     } catch (err: any) {

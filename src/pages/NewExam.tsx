@@ -200,6 +200,7 @@ export default function NewExamPage() {
           group={exam.group}
           candidateName={exam.candidateName}
           candidates={exam.candidates.length || 1}
+          audioBlob={recorder.audioBlob}
           onReset={handleReset}
         />
       </TeacherAuthGate>

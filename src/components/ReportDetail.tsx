@@ -1,0 +1,267 @@
+import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
+import {
+  DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
+  Printer, CheckCircle2, AlertTriangle, ShieldCheck, BookOpen,
+  ExternalLink, Download, Trash2, EyeOff,
+} from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { getRecommendations } from "@/lib/practiceData";
+import { generateReportPdf } from "@/lib/generateReportPdf";
+import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
+
+const langLabel: Record<string, string> = {
+  en: "English", es: "Spanish", fr: "French", de: "German", pt: "Portuguese", it: "Italian",
+};
+
+export type Exam = {
+  id: string;
+  title: string;
+  level_code: string;
+  language: string;
+  institution: string | null;
+  group: string | null;
+  candidate_name: string | null;
+  candidates: number | null;
+  overall_band: string;
+  overall_score: number;
+  criteria: any;
+  strengths: any;
+  areas_for_improvement: any;
+  transcript: string | null;
+  examiner_notes: string | null;
+  status: string;
+  created_at: string;
+};
+
+interface Props {
+  exam: Exam;
+  anonymize: boolean;
+  onClose: () => void;
+}
+
+function mask(text: string | null | undefined) {
+  return text ? "██████" : "—";
+}
+
+export function ReportDetail({ exam, anonymize, onClose }: Props) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [deleting, setDeleting] = useState(false);
+
+  const criteria = Array.isArray(exam.criteria)
+    ? (exam.criteria as { name: string; score: number; maxScore: number; feedback: string }[])
+    : [];
+  const strengths = Array.isArray(exam.strengths) ? (exam.strengths as string[]) : [];
+  const improvements = Array.isArray(exam.areas_for_improvement) ? (exam.areas_for_improvement as string[]) : [];
+  const recommendations = getRecommendations(criteria, exam.level_code, 2);
+
+  const displayName = anonymize ? mask(exam.candidate_name) : (exam.candidate_name || null);
+  const displayInstitution = anonymize ? mask(exam.institution) : (exam.institution || "—");
+  const displayGroup = anonymize ? mask(exam.group) : (exam.group || "—");
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const { error } = await supabase.from("exams").delete().eq("id", exam.id);
+      if (error) throw error;
+      toast({ title: "Report deleted" });
+      queryClient.invalidateQueries({ queryKey: ["exams-reports"] });
+      onClose();
+    } catch (err: any) {
+      toast({ title: "Delete failed", description: err.message, variant: "destructive" });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle className="font-display text-xl flex items-center gap-2">
+          <ShieldCheck className="h-5 w-5 text-emerald-600" />
+          {exam.title}
+          {anonymize && (
+            <Badge variant="outline" className="gap-1 text-xs">
+              <EyeOff className="h-3 w-3" /> Anonymized
+            </Badge>
+          )}
+        </DialogTitle>
+        <DialogDescription>
+          {displayName && <span className="font-medium">{displayName} · </span>}
+          {displayInstitution} · {displayGroup} · {new Date(exam.created_at).toLocaleDateString()}
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="space-y-5 mt-2">
+        {/* Overall */}
+        <div className="flex items-center gap-4 rounded-lg border border-primary/20 bg-primary/5 p-4">
+          <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <span className="font-display text-2xl font-bold">{exam.overall_band}</span>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">Overall Score</p>
+            <p className="font-display text-xl font-bold">{Number(exam.overall_score).toFixed(1)}/5.0</p>
+            <div className="flex gap-2 mt-1">
+              <Badge variant="secondary">{exam.level_code}</Badge>
+              <Badge variant="outline">{langLabel[exam.language] || exam.language}</Badge>
+            </div>
+          </div>
+        </div>
+
+        {/* Criteria */}
+        {criteria.length > 0 && (
+          <div className="space-y-3">
+            <h3 className="font-display font-semibold text-sm">Assessment Criteria</h3>
+            {criteria.map((c, i) => {
+              const pct = (c.score / c.maxScore) * 100;
+              return (
+                <div key={i}>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="font-medium">{c.name}</span>
+                    <span className={`font-bold ${pct >= 80 ? "text-emerald-600" : pct >= 50 ? "text-amber-600" : "text-destructive"}`}>
+                      {c.score}/{c.maxScore}
+                    </span>
+                  </div>
+                  <Progress value={pct} className="h-2 mb-1" />
+                  <p className="text-xs text-muted-foreground">{c.feedback}</p>
+                  {i < criteria.length - 1 && <Separator className="mt-3" />}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Strengths & Improvements */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          {strengths.length > 0 && (
+            <div>
+              <h3 className="font-display font-semibold text-sm flex items-center gap-1.5 mb-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" /> Strengths
+              </h3>
+              <ul className="space-y-1">
+                {strengths.map((s, i) => (
+                  <li key={i} className="flex items-start gap-2 text-xs">
+                    <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                    {s}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {improvements.length > 0 && (
+            <div>
+              <h3 className="font-display font-semibold text-sm flex items-center gap-1.5 mb-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600" /> Areas for Improvement
+              </h3>
+              <ul className="space-y-1">
+                {improvements.map((a, i) => (
+                  <li key={i} className="flex items-start gap-2 text-xs">
+                    <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+                    {a}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        {/* Examiner Notes */}
+        {exam.examiner_notes && (
+          <div>
+            <h3 className="font-display font-semibold text-sm mb-1">Examiner Notes</h3>
+            <p className="text-xs text-muted-foreground whitespace-pre-wrap rounded-lg bg-muted/50 p-3">{exam.examiner_notes}</p>
+          </div>
+        )}
+
+        {/* Transcript */}
+        {exam.transcript && (
+          <div>
+            <h3 className="font-display font-semibold text-sm mb-1">Transcript</h3>
+            <div className="text-xs text-muted-foreground whitespace-pre-wrap rounded-lg bg-muted/50 p-3 max-h-40 overflow-y-auto">
+              {anonymize ? "[Transcript hidden — anonymization enabled]" : exam.transcript}
+            </div>
+          </div>
+        )}
+
+        {/* Recommendations */}
+        {recommendations.length > 0 && (
+          <div>
+            <h3 className="font-display font-semibold text-sm flex items-center gap-1.5 mb-2">
+              <BookOpen className="h-4 w-4 text-primary" /> Recommended Practice
+            </h3>
+            {recommendations.map((link, i) => (
+              <a key={i} href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 px-3 py-2 mb-1.5 text-xs transition-colors hover:bg-muted/40">
+                <div>
+                  <p className="font-medium">{link.title}</p>
+                  <p className="text-muted-foreground">{link.source} · {link.skill} · {link.level}</p>
+                </div>
+                <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              </a>
+            ))}
+          </div>
+        )}
+
+        {/* Export + Delete */}
+        <div className="flex justify-between">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" size="sm" className="gap-2">
+                <Trash2 className="h-4 w-4" /> Delete
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete this report?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. The assessment report will be permanently removed.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                  {deleting ? "Deleting…" : "Delete"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => generateReportPdf({
+              title: exam.title,
+              candidateName: anonymize ? "Anonymous" : (exam.candidate_name || ""),
+              institution: anonymize ? "Anonymous" : (exam.institution || ""),
+              group: anonymize ? "" : (exam.group || ""),
+              levelCode: exam.level_code,
+              language: exam.language,
+              overallBand: exam.overall_band,
+              overallScore: exam.overall_score,
+              criteria,
+              strengths,
+              areasForImprovement: improvements,
+              examinerNotes: exam.examiner_notes || "",
+              transcript: anonymize ? "[Anonymized]" : (exam.transcript || ""),
+              date: new Date(exam.created_at).toLocaleDateString(),
+            })} className="gap-2">
+              <Download className="h-4 w-4" /> PDF
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-2">
+              <Printer className="h-4 w-4" /> Print
+            </Button>
+          </div>
+        </div>
+      </div>
+    </DialogContent>
+  );
+}
