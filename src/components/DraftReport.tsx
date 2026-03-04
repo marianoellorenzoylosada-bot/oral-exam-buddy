@@ -34,6 +34,7 @@ interface DraftReportProps {
   language: string;
   institution?: string;
   group?: string;
+  candidateName?: string;
   candidates?: number;
   onReset: () => void;
 }
@@ -56,7 +57,7 @@ function EditableScore({ value, max, onChange }: { value: number; max: number; o
 
 const COPYRIGHT_TEXT = "© 2026 [Tu Nombre/Institución]. All rights reserved. Evaluation methodology and pedagogical structure are protected intellectual property. AI results are subject to teacher supervision.";
 
-export function DraftReport({ result, level, levelCode, language, institution, group, candidates, onReset }: DraftReportProps) {
+export function DraftReport({ result, level, levelCode, language, institution, group, candidateName, candidates, onReset }: DraftReportProps) {
   const { toast } = useToast();
   const navigate = useNavigate();
   const [isOfficial, setIsOfficial] = useState(false);
@@ -129,12 +130,17 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         ? `${draft.examinerNotes}\n\n--- Score Overrides ---\n${overrideNotes}`
         : draft.examinerNotes;
 
+      const examTitle = candidateName
+        ? `${levelCode} ${language} Oral — ${candidateName}`
+        : `${levelCode} ${language} Oral`;
+
       const { error } = await supabase.from("exams").insert({
-        title: `${levelCode} ${language} Oral`,
+        title: examTitle,
         level_code: levelCode,
         language,
         institution: institutionName,
         group: group || "",
+        candidate_name: candidateName || "",
         candidates: candidates || 1,
         overall_band: draft.overallBand,
         overall_score: draft.overallScore,
@@ -161,8 +167,12 @@ export function DraftReport({ result, level, levelCode, language, institution, g
   const handleDownloadPdf = () => {
     const finalStrengths = draft.strengths.filter((_, i) => acceptedStrengths[i]);
     const finalImprovements = draft.areasForImprovement.filter((_, i) => acceptedImprovements[i]);
+    const examTitle = candidateName
+      ? `${levelCode} ${language} Oral — ${candidateName}`
+      : `${levelCode} ${language} Oral`;
     generateReportPdf({
-      title: `${levelCode} ${language} Oral`,
+      title: examTitle,
+      candidateName: candidateName || "",
       institution: institutionName,
       group: group || "",
       levelCode,

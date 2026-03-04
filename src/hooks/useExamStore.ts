@@ -5,6 +5,7 @@ export interface ExamContext {
   institution: string;
   group: string;
   language: string;
+  candidateName: string;
   candidates: string[];
   bookletFile: File | null;
   bookletText: string;
@@ -18,6 +19,7 @@ const defaultContext: ExamContext = {
   institution: "",
   group: "",
   language: "en",
+  candidateName: "",
   candidates: ["Candidate A", "Candidate B", "Candidate C"],
   bookletFile: null,
   bookletText: "",

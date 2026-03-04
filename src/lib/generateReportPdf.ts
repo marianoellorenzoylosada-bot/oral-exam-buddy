@@ -10,6 +10,7 @@ interface CriterionData {
 
 interface ReportData {
   title: string;
+  candidateName?: string;
   institution: string;
   group: string;
   levelCode: string;
@@ -68,6 +69,15 @@ export function generateReportPdf(data: ReportData) {
   doc.setFont("helvetica", "bold");
   doc.text(data.title, margin, y + 8);
   y += 14;
+
+  // Candidate name
+  if (data.candidateName) {
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...MUTED);
+    doc.text(`Candidate: ${data.candidateName}`, margin, y);
+    y += 6;
+  }
 
   // --- Overall score box ---
   const boxH = 22;
