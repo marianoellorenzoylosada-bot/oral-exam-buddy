@@ -62,13 +62,12 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    const { data } = supabase.storage
+    supabase.storage
       .from("exam-audio")
-      .getPublicUrl(`${exam.id}.wav`);
-    // Check if file exists by trying a HEAD request
-    fetch(data.publicUrl, { method: "HEAD" })
-      .then((res) => { if (res.ok) setAudioUrl(data.publicUrl); })
-      .catch(() => {});
+      .createSignedUrl(`${exam.id}.wav`, 3600)
+      .then(({ data, error }) => {
+        if (!error && data?.signedUrl) setAudioUrl(data.signedUrl);
+      });
   }, [exam.id]);
 
   const criteria = Array.isArray(exam.criteria)
