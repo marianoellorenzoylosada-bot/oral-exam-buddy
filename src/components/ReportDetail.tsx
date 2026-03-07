@@ -59,6 +59,17 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [deleting, setDeleting] = useState(false);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const { data } = supabase.storage
+      .from("exam-audio")
+      .getPublicUrl(`${exam.id}.wav`);
+    // Check if file exists by trying a HEAD request
+    fetch(data.publicUrl, { method: "HEAD" })
+      .then((res) => { if (res.ok) setAudioUrl(data.publicUrl); })
+      .catch(() => {});
+  }, [exam.id]);
 
   const criteria = Array.isArray(exam.criteria)
     ? (exam.criteria as { name: string; score: number; maxScore: number; feedback: string }[])
