@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   Printer, CheckCircle2, AlertTriangle, ShieldCheck, BookOpen,
-  ExternalLink, Download, Trash2, EyeOff,
+  ExternalLink, Download, Trash2, EyeOff, Volume2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getRecommendations } from "@/lib/practiceData";
