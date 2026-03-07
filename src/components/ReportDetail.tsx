@@ -131,6 +131,18 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
           </div>
         </div>
 
+        {/* Audio playback */}
+        {audioUrl && (
+          <div className="rounded-lg border bg-muted/30 p-3">
+            <h3 className="font-display font-semibold text-sm flex items-center gap-1.5 mb-2">
+              <Volume2 className="h-4 w-4 text-primary" /> Exam Recording
+            </h3>
+            <audio controls className="w-full h-10" src={audioUrl} preload="metadata">
+              Your browser does not support audio playback.
+            </audio>
+          </div>
+        )}
+
         {/* Criteria */}
         {criteria.length > 0 && (
           <div className="space-y-3">
