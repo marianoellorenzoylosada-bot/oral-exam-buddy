@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   Printer, CheckCircle2, AlertTriangle, ShieldCheck, BookOpen,
-  ExternalLink, Download, Trash2, EyeOff,
+  ExternalLink, Download, Trash2, EyeOff, Volume2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getRecommendations } from "@/lib/practiceData";
@@ -59,6 +59,16 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [deleting, setDeleting] = useState(false);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.storage
+      .from("exam-audio")
+      .createSignedUrl(`${exam.id}.wav`, 3600)
+      .then(({ data, error }) => {
+        if (!error && data?.signedUrl) setAudioUrl(data.signedUrl);
+      });
+  }, [exam.id]);
 
   const criteria = Array.isArray(exam.criteria)
     ? (exam.criteria as { name: string; score: number; maxScore: number; feedback: string }[])
@@ -119,6 +129,18 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
             </div>
           </div>
         </div>
+
+        {/* Audio playback */}
+        {audioUrl && (
+          <div className="rounded-lg border bg-muted/30 p-3">
+            <h3 className="font-display font-semibold text-sm flex items-center gap-1.5 mb-2">
+              <Volume2 className="h-4 w-4 text-primary" /> Exam Recording
+            </h3>
+            <audio controls className="w-full h-10" src={audioUrl} preload="metadata">
+              Your browser does not support audio playback.
+            </audio>
+          </div>
+        )}
 
         {/* Criteria */}
         {criteria.length > 0 && (
