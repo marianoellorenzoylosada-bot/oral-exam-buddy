@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Mic, Square, Pause, Play, Upload, FileText, BookOpen, Trash2, Clock, Users, ExternalLink, Info, Loader2, AlertCircle } from "lucide-react";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { useExamStore } from "@/hooks/useExamStore";
-import { TeacherAuthGate } from "@/components/TeacherAuthGate";
+
 import { DraftReport, type AssessmentResult } from "@/components/DraftReport";
 import { extractTextFromFile } from "@/lib/extractText";
 import { supabase } from "@/integrations/supabase/client";
