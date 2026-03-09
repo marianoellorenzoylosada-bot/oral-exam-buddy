@@ -457,6 +457,6 @@ export default function NewExamPage() {
           </TabsContent>
         </Tabs>
       </div>
-    </TeacherAuthGate>
+    </>
   );
 }

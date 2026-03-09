@@ -152,6 +152,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         transcript: draft.transcript,
         examiner_notes: finalNotes,
         status: "completed",
+        user_id: (await supabase.auth.getUser()).data.user?.id,
       }).select("id").single();
       if (error) throw error;
 
