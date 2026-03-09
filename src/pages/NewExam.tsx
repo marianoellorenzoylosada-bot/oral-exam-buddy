@@ -190,7 +190,7 @@ export default function NewExamPage() {
   // Show draft report if available
   if (report) {
     return (
-      <TeacherAuthGate>
+      <>
         <DraftReport
           result={report}
           level={selectedLevel?.label ?? exam.title}
