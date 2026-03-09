@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getRecommendations } from "@/lib/practiceData";
 import { supabase } from "@/integrations/supabase/client";
 import { generateReportPdf } from "@/lib/generateReportPdf";
+import { useAuth } from "@/hooks/useAuth";
 
 export interface AssessmentResult {
   overallBand: string;
