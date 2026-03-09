@@ -208,7 +208,7 @@ export default function NewExamPage() {
   }
 
   return (
-    <TeacherAuthGate>
+    <>
       <div className="mx-auto max-w-4xl space-y-6">
         <div>
           <h1 className="font-display text-3xl font-bold tracking-tight">New Exam Session</h1>
