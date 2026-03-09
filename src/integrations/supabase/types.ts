@@ -33,6 +33,7 @@ export type Database = {
           strengths: Json
           title: string
           transcript: string | null
+          user_id: string | null
         }
         Insert: {
           areas_for_improvement?: Json
@@ -52,6 +53,7 @@ export type Database = {
           strengths?: Json
           title: string
           transcript?: string | null
+          user_id?: string | null
         }
         Update: {
           areas_for_improvement?: Json
@@ -71,6 +73,28 @@ export type Database = {
           strengths?: Json
           title?: string
           transcript?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          full_name: string
+          id: string
+          institution: string
+        }
+        Insert: {
+          created_at?: string
+          full_name?: string
+          id: string
+          institution?: string
+        }
+        Update: {
+          created_at?: string
+          full_name?: string
+          id?: string
+          institution?: string
         }
         Relationships: []
       }

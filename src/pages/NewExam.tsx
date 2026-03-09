@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Mic, Square, Pause, Play, Upload, FileText, BookOpen, Trash2, Clock, Users, ExternalLink, Info, Loader2, AlertCircle } from "lucide-react";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { useExamStore } from "@/hooks/useExamStore";
-import { TeacherAuthGate } from "@/components/TeacherAuthGate";
+
 import { DraftReport, type AssessmentResult } from "@/components/DraftReport";
 import { extractTextFromFile } from "@/lib/extractText";
 import { supabase } from "@/integrations/supabase/client";
@@ -190,7 +190,7 @@ export default function NewExamPage() {
   // Show draft report if available
   if (report) {
     return (
-      <TeacherAuthGate>
+      <>
         <DraftReport
           result={report}
           level={selectedLevel?.label ?? exam.title}
@@ -203,12 +203,12 @@ export default function NewExamPage() {
           audioBlob={recorder.audioBlob}
           onReset={handleReset}
         />
-      </TeacherAuthGate>
+      </>
     );
   }
 
   return (
-    <TeacherAuthGate>
+    <>
       <div className="mx-auto max-w-4xl space-y-6">
         <div>
           <h1 className="font-display text-3xl font-bold tracking-tight">New Exam Session</h1>
@@ -457,6 +457,6 @@ export default function NewExamPage() {
           </TabsContent>
         </Tabs>
       </div>
-    </TeacherAuthGate>
+    </>
   );
 }

@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getRecommendations } from "@/lib/practiceData";
 import { supabase } from "@/integrations/supabase/client";
 import { generateReportPdf } from "@/lib/generateReportPdf";
+import { useAuth } from "@/hooks/useAuth";
 
 export interface AssessmentResult {
   overallBand: string;
@@ -151,6 +152,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         transcript: draft.transcript,
         examiner_notes: finalNotes,
         status: "completed",
+        user_id: (await supabase.auth.getUser()).data.user?.id,
       }).select("id").single();
       if (error) throw error;
 
