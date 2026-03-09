@@ -203,7 +203,7 @@ export default function NewExamPage() {
           audioBlob={recorder.audioBlob}
           onReset={handleReset}
         />
-      </TeacherAuthGate>
+      </>
     );
   }
 
