@@ -6,6 +6,7 @@ import {
   TrendingUp,
   Settings,
   Mic,
+  LogOut,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -21,6 +22,8 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
 
 const mainNav = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -38,6 +41,9 @@ const settingsNav = [
 ];
 
 export function AppSidebar() {
+  const { user, signOut } = useAuth();
+  const displayName = user?.user_metadata?.full_name || user?.email || "";
+
   return (
     <Sidebar className="border-r border-sidebar-border">
       <SidebarHeader className="p-4">
@@ -124,7 +130,15 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-4">
+      <SidebarFooter className="p-4 space-y-3">
+        {displayName && (
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-sidebar-foreground/70 truncate max-w-[140px]">{displayName}</span>
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-sidebar-foreground/50 hover:text-sidebar-foreground" onClick={signOut}>
+              <LogOut className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <span className="text-xs text-muted-foreground">v0.1.0</span>
           <ThemeToggle />
