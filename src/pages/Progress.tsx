@@ -74,7 +74,16 @@ function computeStats(exams: any[]) {
   exams.forEach((e) => { langCounts[e.language] = (langCounts[e.language] || 0) + 1; });
   const langData = Object.entries(langCounts).map(([name, value]) => ({ name, value }));
 
-  return { avg, best, total: exams.length, radarData, trendData, levelData, langData };
+  /* ── per-criterion trend data ── */
+  const criteriaNames = Object.keys(criteriaMap);
+  const criteriaTrendData = exams.map((e) => {
+    const row: Record<string, any> = { date: format(new Date(e.created_at), "dd MMM"), label: e.title };
+    const crit = e.criteria as any[];
+    crit?.forEach((c: any) => { row[c.name] = Number(c.score); });
+    return row;
+  });
+
+  return { avg, best, total: exams.length, radarData, trendData, levelData, langData, criteriaTrendData, criteriaNames };
 }
 
 export default function ProgressPage() {
