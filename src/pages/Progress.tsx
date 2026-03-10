@@ -74,7 +74,16 @@ function computeStats(exams: any[]) {
   exams.forEach((e) => { langCounts[e.language] = (langCounts[e.language] || 0) + 1; });
   const langData = Object.entries(langCounts).map(([name, value]) => ({ name, value }));
 
-  return { avg, best, total: exams.length, radarData, trendData, levelData, langData };
+  /* ── per-criterion trend data ── */
+  const criteriaNames = Object.keys(criteriaMap);
+  const criteriaTrendData = exams.map((e) => {
+    const row: Record<string, any> = { date: format(new Date(e.created_at), "dd MMM"), label: e.title };
+    const crit = e.criteria as any[];
+    crit?.forEach((c: any) => { row[c.name] = Number(c.score); });
+    return row;
+  });
+
+  return { avg, best, total: exams.length, radarData, trendData, levelData, langData, criteriaTrendData, criteriaNames };
 }
 
 export default function ProgressPage() {
@@ -233,6 +242,33 @@ export default function ProgressPage() {
               </ResponsiveContainer>
             </CardContent>
           </Card>
+
+          {/* ── Per-criterion trend lines ── */}
+          {stats.criteriaTrendData.length > 1 && stats.criteriaNames.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="font-display text-lg">Criteria Trends</CardTitle>
+                <CardDescription>Individual criterion scores tracked over time.</CardDescription>
+              </CardHeader>
+              <CardContent className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={stats.criteriaTrendData}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis dataKey="date" className="text-xs fill-muted-foreground" tick={{ fontSize: 12 }} />
+                    <YAxis domain={[0, 5]} className="text-xs fill-muted-foreground" tick={{ fontSize: 12 }} />
+                    <Tooltip
+                      contentStyle={{ borderRadius: "0.5rem", border: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}
+                      labelStyle={{ color: "hsl(var(--foreground))" }}
+                    />
+                    <Legend />
+                    {stats.criteriaNames.map((name, i) => (
+                      <Line key={name} type="monotone" dataKey={name} stroke={COLORS[i % COLORS.length]} strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
 
           {/* ── Radar + distributions ── */}
           <div className="grid gap-4 lg:grid-cols-2">
