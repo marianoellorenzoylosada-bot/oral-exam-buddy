@@ -17,6 +17,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { ReportDetail, type Exam } from "@/components/ReportDetail";
 import { format } from "date-fns";
+import { ReportsSkeleton } from "@/components/PageSkeleton";
 
 const LEVELS = ["All", "A1", "A2", "B1", "B2", "C1", "C2"];
 const LANGUAGES = ["All", "en", "es", "fr", "de", "pt", "it"];
@@ -68,7 +69,6 @@ export default function ReportsPage() {
     return true;
   }), [exams, levelFilter, langFilter, dateFrom, dateTo, search]);
 
-  // Group by institution → group
   const groupedData = useMemo(() => {
     if (!grouped) return null;
     const map = new Map<string, Map<string, Exam[]>>();
@@ -83,19 +83,20 @@ export default function ReportsPage() {
     return map;
   }, [filtered, grouped]);
 
-  const mask = (t: string | null) => anonymize ? "██████" : (t || "—");
+  if (isLoading) return <ReportsSkeleton />;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between">
+      {/* Header — responsive wrap */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="font-display text-3xl font-bold tracking-tight">Reports</h1>
-          <p className="mt-1 text-muted-foreground">View, search and review all signed assessment reports.</p>
+          <p className="mt-1 text-sm text-muted-foreground">View, search and review all signed assessment reports.</p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">
             <Switch id="anonymize" checked={anonymize} onCheckedChange={setAnonymize} />
-            <Label htmlFor="anonymize" className="flex items-center gap-1.5 text-sm cursor-pointer">
+            <Label htmlFor="anonymize" className="flex items-center gap-1.5 text-sm cursor-pointer whitespace-nowrap">
               <EyeOff className="h-3.5 w-3.5" /> Anonymize
             </Label>
           </div>
@@ -110,7 +111,7 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Filters — responsive */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -121,55 +122,57 @@ export default function ReportsPage() {
             className="pl-9"
           />
         </div>
-        <Select value={levelFilter} onValueChange={setLevelFilter}>
-          <SelectTrigger className="w-[120px]">
-            <Filter className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {LEVELS.map((l) => (
-              <SelectItem key={l} value={l}>{l === "All" ? "All Levels" : l}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={langFilter} onValueChange={setLangFilter}>
-          <SelectTrigger className="w-[140px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {LANGUAGES.map((l) => (
-              <SelectItem key={l} value={l}>{l === "All" ? "All Languages" : langLabel[l] || l}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex flex-wrap gap-2">
+          <Select value={levelFilter} onValueChange={setLevelFilter}>
+            <SelectTrigger className="w-[120px]">
+              <Filter className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {LEVELS.map((l) => (
+                <SelectItem key={l} value={l}>{l === "All" ? "All Levels" : l}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={langFilter} onValueChange={setLangFilter}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {LANGUAGES.map((l) => (
+                <SelectItem key={l} value={l}>{l === "All" ? "All Languages" : langLabel[l] || l}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-        {/* Date range */}
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="gap-2 text-sm">
-              <CalendarIcon className="h-3.5 w-3.5" />
-              {dateFrom ? format(dateFrom, "dd/MM") : "From"} – {dateTo ? format(dateTo, "dd/MM") : "To"}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-3 space-y-3" align="end">
-            <div className="text-xs font-medium text-muted-foreground">Date Range</div>
-            <div className="flex gap-2">
-              <div>
-                <Label className="text-xs">From</Label>
-                <Calendar mode="single" selected={dateFrom} onSelect={setDateFrom} className="rounded-md border" />
-              </div>
-              <div>
-                <Label className="text-xs">To</Label>
-                <Calendar mode="single" selected={dateTo} onSelect={setDateTo} className="rounded-md border" />
-              </div>
-            </div>
-            {(dateFrom || dateTo) && (
-              <Button variant="ghost" size="sm" className="w-full" onClick={() => { setDateFrom(undefined); setDateTo(undefined); }}>
-                Clear dates
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2 text-sm h-10">
+                <CalendarIcon className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">{dateFrom ? format(dateFrom, "dd/MM") : "From"} – {dateTo ? format(dateTo, "dd/MM") : "To"}</span>
+                <span className="sm:hidden">Date</span>
               </Button>
-            )}
-          </PopoverContent>
-        </Popover>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-3 space-y-3" align="end">
+              <div className="text-xs font-medium text-muted-foreground">Date Range</div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:gap-2">
+                <div>
+                  <Label className="text-xs">From</Label>
+                  <Calendar mode="single" selected={dateFrom} onSelect={setDateFrom} className="rounded-md border" />
+                </div>
+                <div>
+                  <Label className="text-xs">To</Label>
+                  <Calendar mode="single" selected={dateTo} onSelect={setDateTo} className="rounded-md border" />
+                </div>
+              </div>
+              {(dateFrom || dateTo) && (
+                <Button variant="ghost" size="sm" className="w-full" onClick={() => { setDateFrom(undefined); setDateTo(undefined); }}>
+                  Clear dates
+                </Button>
+              )}
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
 
       {/* Results */}
@@ -183,9 +186,7 @@ export default function ReportsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">Loading reports…</p>
-          ) : filtered.length === 0 ? (
+          {filtered.length === 0 ? (
             <p className="py-8 text-center text-muted-foreground">No reports match your filters.</p>
           ) : grouped && groupedData ? (
             <div className="space-y-6">
@@ -220,7 +221,6 @@ export default function ReportsPage() {
         </CardContent>
       </Card>
 
-      {/* Detail Dialog */}
       <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
         {selected && <ReportDetail exam={selected} anonymize={anonymize} onClose={() => setSelected(null)} />}
       </Dialog>
@@ -234,15 +234,15 @@ function ExamRow({ exam, anonymize, onClick }: { exam: Exam; anonymize: boolean;
       onClick={onClick}
       className="flex w-full flex-col gap-2 rounded-lg border p-4 text-left transition-colors hover:bg-muted/50 sm:flex-row sm:items-center sm:justify-between"
     >
-      <div className="flex-1 space-y-1">
-        <div className="flex items-center gap-2">
+      <div className="flex-1 min-w-0 space-y-1">
+        <div className="flex flex-wrap items-center gap-2">
           <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-          <h3 className="font-medium">{exam.title}</h3>
-          <Badge variant="default" className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-xs">
+          <h3 className="font-medium truncate">{exam.title}</h3>
+          <Badge variant="default" className="gap-1 bg-success hover:bg-success/90 text-success-foreground text-xs">
             <ShieldCheck className="h-3 w-3" /> Official
           </Badge>
         </div>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground truncate">
           {exam.candidate_name ? (
             <span className="font-medium text-foreground">
               {anonymize ? "██████" : exam.candidate_name} ·{" "}
@@ -251,11 +251,11 @@ function ExamRow({ exam, anonymize, onClick }: { exam: Exam; anonymize: boolean;
           {anonymize ? "██████" : (exam.institution || "—")} · {anonymize ? "██████" : (exam.group || "—")}
         </p>
       </div>
-      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
         <Badge variant="secondary">{exam.level_code}</Badge>
         <Badge variant="outline">{langLabel[exam.language] || exam.language}</Badge>
         <span className="font-display font-bold text-foreground">{Number(exam.overall_score).toFixed(1)}/5</span>
-        <span className="flex items-center gap-1">
+        <span className="flex items-center gap-1 whitespace-nowrap">
           <Clock className="h-3.5 w-3.5" />
           {new Date(exam.created_at).toLocaleDateString()}
         </span>

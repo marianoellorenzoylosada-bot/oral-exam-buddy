@@ -57,7 +57,7 @@ function EditableScore({ value, max, onChange }: { value: number; max: number; o
   );
 }
 
-const COPYRIGHT_TEXT = "© 2026 [Tu Nombre/Institución]. All rights reserved. Evaluation methodology and pedagogical structure are protected intellectual property. AI results are subject to teacher supervision.";
+const COPYRIGHT_TEXT = "© 2026 Int'l Oral Exam Assistant. Evaluation methodology and AI results are subject to teacher supervision.";
 
 export function DraftReport({ result, level, levelCode, language, institution, group, candidateName, candidates, audioBlob, onReset }: DraftReportProps) {
   const { toast } = useToast();
@@ -205,36 +205,36 @@ export function DraftReport({ result, level, levelCode, language, institution, g
   return (
     <div className="mx-auto max-w-4xl space-y-6 print:space-y-4">
       {/* Logo + Top actions */}
-      <div className="flex items-start justify-between print:hidden">
-        <div className="flex items-start gap-4">
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border-2 border-dashed border-border bg-muted/30 text-center">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between print:hidden">
+        <div className="flex items-start gap-4 min-w-0">
+          <div className="hidden sm:flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border-2 border-dashed border-border bg-muted/30 text-center">
             <span className="text-[9px] leading-tight text-muted-foreground/60 px-1">Upload Logo in Settings</span>
           </div>
-          <div>
-            <h1 className="font-display text-3xl font-bold tracking-tight">
+          <div className="min-w-0">
+            <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">
               {isOfficial ? "Official Assessment Report" : "Draft Assessment Report"}
             </h1>
-            <p className="mt-1 text-muted-foreground">
+            <p className="mt-1 text-sm text-muted-foreground">
               {isOfficial
                 ? "This report has been reviewed and signed by the examiner."
                 : "AI-generated preliminary evaluation · Review and edit before confirming."}
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {isOfficial && (
-            <Button variant="outline" onClick={() => navigate("/")} className="gap-2">
-              <Home className="h-4 w-4" /> Return to Dashboard
+            <Button variant="outline" size="sm" onClick={() => navigate("/")} className="gap-2">
+              <Home className="h-4 w-4" /> Dashboard
             </Button>
           )}
-          <Button variant="outline" onClick={handleDownloadPdf} className="gap-2">
-            <Download className="h-4 w-4" /> Download PDF
+          <Button variant="outline" size="sm" onClick={handleDownloadPdf} className="gap-2">
+            <Download className="h-4 w-4" /> PDF
           </Button>
-          <Button variant="outline" onClick={handlePrint} className="gap-2">
+          <Button variant="outline" size="sm" onClick={handlePrint} className="gap-2">
             <Printer className="h-4 w-4" /> Print
           </Button>
           {!isOfficial && (
-            <Button variant="outline" onClick={onReset} className="gap-2">
+            <Button variant="outline" size="sm" onClick={onReset} className="gap-2">
               <RotateCcw className="h-4 w-4" /> New Exam
             </Button>
           )}
@@ -243,12 +243,12 @@ export function DraftReport({ result, level, levelCode, language, institution, g
 
       {/* Status banner */}
       {isOfficial ? (
-        <div className="flex items-center gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-400">
+      <div className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
           <ShieldCheck className="h-5 w-5 shrink-0" />
           <span className="font-medium">Official Report — Confirmed and signed by the examiner.</span>
         </div>
       ) : (
-        <div className="flex items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+        <div className="flex items-center gap-3 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
           <AlertTriangle className="h-5 w-5 shrink-0" />
           <span className="font-medium">Draft — Scores and feedback are editable. Click "Confirm &amp; Sign" when ready.</span>
         </div>
