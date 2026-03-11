@@ -57,7 +57,7 @@ function EditableScore({ value, max, onChange }: { value: number; max: number; o
   );
 }
 
-const COPYRIGHT_TEXT = "© 2026 [Tu Nombre/Institución]. All rights reserved. Evaluation methodology and pedagogical structure are protected intellectual property. AI results are subject to teacher supervision.";
+const COPYRIGHT_TEXT = "© 2026 Int'l Oral Exam Assistant. Evaluation methodology and AI results are subject to teacher supervision.";
 
 export function DraftReport({ result, level, levelCode, language, institution, group, candidateName, candidates, audioBlob, onReset }: DraftReportProps) {
   const { toast } = useToast();
