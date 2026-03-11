@@ -12,6 +12,7 @@ import { format } from "date-fns";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { generateProgressPdf } from "@/lib/generateProgressPdf";
+import { ProgressSkeleton } from "@/components/PageSkeleton";
 
 /* ── fetch all exams ── */
 function useExams() {
@@ -28,13 +29,13 @@ function useExams() {
   });
 }
 
-/* ── colour palette ── */
+/* ── colour palette using semantic tokens ── */
 const COLORS = [
-  "hsl(199, 89%, 48%)",
-  "hsl(160, 84%, 39%)",
-  "hsl(38, 92%, 50%)",
-  "hsl(222, 47%, 20%)",
-  "hsl(0, 72%, 51%)",
+  "hsl(var(--accent))",
+  "hsl(var(--success))",
+  "hsl(var(--warning))",
+  "hsl(var(--primary))",
+  "hsl(var(--destructive))",
   "hsl(270, 60%, 55%)",
 ];
 
@@ -74,7 +75,6 @@ function computeStats(exams: any[]) {
   exams.forEach((e) => { langCounts[e.language] = (langCounts[e.language] || 0) + 1; });
   const langData = Object.entries(langCounts).map(([name, value]) => ({ name, value }));
 
-  /* ── per-criterion trend data ── */
   const criteriaNames = Object.keys(criteriaMap);
   const criteriaTrendData = exams.map((e) => {
     const row: Record<string, any> = { date: format(new Date(e.created_at), "dd MMM"), label: e.title };
@@ -90,14 +90,12 @@ export default function ProgressPage() {
   const { data: allExams = [], isLoading } = useExams();
   const [selectedCandidate, setSelectedCandidate] = useState<string>("__all__");
 
-  /* ── unique candidate names ── */
   const candidateNames = useMemo(() => {
     const names = new Set<string>();
     allExams.forEach((e) => { if (e.candidate_name) names.add(e.candidate_name); });
     return Array.from(names).sort();
   }, [allExams]);
 
-  /* ── filtered exams ── */
   const exams = useMemo(() => {
     if (selectedCandidate === "__all__") return allExams;
     return allExams.filter((e) => e.candidate_name === selectedCandidate);
@@ -105,7 +103,6 @@ export default function ProgressPage() {
 
   const stats = useMemo(() => computeStats(exams), [exams]);
 
-  /* ── export PDF ── */
   const handleExport = () => {
     if (!stats) return;
     const criteriaAverages = stats.radarData.map((r) => ({ name: r.criterion, average: r.average }));
@@ -126,27 +123,21 @@ export default function ProgressPage() {
     });
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <Activity className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  if (isLoading) return <ProgressSkeleton />;
 
   return (
     <div className="space-y-6">
-      {/* ── Header with filter + export ── */}
+      {/* Header with filter + export */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="font-display text-3xl font-bold tracking-tight">Progress</h1>
-          <p className="mt-1 text-muted-foreground">
+          <p className="mt-1 text-sm text-muted-foreground">
             {stats
               ? `Longitudinal analytics across ${stats.total} exam${stats.total !== 1 ? "s" : ""}.`
               : "Track student performance over time."}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {candidateNames.length > 0 && (
             <Select value={selectedCandidate} onValueChange={setSelectedCandidate}>
               <SelectTrigger className="w-[200px]">
@@ -170,7 +161,7 @@ export default function ProgressPage() {
         </div>
       </div>
 
-      {/* ── Empty state ── */}
+      {/* Empty state */}
       {!stats && (
         <Card>
           <CardHeader className="text-center">
@@ -190,38 +181,38 @@ export default function ProgressPage() {
 
       {stats && (
         <>
-          {/* ── Summary cards ── */}
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Card>
+          {/* Summary cards */}
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
+            <Card className="transition-shadow hover:shadow-md">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">Total Exams</CardTitle>
                 <BarChart3 className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-bold">{stats.total}</p>
+                <p className="text-3xl font-bold font-display">{stats.total}</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="transition-shadow hover:shadow-md">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">Average Score</CardTitle>
                 <Target className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-bold">{stats.avg.toFixed(1)}<span className="text-lg text-muted-foreground">/5</span></p>
+                <p className="text-3xl font-bold font-display">{stats.avg.toFixed(1)}<span className="text-lg text-muted-foreground">/5</span></p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="transition-shadow hover:shadow-md">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">Best Score</CardTitle>
                 <Award className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-bold">{stats.best.toFixed(1)}<span className="text-lg text-muted-foreground">/5</span></p>
+                <p className="text-3xl font-bold font-display">{stats.best.toFixed(1)}<span className="text-lg text-muted-foreground">/5</span></p>
               </CardContent>
             </Card>
           </div>
 
-          {/* ── Score trend ── */}
+          {/* Score trend */}
           <Card>
             <CardHeader>
               <CardTitle className="font-display text-lg">Score Trend</CardTitle>
@@ -234,16 +225,16 @@ export default function ProgressPage() {
                   <XAxis dataKey="date" className="text-xs fill-muted-foreground" tick={{ fontSize: 12 }} />
                   <YAxis domain={[0, 5]} className="text-xs fill-muted-foreground" tick={{ fontSize: 12 }} />
                   <Tooltip
-                    contentStyle={{ borderRadius: "0.5rem", border: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}
+                    contentStyle={{ borderRadius: "0.5rem", border: "1px solid hsl(var(--border))", background: "hsl(var(--card))", color: "hsl(var(--foreground))" }}
                     labelStyle={{ color: "hsl(var(--foreground))" }}
                   />
-                  <Line type="monotone" dataKey="score" stroke="hsl(199, 89%, 48%)" strokeWidth={2} dot={{ fill: "hsl(199, 89%, 48%)", r: 4 }} activeDot={{ r: 6 }} />
+                  <Line type="monotone" dataKey="score" stroke="hsl(var(--accent))" strokeWidth={2} dot={{ fill: "hsl(var(--accent))", r: 4 }} activeDot={{ r: 6 }} />
                 </LineChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
 
-          {/* ── Per-criterion trend lines ── */}
+          {/* Per-criterion trend lines */}
           {stats.criteriaTrendData.length > 1 && stats.criteriaNames.length > 0 && (
             <Card>
               <CardHeader>
@@ -257,7 +248,7 @@ export default function ProgressPage() {
                     <XAxis dataKey="date" className="text-xs fill-muted-foreground" tick={{ fontSize: 12 }} />
                     <YAxis domain={[0, 5]} className="text-xs fill-muted-foreground" tick={{ fontSize: 12 }} />
                     <Tooltip
-                      contentStyle={{ borderRadius: "0.5rem", border: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}
+                      contentStyle={{ borderRadius: "0.5rem", border: "1px solid hsl(var(--border))", background: "hsl(var(--card))", color: "hsl(var(--foreground))" }}
                       labelStyle={{ color: "hsl(var(--foreground))" }}
                     />
                     <Legend />
@@ -270,8 +261,8 @@ export default function ProgressPage() {
             </Card>
           )}
 
-          {/* ── Radar + distributions ── */}
-          <div className="grid gap-4 lg:grid-cols-2">
+          {/* Radar + distributions */}
+          <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
             {stats.radarData.length > 0 && (
               <Card>
                 <CardHeader>
@@ -284,7 +275,7 @@ export default function ProgressPage() {
                       <PolarGrid className="stroke-border" />
                       <PolarAngleAxis dataKey="criterion" className="text-xs fill-muted-foreground" tick={{ fontSize: 11 }} />
                       <PolarRadiusAxis domain={[0, 5]} tick={{ fontSize: 10 }} />
-                      <Radar dataKey="average" stroke="hsl(199, 89%, 48%)" fill="hsl(199, 89%, 48%)" fillOpacity={0.25} strokeWidth={2} />
+                      <Radar dataKey="average" stroke="hsl(var(--accent))" fill="hsl(var(--accent))" fillOpacity={0.25} strokeWidth={2} />
                     </RadarChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -302,7 +293,9 @@ export default function ProgressPage() {
                     <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                     <XAxis dataKey="name" className="text-xs fill-muted-foreground" tick={{ fontSize: 12 }} />
                     <YAxis allowDecimals={false} className="text-xs fill-muted-foreground" tick={{ fontSize: 12 }} />
-                    <Tooltip contentStyle={{ borderRadius: "0.5rem", border: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }} />
+                    <Tooltip
+                      contentStyle={{ borderRadius: "0.5rem", border: "1px solid hsl(var(--border))", background: "hsl(var(--card))", color: "hsl(var(--foreground))" }}
+                    />
                     <Bar dataKey="value" radius={[6, 6, 0, 0]}>
                       {stats.levelData.map((_, i) => (
                         <Cell key={i} fill={COLORS[i % COLORS.length]} />
@@ -330,7 +323,9 @@ export default function ProgressPage() {
                       ))}
                     </Pie>
                     <Legend />
-                    <Tooltip contentStyle={{ borderRadius: "0.5rem", border: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }} />
+                    <Tooltip
+                      contentStyle={{ borderRadius: "0.5rem", border: "1px solid hsl(var(--border))", background: "hsl(var(--card))", color: "hsl(var(--foreground))" }}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               </CardContent>

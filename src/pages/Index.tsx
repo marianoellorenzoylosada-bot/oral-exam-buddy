@@ -1,14 +1,15 @@
-import { Plus, Mic, FileText, TrendingUp, Clock, Users } from "lucide-react";
+import { Plus, Mic, TrendingUp, Clock, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { DashboardSkeleton } from "@/components/PageSkeleton";
 
 const statusConfig = {
-  completed: { label: "Completed", className: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20 dark:text-emerald-400" },
-  pending_review: { label: "Pending Review", className: "bg-amber-500/10 text-amber-700 border-amber-500/20 dark:text-amber-400" },
+  completed: { label: "Completed", className: "bg-success/10 text-success border-success/20" },
+  pending_review: { label: "Pending Review", className: "bg-warning/10 text-warning border-warning/20" },
   in_progress: { label: "In Progress", className: "bg-primary/10 text-primary border-primary/20" },
 };
 
@@ -26,6 +27,8 @@ export default function DashboardPage() {
     },
   });
 
+  if (isLoading) return <DashboardSkeleton />;
+
   const totalExams = exams.length;
   const avgScore = totalExams > 0
     ? (exams.reduce((s, e) => s + Number(e.overall_score), 0) / totalExams).toFixed(1)
@@ -42,9 +45,9 @@ export default function DashboardPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="mt-1 text-muted-foreground">Welcome back. Here's your exam overview.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Welcome back. Here's your exam overview.</p>
         </div>
-        <Button asChild size="lg" className="gap-2">
+        <Button asChild size="lg" className="gap-2 w-full sm:w-auto">
           <Link to="/new-exam">
             <Plus className="h-4 w-4" /> Start New Exam
           </Link>
@@ -52,9 +55,9 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
         {stats.map((stat) => (
-          <Card key={stat.label}>
+          <Card key={stat.label} className="transition-shadow hover:shadow-md">
             <CardContent className="p-5">
               <div className="flex items-center justify-between">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
@@ -78,9 +81,7 @@ export default function DashboardPage() {
           <CardDescription>Your latest signed examination reports</CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">Loading exams…</p>
-          ) : exams.length === 0 ? (
+          {exams.length === 0 ? (
             <div className="py-8 text-center">
               <p className="text-muted-foreground">No exams yet. Start your first exam session!</p>
               <Button asChild variant="outline" className="mt-3 gap-2">
@@ -96,16 +97,16 @@ export default function DashboardPage() {
                     key={exam.id}
                     className="flex flex-col gap-3 rounded-lg border p-4 transition-colors hover:bg-muted/50 sm:flex-row sm:items-center sm:justify-between"
                   >
-                    <div className="flex-1 space-y-1">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-medium">{exam.title}</h3>
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-medium truncate">{exam.title}</h3>
                         <Badge variant="outline" className={status.className}>{status.label}</Badge>
                       </div>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-muted-foreground truncate">
                         {exam.institution || "—"} · {exam.group || "—"}
                       </p>
                     </div>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                       <Badge variant="secondary">{exam.level_code}</Badge>
                       <Badge variant="outline">{exam.language}</Badge>
                       <span className="font-display font-bold text-foreground">{Number(exam.overall_score).toFixed(1)}/5</span>

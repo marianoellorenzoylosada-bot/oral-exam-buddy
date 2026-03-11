@@ -243,12 +243,12 @@ export function DraftReport({ result, level, levelCode, language, institution, g
 
       {/* Status banner */}
       {isOfficial ? (
-        <div className="flex items-center gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-400">
+      <div className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
           <ShieldCheck className="h-5 w-5 shrink-0" />
           <span className="font-medium">Official Report — Confirmed and signed by the examiner.</span>
         </div>
       ) : (
-        <div className="flex items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+        <div className="flex items-center gap-3 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
           <AlertTriangle className="h-5 w-5 shrink-0" />
           <span className="font-medium">Draft — Scores and feedback are editable. Click "Confirm &amp; Sign" when ready.</span>
         </div>
