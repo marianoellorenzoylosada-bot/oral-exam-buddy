@@ -2,7 +2,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { Outlet } from "react-router-dom";
 
-const COPYRIGHT_TEXT = "© 2026 [Tu Nombre/Institución]. All rights reserved. Evaluation methodology and pedagogical structure are protected intellectual property. AI results are subject to teacher supervision.";
+const COPYRIGHT_TEXT = "© 2026 Int'l Oral Exam Assistant. Evaluation methodology and AI results are subject to teacher supervision.";
 
 export function AppLayout() {
   return (
