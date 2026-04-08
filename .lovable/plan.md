@@ -1,82 +1,72 @@
 
 
-# OralAssess AI — Implementation Plan
+# Multi-Candidate Oral Exam Support
 
-## Phase 1: Foundation & Dashboard Shell
-Build the core application structure with a professional sidebar-based layout.
+## What changes
 
-- **Sidebar navigation** with sections: Dashboard, New Exam, Question Bank, Reports, Progress, Settings
-- **Dashboard home page** showing recent exams, quick stats, and a "Start New Exam" action
-- **Responsive design** optimized for tablet and desktop use (exam room scenarios)
-- **Dark/light theme** toggle for different environments
+Currently each exam session assesses a single candidate. The app needs to support **2–3 candidates per exam**, with the AI identifying speakers as Examiner, Candidate A, Candidate B, and optionally Candidate C.
 
-## Phase 2: Exam Setup & Context Upload
-Allow educators to configure an exam session before recording.
+## Plan
 
-- **New Exam wizard** — set exam title, institution, group, student IDs (A, B, C), language, and date
-- **Booklet upload** — upload PDF/image exam booklets; parse content using AI to extract target vocabulary, expected structures, and visual prompt descriptions
-- **Rubric upload** — upload custom rubric PDFs; AI extracts scoring criteria and descriptors into structured data
-- **Rubric builder** — option to manually create/edit rubrics with criteria, bands, and descriptors
-- **Language selection** — support for English, Spanish, Portuguese, German, French, and Italian
+### 1. Update the Setup form to collect multiple candidate names
 
-## Phase 3: Live Examination Interface
-Build the recording and monitoring dashboard for live exams.
+Replace the single "Candidate Name" input with a dynamic list where the teacher enters names for Candidate A, Candidate B, and optionally adds Candidate C. A toggle or "Add candidate" button controls whether it's a 2- or 3-person exam. The `candidateName` field in `useExamStore` will be replaced by `candidateNames: string[]` (default 2 slots).
 
-- **Audio recorder** — browser-based recording with local caching (saves to IndexedDB to prevent data loss)
-- **Recording controls** — start, pause, resume, stop with elapsed time display
-- **Speaker labeling warm-up** — initial phase where teacher labels each candidate's voice sample
-- **Live transcription feed** — real-time speech-to-text using ElevenLabs streaming API, displayed as a scrolling transcript
-- **Active speaker indicator** — visual highlight showing which candidate is currently speaking
-- **TTT vs STT gauge** — live ratio meter showing Teacher Talking Time vs Student Talking Time
-- **Candidate cards** — individual panels for each candidate showing their speaking time and turn count
+**Files**: `src/hooks/useExamStore.ts`, `src/pages/NewExam.tsx`
 
-## Phase 4: AI Assessment Engine
-Post-exam AI analysis using the uploaded rubric and booklet context.
+### 2. Update the AI prompt to identify speakers per-candidate
 
-- **Transcript processing** — send full diarized transcript to AI with rubric criteria and booklet context
-- **Evidence extraction** — AI identifies exact quotes demonstrating achievement or errors for each rubric criterion
-- **Color-coded annotations** — green for correct usage, red for errors with AI-suggested corrections
-- **Rubric scoring** — AI suggests marks per criterion per candidate with justification
-- **Audio-synced quotes** — each extracted quote is clickable in-app, jumping to the exact timestamp in the recording
+Modify the `analyze-exam` edge function's system prompt to instruct the AI to:
+- Identify speakers: Examiner, Candidate A (name), Candidate B (name), [Candidate C (name)]
+- Produce **per-candidate scores** for all 5 CEFR criteria
+- Return a JSON array of candidate assessments instead of a single assessment
 
-## Phase 5: Human-in-the-Loop Verification
-Ensure teacher oversight before finalizing scores.
+New response format:
+```text
+{
+  "candidates": [
+    {
+      "candidateName": "María García",
+      "overallBand": "B1",
+      "overallScore": 3.2,
+      "criteria": [...],
+      "strengths": [...],
+      "areasForImprovement": [...]
+    },
+    { ... }
+  ],
+  "transcript": "...",
+  "examinerNotes": "..."
+}
+```
 
-- **Verification screen** — review each candidate's AI-suggested scores side by side with evidence
-- **Override controls** — teacher can adjust any score with a required comment explaining the change
-- **Accept/reject individual evidence** — toggle whether each AI-flagged quote is valid
-- **Finalize & lock** — once approved, scores are locked and the exam session is marked complete
+**Files**: `supabase/functions/analyze-exam/index.ts`
 
-## Phase 6: Report Generation & Export
-Generate professional assessment reports.
+### 3. Update DraftReport to show per-candidate results
 
-- **Interactive in-app report** — full report view with color-coded quotes, scores, and audio playback links
-- **PDF export** — professional PDF report with institution branding, candidate scores, evidence quotes (color-coded), and rubric breakdown
-- **Per-candidate reports** — individual report cards for each student
+Add a tabbed or accordion view inside DraftReport so the teacher can review and override scores for each candidate independently. The transcript and examiner notes remain shared. Each candidate gets their own "Confirm & Sign" flow.
 
-## Phase 7: Data Management & Organization
-Structure data storage with ethical considerations.
+**Files**: `src/components/DraftReport.tsx`
 
-- **Folder hierarchy** — organize exams by Institution → Group → Student ID
-- **Anonymization toggle** — scrub student names and PII from transcripts and audio metadata for ethical sharing
-- **Search & filter** — find past exams by date, institution, student, or language
-- **Cloud storage** — audio files and documents stored securely in Supabase Storage
+### 4. Save one exam record per candidate
 
-## Phase 8: Progress Tracking & Analytics
-Longitudinal student performance visualization.
+When the teacher confirms, insert one row in the `exams` table per candidate (each with their own scores, same audio reference). The `candidate_name` column already exists. The `candidates` column (integer) stays as the total count.
 
-- **Student profile view** — aggregated view of all exams for a given student
-- **Radar charts** — visualize rubric criteria scores across multiple exam sessions to show growth
-- **Trend lines** — track individual criteria improvement over time
-- **Exportable progress reports** — PDF export of longitudinal data with charts
+**Files**: `src/components/DraftReport.tsx` (save logic)
 
-## Technical Architecture
+### 5. Update reports and progress pages
 
-- **Frontend**: React + TypeScript + Tailwind CSS + shadcn/ui
-- **Backend**: Lovable Cloud (Supabase) for database, auth, storage, and edge functions
-- **AI**: Lovable AI (Gemini) for booklet/rubric analysis, transcript assessment, and evidence extraction
-- **Speech-to-Text**: ElevenLabs connector for real-time transcription and batch diarization
-- **Audio**: Browser MediaRecorder API with IndexedDB for offline resilience
-- **PDF Generation**: Client-side PDF library for report exports
-- **Charts**: Recharts for radar charts and analytics visualizations
+No structural changes needed — these already filter by `candidate_name` and display individual records. The multi-candidate save from step 4 naturally populates them correctly.
+
+### 6. Update PDF generation
+
+The report PDF already works per-candidate since each saved exam is one candidate. No changes needed unless we want a combined multi-candidate PDF (can be added later).
+
+---
+
+### Technical details
+
+- **Database**: No schema changes required. The existing `exams` table and `candidate_name` column support this model (one row per candidate).
+- **Edge function**: The AI prompt change is the most significant modification — it switches from single-assessment to multi-assessment output.
+- **Backward compatibility**: Old single-candidate exams will continue to display correctly since they already have `candidate_name` set.
 
