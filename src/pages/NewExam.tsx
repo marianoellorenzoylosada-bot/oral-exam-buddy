@@ -6,11 +6,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Mic, Square, Pause, Play, Upload, FileText, BookOpen, Trash2, Clock, Users, ExternalLink, Info, Loader2, AlertCircle } from "lucide-react";
+import { Mic, Square, Pause, Play, Upload, FileText, BookOpen, Trash2, Clock, Users, ExternalLink, Info, Loader2, AlertCircle, Plus, X } from "lucide-react";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { useExamStore } from "@/hooks/useExamStore";
 
-import { DraftReport, type AssessmentResult } from "@/components/DraftReport";
+import { DraftReport, type MultiCandidateResult } from "@/components/DraftReport";
 import { extractTextFromFile } from "@/lib/extractText";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -119,7 +119,7 @@ export default function NewExamPage() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("setup");
   const [analyzing, setAnalyzing] = useState(false);
-  const [report, setReport] = useState<AssessmentResult | null>(null);
+  const [report, setReport] = useState<MultiCandidateResult | null>(null);
   const [liveTranscript, setLiveTranscript] = useState("");
 
   const selectedLevel = EXAM_LEVELS.find(l => l.value === exam.title);
@@ -135,6 +135,24 @@ export default function NewExamPage() {
     toast({ title: "Text extracted", description: `Content extracted from ${file.name}` });
   }, [update, toast]);
 
+  const updateCandidateName = (index: number, value: string) => {
+    const names = [...exam.candidateNames];
+    names[index] = value;
+    update({ candidateNames: names });
+  };
+
+  const addCandidate = () => {
+    if (exam.candidateNames.length < 3) {
+      update({ candidateNames: [...exam.candidateNames, ""] });
+    }
+  };
+
+  const removeCandidate = () => {
+    if (exam.candidateNames.length > 2) {
+      update({ candidateNames: exam.candidateNames.slice(0, -1) });
+    }
+  };
+
   const handleSubmitForAnalysis = useCallback(async () => {
     if (!recorder.audioBlob) return;
     if (!exam.title) {
@@ -144,7 +162,6 @@ export default function NewExamPage() {
 
     setAnalyzing(true);
     try {
-      // Convert audio to base64
       const arrayBuffer = await recorder.audioBlob.arrayBuffer();
       const uint8 = new Uint8Array(arrayBuffer);
       let binary = "";
@@ -157,6 +174,7 @@ export default function NewExamPage() {
         body: {
           level: exam.title,
           language: selectedLang?.label ?? "English",
+          candidateNames: exam.candidateNames,
           bookletText: exam.bookletText,
           rubricText: exam.rubricText,
           audioBase64,
@@ -166,7 +184,7 @@ export default function NewExamPage() {
       if (error) throw error;
       if (data.error) throw new Error(data.error);
 
-      setReport(data as AssessmentResult);
+      setReport(data as MultiCandidateResult);
     } catch (err: any) {
       console.error("Analysis error:", err);
       toast({
@@ -190,20 +208,17 @@ export default function NewExamPage() {
   // Show draft report if available
   if (report) {
     return (
-      <>
-        <DraftReport
-          result={report}
-          level={selectedLevel?.label ?? exam.title}
-          levelCode={exam.title}
-          language={selectedLang?.label ?? "English"}
-          institution={exam.institution}
-          group={exam.group}
-          candidateName={exam.candidateName}
-          candidates={exam.candidates.length || 1}
-          audioBlob={recorder.audioBlob}
-          onReset={handleReset}
-        />
-      </>
+      <DraftReport
+        result={report}
+        level={selectedLevel?.label ?? exam.title}
+        levelCode={exam.title}
+        language={selectedLang?.label ?? "English"}
+        institution={exam.institution}
+        group={exam.group}
+        candidateNames={exam.candidateNames}
+        audioBlob={recorder.audioBlob}
+        onReset={handleReset}
+      />
     );
   }
 
@@ -260,17 +275,38 @@ export default function NewExamPage() {
                   <Label htmlFor="group">Group</Label>
                   <Input id="group" placeholder="e.g. Group A" value={exam.group} onChange={(e) => update({ group: e.target.value })} />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="candidateName">Candidate Name</Label>
-                  <Input id="candidateName" placeholder="e.g. María García" value={exam.candidateName} onChange={(e) => update({ candidateName: e.target.value })} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Candidates</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {exam.candidates.map((c, i) => (
-                      <Badge key={i} variant="secondary" className="gap-1">
-                        <Users className="h-3 w-3" />{c}
-                      </Badge>
+
+                {/* Candidate Names */}
+                <div className="sm:col-span-2 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="flex items-center gap-2">
+                      <Users className="h-4 w-4" /> Candidates ({exam.candidateNames.length})
+                    </Label>
+                    <div className="flex gap-2">
+                      {exam.candidateNames.length < 3 && (
+                        <Button variant="outline" size="sm" onClick={addCandidate} className="gap-1">
+                          <Plus className="h-3.5 w-3.5" /> Add Candidate C
+                        </Button>
+                      )}
+                      {exam.candidateNames.length > 2 && (
+                        <Button variant="ghost" size="sm" onClick={removeCandidate} className="gap-1 text-muted-foreground">
+                          <X className="h-3.5 w-3.5" /> Remove
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {exam.candidateNames.map((name, i) => (
+                      <div key={i} className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">
+                          Candidate {String.fromCharCode(65 + i)}
+                        </Label>
+                        <Input
+                          placeholder={`e.g. ${i === 0 ? "María García" : i === 1 ? "João Silva" : "Anna Müller"}`}
+                          value={name}
+                          onChange={(e) => updateCandidateName(i, e.target.value)}
+                        />
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -327,7 +363,6 @@ export default function NewExamPage() {
                   accept=".pdf,.docx,image/*"
                 />
 
-                {/* Extracted text previews */}
                 {(exam.bookletText || exam.rubricText) && (
                   <div className="sm:col-span-2 space-y-3">
                     {exam.bookletText && (
@@ -425,6 +460,7 @@ export default function NewExamPage() {
                 {/* Context summary */}
                 <div className="w-full max-w-md rounded-lg border bg-muted/30 p-4 text-sm space-y-1">
                   <p><span className="font-medium">Level:</span> {selectedLevel?.label || "—"}</p>
+                  <p><span className="font-medium">Candidates:</span> {exam.candidateNames.filter(n => n).join(", ") || "Not named"}</p>
                   <p><span className="font-medium">Booklet:</span> {exam.bookletFile?.name || "Not uploaded"} {exam.bookletText ? `(${exam.bookletText.length} chars extracted)` : ""}</p>
                   <p><span className="font-medium">Rubric:</span> {exam.rubricFile?.name || "Not uploaded"} {exam.rubricText ? `(${exam.rubricText.length} chars extracted)` : ""}</p>
                   <p><span className="font-medium">Language:</span> {selectedLang?.label}</p>
