@@ -12,26 +12,32 @@ serve(async (req) => {
   }
 
   try {
-    const { level, language, bookletText, rubricText, audioBase64 } = await req.json();
+    const { level, language, candidateNames, bookletText, rubricText, audioBase64 } = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
+    const names = candidateNames || ["Candidate A", "Candidate B"];
+    const candidateList = names.map((n: string, i: number) => `Candidate ${String.fromCharCode(65 + i)} (${n || "unnamed"})`).join(", ");
+
     const systemPrompt = `You are an expert oral language examination assessor. You evaluate spoken language proficiency based on official CEFR (Common European Framework of Reference) standards.
 
-Your task: Analyze an oral examination recording and produce a structured assessment report.
+Your task: Analyze an oral examination recording with MULTIPLE candidates and produce a structured assessment report for EACH candidate individually.
 
 EXAM CONTEXT:
 - CEFR Level: ${level}
 - Language being assessed: ${language}
+- Speakers: Examiner (teacher), ${candidateList}
 ${bookletText ? `\nEXAM BOOKLET CONTENT:\n${bookletText}` : ""}
 ${rubricText ? `\nCUSTOM RUBRIC:\n${rubricText}` : ""}
 
 If no custom rubric is provided, use the standard CEFR descriptors for the specified level.
 
-ASSESSMENT CRITERIA (score each 0-5):
+IMPORTANT: Identify each speaker in the recording. The Examiner is the teacher asking questions. Each candidate should be assessed INDEPENDENTLY based on their own performance.
+
+ASSESSMENT CRITERIA (score each 0-5 per candidate):
 1. **Range** — Variety of vocabulary, grammar structures, and idiomatic expressions
 2. **Accuracy** — Grammatical correctness, pronunciation, and appropriate word choice
 3. **Fluency** — Natural flow, pace, hesitation patterns, and self-correction ability
@@ -40,26 +46,32 @@ ASSESSMENT CRITERIA (score each 0-5):
 
 RESPOND IN THIS EXACT JSON FORMAT:
 {
-  "overallBand": "B1",
-  "overallScore": 3.2,
-  "criteria": [
-    { "name": "Range", "score": 3, "maxScore": 5, "feedback": "..." },
-    { "name": "Accuracy", "score": 3, "maxScore": 5, "feedback": "..." },
-    { "name": "Fluency", "score": 4, "maxScore": 5, "feedback": "..." },
-    { "name": "Interaction", "score": 3, "maxScore": 5, "feedback": "..." },
-    { "name": "Coherence", "score": 3, "maxScore": 5, "feedback": "..." }
+  "candidates": [
+    {
+      "candidateName": "${names[0] || "Candidate A"}",
+      "overallBand": "B1",
+      "overallScore": 3.2,
+      "criteria": [
+        { "name": "Range", "score": 3, "maxScore": 5, "feedback": "..." },
+        { "name": "Accuracy", "score": 3, "maxScore": 5, "feedback": "..." },
+        { "name": "Fluency", "score": 4, "maxScore": 5, "feedback": "..." },
+        { "name": "Interaction", "score": 3, "maxScore": 5, "feedback": "..." },
+        { "name": "Coherence", "score": 3, "maxScore": 5, "feedback": "..." }
+      ],
+      "strengths": ["strength 1", "strength 2"],
+      "areasForImprovement": ["area 1", "area 2"]
+    }
   ],
-  "strengths": ["strength 1", "strength 2"],
-  "areasForImprovement": ["area 1", "area 2"],
-  "transcript": "Approximate transcription of what was said...",
-  "examinerNotes": "Brief overall commentary for the teacher..."
-}`;
+  "transcript": "Full transcription with speaker labels (Examiner:, Candidate A:, Candidate B:, etc.)...",
+  "examinerNotes": "Brief overall commentary for the teacher about the session..."
+}
 
-    // Build content array - text + optional audio
+Include one entry in the "candidates" array for EACH candidate (${names.length} total). Return ONLY valid JSON.`;
+
     const userContent: any[] = [
       {
         type: "text",
-        text: "Please analyze this oral examination recording and provide a detailed CEFR assessment. Return ONLY valid JSON matching the format specified.",
+        text: "Please analyze this oral examination recording and provide a detailed CEFR assessment for each candidate. Return ONLY valid JSON matching the format specified.",
       },
     ];
 
@@ -126,15 +138,34 @@ RESPOND IN THIS EXACT JSON FORMAT:
     try {
       assessment = JSON.parse(jsonStr);
     } catch {
-      // If JSON parsing fails, return the raw text
+      // If JSON parsing fails, return a fallback single-candidate result
       assessment = {
-        overallBand: level,
-        overallScore: 0,
-        criteria: [],
-        strengths: [],
-        areasForImprovement: [],
+        candidates: names.map((n: string) => ({
+          candidateName: n,
+          overallBand: level,
+          overallScore: 0,
+          criteria: [],
+          strengths: [],
+          areasForImprovement: [],
+        })),
         transcript: "",
         examinerNotes: rawContent,
+      };
+    }
+
+    // Normalize: if old single-candidate format, wrap it
+    if (!assessment.candidates && assessment.overallBand) {
+      assessment = {
+        candidates: [{
+          candidateName: names[0] || "Candidate A",
+          overallBand: assessment.overallBand,
+          overallScore: assessment.overallScore,
+          criteria: assessment.criteria,
+          strengths: assessment.strengths,
+          areasForImprovement: assessment.areasForImprovement,
+        }],
+        transcript: assessment.transcript,
+        examinerNotes: assessment.examinerNotes,
       };
     }
 
