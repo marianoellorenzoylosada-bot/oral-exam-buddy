@@ -8,9 +8,10 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   FileText, CheckCircle2, AlertTriangle, RotateCcw, Printer, ShieldCheck,
-  BookOpen, ExternalLink, Home, Loader2, Download, PenLine,
+  BookOpen, ExternalLink, Home, Loader2, Download, PenLine, Users,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getRecommendations } from "@/lib/practiceData";
@@ -24,19 +25,22 @@ export interface AssessmentResult {
   criteria: { name: string; score: number; maxScore: number; feedback: string }[];
   strengths: string[];
   areasForImprovement: string[];
+}
+
+export interface MultiCandidateResult {
+  candidates: (AssessmentResult & { candidateName: string })[];
   transcript: string;
   examinerNotes: string;
 }
 
 interface DraftReportProps {
-  result: AssessmentResult;
+  result: MultiCandidateResult;
   level: string;
   levelCode: string;
   language: string;
   institution?: string;
   group?: string;
-  candidateName?: string;
-  candidates?: number;
+  candidateNames: string[];
   audioBlob?: Blob | null;
   onReset: () => void;
 }
@@ -59,49 +63,90 @@ function EditableScore({ value, max, onChange }: { value: number; max: number; o
 
 const COPYRIGHT_TEXT = "© 2026 Int'l Oral Exam Assistant. Evaluation methodology and AI results are subject to teacher supervision.";
 
-export function DraftReport({ result, level, levelCode, language, institution, group, candidateName, candidates, audioBlob, onReset }: DraftReportProps) {
+export function DraftReport({ result, level, levelCode, language, institution, group, candidateNames, audioBlob, onReset }: DraftReportProps) {
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [isOfficial, setIsOfficial] = useState(false);
+  const [activeCandidate, setActiveCandidate] = useState(0);
   const [saving, setSaving] = useState(false);
-  const [draft, setDraft] = useState<AssessmentResult>(() => JSON.parse(JSON.stringify(result)));
 
-  // Track which criteria were overridden and the teacher's justification
-  const [overrides, setOverrides] = useState<Record<number, string>>({});
-  // Track original scores for comparison
-  const originalScores = useMemo(() => result.criteria.map((c) => c.score), [result]);
+  // Per-candidate draft state
+  const [drafts, setDrafts] = useState<MultiCandidateResult["candidates"]>(() =>
+    JSON.parse(JSON.stringify(result.candidates))
+  );
+  const [sharedDraft, setSharedDraft] = useState({
+    transcript: result.transcript,
+    examinerNotes: result.examinerNotes,
+  });
 
-  // Track accepted/rejected status for strengths and improvements
-  const [acceptedStrengths, setAcceptedStrengths] = useState<boolean[]>(() => result.strengths.map(() => true));
-  const [acceptedImprovements, setAcceptedImprovements] = useState<boolean[]>(() => result.areasForImprovement.map(() => true));
+  // Per-candidate overrides
+  const [allOverrides, setAllOverrides] = useState<Record<number, Record<number, string>>>(() =>
+    Object.fromEntries(result.candidates.map((_, i) => [i, {}]))
+  );
 
+  // Per-candidate original scores
+  const allOriginalScores = useMemo(() =>
+    result.candidates.map(c => c.criteria.map(cr => cr.score)),
+    [result]
+  );
+
+  // Per-candidate accepted evidence
+  const [allAcceptedStrengths, setAllAcceptedStrengths] = useState<boolean[][]>(() =>
+    result.candidates.map(c => c.strengths.map(() => true))
+  );
+  const [allAcceptedImprovements, setAllAcceptedImprovements] = useState<boolean[][]>(() =>
+    result.candidates.map(c => c.areasForImprovement.map(() => true))
+  );
+
+  // Per-candidate official status
+  const [officialStatus, setOfficialStatus] = useState<boolean[]>(() =>
+    result.candidates.map(() => false)
+  );
+
+  const allOfficial = officialStatus.every(Boolean);
   const institutionName = institution || localStorage.getItem("oralassess-institution") || "";
 
+  const draft = drafts[activeCandidate];
+  const overrides = allOverrides[activeCandidate] || {};
+  const originalScores = allOriginalScores[activeCandidate] || [];
+  const acceptedStrengths = allAcceptedStrengths[activeCandidate] || [];
+  const acceptedImprovements = allAcceptedImprovements[activeCandidate] || [];
+  const isOfficial = officialStatus[activeCandidate];
+
   const updateCriterion = (index: number, field: "score" | "feedback", value: any) => {
-    setDraft((prev) => {
-      const next = { ...prev, criteria: prev.criteria.map((c, i) => i === index ? { ...c, [field]: value } : c) };
-      const total = next.criteria.reduce((s, c) => s + c.score, 0);
-      const maxTotal = next.criteria.reduce((s, c) => s + c.maxScore, 0);
-      next.overallScore = maxTotal > 0 ? (total / maxTotal) * 5 : 0;
+    setDrafts(prev => {
+      const next = [...prev];
+      const c = { ...next[activeCandidate] };
+      c.criteria = c.criteria.map((cr, i) => i === index ? { ...cr, [field]: value } : cr);
+      const total = c.criteria.reduce((s, cr) => s + cr.score, 0);
+      const maxTotal = c.criteria.reduce((s, cr) => s + cr.maxScore, 0);
+      c.overallScore = maxTotal > 0 ? (total / maxTotal) * 5 : 0;
+      next[activeCandidate] = c;
       return next;
     });
-    // If score changed from original, ensure override entry exists
     if (field === "score" && value !== originalScores[index]) {
-      setOverrides((prev) => ({ ...prev, [index]: prev[index] ?? "" }));
+      setAllOverrides(prev => ({
+        ...prev,
+        [activeCandidate]: { ...prev[activeCandidate], [index]: prev[activeCandidate]?.[index] ?? "" }
+      }));
     } else if (field === "score" && value === originalScores[index]) {
-      setOverrides((prev) => {
-        const next = { ...prev };
+      setAllOverrides(prev => {
+        const next = { ...prev[activeCandidate] };
         delete next[index];
-        return next;
+        return { ...prev, [activeCandidate]: next };
       });
     }
   };
 
   const updateListItem = (list: "strengths" | "areasForImprovement", index: number, value: string) => {
-    setDraft((prev) => ({ ...prev, [list]: prev[list].map((item, i) => i === index ? value : item) }));
+    setDrafts(prev => {
+      const next = [...prev];
+      const c = { ...next[activeCandidate] };
+      c[list] = c[list].map((item, i) => i === index ? value : item);
+      next[activeCandidate] = c;
+      return next;
+    });
   };
 
-  // Check if all overrides have comments
   const hasUnjustifiedOverrides = Object.entries(overrides).some(([, comment]) => !comment.trim());
 
   const handleConfirmSign = async () => {
@@ -116,11 +161,9 @@ export function DraftReport({ result, level, levelCode, language, institution, g
 
     setSaving(true);
     try {
-      // Filter out rejected evidence
       const finalStrengths = draft.strengths.filter((_, i) => acceptedStrengths[i]);
       const finalImprovements = draft.areasForImprovement.filter((_, i) => acceptedImprovements[i]);
 
-      // Append override comments to examiner notes
       const overrideNotes = Object.entries(overrides)
         .map(([idx, comment]) => {
           const c = draft.criteria[Number(idx)];
@@ -129,12 +172,11 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         .join("\n");
 
       const finalNotes = overrideNotes
-        ? `${draft.examinerNotes}\n\n--- Score Overrides ---\n${overrideNotes}`
-        : draft.examinerNotes;
+        ? `${sharedDraft.examinerNotes}\n\n--- Score Overrides ---\n${overrideNotes}`
+        : sharedDraft.examinerNotes;
 
-      const examTitle = candidateName
-        ? `${levelCode} ${language} Oral — ${candidateName}`
-        : `${levelCode} ${language} Oral`;
+      const candidateName = draft.candidateName || candidateNames[activeCandidate] || `Candidate ${String.fromCharCode(65 + activeCandidate)}`;
+      const examTitle = `${levelCode} ${language} Oral — ${candidateName}`;
 
       const { data: insertData, error } = await supabase.from("exams").insert({
         title: examTitle,
@@ -142,22 +184,22 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         language,
         institution: institutionName,
         group: group || "",
-        candidate_name: candidateName || "",
-        candidates: candidates || 1,
+        candidate_name: candidateName,
+        candidates: candidateNames.length,
         overall_band: draft.overallBand,
         overall_score: draft.overallScore,
         criteria: draft.criteria as any,
         strengths: finalStrengths as any,
         areas_for_improvement: finalImprovements as any,
-        transcript: draft.transcript,
+        transcript: sharedDraft.transcript,
         examiner_notes: finalNotes,
         status: "completed",
         user_id: (await supabase.auth.getUser()).data.user?.id,
       }).select("id").single();
       if (error) throw error;
 
-      // Upload audio to storage if available
-      if (audioBlob && insertData?.id) {
+      // Upload audio to storage if available (only for the first candidate to avoid duplicates)
+      if (audioBlob && insertData?.id && !officialStatus.some(Boolean)) {
         const path = `${insertData.id}.wav`;
         const { error: uploadError } = await supabase.storage
           .from("exam-audio")
@@ -166,8 +208,15 @@ export function DraftReport({ result, level, levelCode, language, institution, g
           console.warn("Audio upload failed:", uploadError.message);
         }
       }
-      setIsOfficial(true);
-      toast({ title: "Report confirmed & saved", description: "This report is now Official and saved to your records." });
+
+      setOfficialStatus(prev => prev.map((v, i) => i === activeCandidate ? true : v));
+      toast({ title: `Report confirmed for ${candidateName}`, description: "Saved to your records." });
+
+      // Auto-advance to next unconfirmed candidate
+      const nextUnconfirmed = officialStatus.findIndex((v, i) => i !== activeCandidate && !v);
+      if (nextUnconfirmed >= 0) {
+        setActiveCandidate(nextUnconfirmed);
+      }
     } catch (err: any) {
       console.error("Save error:", err);
       toast({ title: "Failed to save report", description: err.message, variant: "destructive" });
@@ -181,12 +230,11 @@ export function DraftReport({ result, level, levelCode, language, institution, g
   const handleDownloadPdf = () => {
     const finalStrengths = draft.strengths.filter((_, i) => acceptedStrengths[i]);
     const finalImprovements = draft.areasForImprovement.filter((_, i) => acceptedImprovements[i]);
-    const examTitle = candidateName
-      ? `${levelCode} ${language} Oral — ${candidateName}`
-      : `${levelCode} ${language} Oral`;
+    const candidateName = draft.candidateName || candidateNames[activeCandidate] || `Candidate ${String.fromCharCode(65 + activeCandidate)}`;
+    const examTitle = `${levelCode} ${language} Oral — ${candidateName}`;
     generateReportPdf({
       title: examTitle,
-      candidateName: candidateName || "",
+      candidateName,
       institution: institutionName,
       group: group || "",
       levelCode,
@@ -196,15 +244,15 @@ export function DraftReport({ result, level, levelCode, language, institution, g
       criteria: draft.criteria,
       strengths: finalStrengths,
       areasForImprovement: finalImprovements,
-      examinerNotes: draft.examinerNotes,
-      transcript: draft.transcript,
+      examinerNotes: sharedDraft.examinerNotes,
+      transcript: sharedDraft.transcript,
       date: new Date().toLocaleDateString(),
     });
   };
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 print:space-y-4">
-      {/* Logo + Top actions */}
+      {/* Top actions */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between print:hidden">
         <div className="flex items-start gap-4 min-w-0">
           <div className="hidden sm:flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border-2 border-dashed border-border bg-muted/30 text-center">
@@ -212,17 +260,17 @@ export function DraftReport({ result, level, levelCode, language, institution, g
           </div>
           <div className="min-w-0">
             <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">
-              {isOfficial ? "Official Assessment Report" : "Draft Assessment Report"}
+              {allOfficial ? "Official Assessment Reports" : "Draft Assessment Reports"}
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              {isOfficial
-                ? "This report has been reviewed and signed by the examiner."
-                : "AI-generated preliminary evaluation · Review and edit before confirming."}
+              {allOfficial
+                ? "All candidates reviewed and signed."
+                : `${officialStatus.filter(Boolean).length}/${officialStatus.length} candidates confirmed · Review each candidate below.`}
             </p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {isOfficial && (
+          {allOfficial && (
             <Button variant="outline" size="sm" onClick={() => navigate("/")} className="gap-2">
               <Home className="h-4 w-4" /> Dashboard
             </Button>
@@ -233,7 +281,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
           <Button variant="outline" size="sm" onClick={handlePrint} className="gap-2">
             <Printer className="h-4 w-4" /> Print
           </Button>
-          {!isOfficial && (
+          {!allOfficial && (
             <Button variant="outline" size="sm" onClick={onReset} className="gap-2">
               <RotateCcw className="h-4 w-4" /> New Exam
             </Button>
@@ -241,16 +289,35 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         </div>
       </div>
 
+      {/* Candidate Tabs */}
+      <Tabs value={String(activeCandidate)} onValueChange={(v) => setActiveCandidate(Number(v))}>
+        <TabsList className={`grid w-full grid-cols-${drafts.length}`}>
+          {drafts.map((c, i) => (
+            <TabsTrigger key={i} value={String(i)} className="gap-2">
+              <Users className="h-3.5 w-3.5" />
+              {c.candidateName || candidateNames[i] || `Candidate ${String.fromCharCode(65 + i)}`}
+              {officialStatus[i] && <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        {drafts.map((_, candidateIdx) => (
+          <TabsContent key={candidateIdx} value={String(candidateIdx)}>
+            {/* Render nothing here — content is below outside TabsContent for simplicity */}
+          </TabsContent>
+        ))}
+      </Tabs>
+
       {/* Status banner */}
       {isOfficial ? (
-      <div className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
+        <div className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
           <ShieldCheck className="h-5 w-5 shrink-0" />
-          <span className="font-medium">Official Report — Confirmed and signed by the examiner.</span>
+          <span className="font-medium">Official Report — Confirmed and signed for {draft.candidateName || candidateNames[activeCandidate]}.</span>
         </div>
       ) : (
         <div className="flex items-center gap-3 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
           <AlertTriangle className="h-5 w-5 shrink-0" />
-          <span className="font-medium">Draft — Scores and feedback are editable. Click "Confirm &amp; Sign" when ready.</span>
+          <span className="font-medium">Draft — Scores and feedback are editable for {draft.candidateName || candidateNames[activeCandidate]}. Click "Confirm &amp; Sign" when ready.</span>
         </div>
       )}
 
@@ -261,7 +328,9 @@ export function DraftReport({ result, level, levelCode, language, institution, g
             <span className="font-display text-3xl font-bold">{draft.overallBand}</span>
           </div>
           <div className="flex-1">
-            <p className="text-sm font-medium text-muted-foreground">Overall CEFR Band</p>
+            <p className="text-sm font-medium text-muted-foreground">
+              {draft.candidateName || candidateNames[activeCandidate]} — Overall CEFR Band
+            </p>
             <p className="font-display text-2xl font-bold">{draft.overallBand} — Score: {draft.overallScore.toFixed(1)}/5.0</p>
             <div className="mt-2 flex flex-wrap gap-2">
               <Badge variant="secondary">Level: {level}</Badge>
@@ -325,7 +394,6 @@ export function DraftReport({ result, level, levelCode, language, institution, g
                 ) : (
                   <Textarea value={c.feedback} onChange={(e) => updateCriterion(i, "feedback", e.target.value)} className="text-sm min-h-[60px]" />
                 )}
-                {/* Override justification */}
                 {wasOverridden && !isOfficial && (
                   <div className="mt-2 rounded-lg border border-blue-500/20 bg-blue-500/5 p-3">
                     <label className="text-xs font-medium text-blue-700 dark:text-blue-400 flex items-center gap-1 mb-1.5">
@@ -334,7 +402,10 @@ export function DraftReport({ result, level, levelCode, language, institution, g
                     <Input
                       placeholder="Explain why you changed this score…"
                       value={overrides[i] || ""}
-                      onChange={(e) => setOverrides((prev) => ({ ...prev, [i]: e.target.value }))}
+                      onChange={(e) => setAllOverrides(prev => ({
+                        ...prev,
+                        [activeCandidate]: { ...prev[activeCandidate], [i]: e.target.value }
+                      }))}
                       className="text-sm h-8"
                     />
                   </div>
@@ -346,16 +417,14 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         </CardContent>
       </Card>
 
-      {/* Strengths & Improvements with accept/reject */}
+      {/* Strengths & Improvements */}
       <div className="grid gap-6 sm:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle className="font-display text-lg flex items-center gap-2">
               <CheckCircle2 className="h-5 w-5 text-emerald-600" /> Strengths
             </CardTitle>
-            {!isOfficial && (
-              <CardDescription>Uncheck to reject AI-flagged evidence.</CardDescription>
-            )}
+            {!isOfficial && <CardDescription>Uncheck to reject AI-flagged evidence.</CardDescription>}
           </CardHeader>
           <CardContent>
             <ul className="space-y-2">
@@ -366,7 +435,9 @@ export function DraftReport({ result, level, levelCode, language, institution, g
                       <Checkbox
                         checked={acceptedStrengths[i]}
                         onCheckedChange={(checked) =>
-                          setAcceptedStrengths((prev) => prev.map((v, idx) => idx === i ? !!checked : v))
+                          setAllAcceptedStrengths(prev => prev.map((arr, idx) =>
+                            idx === activeCandidate ? arr.map((v, j) => j === i ? !!checked : v) : arr
+                          ))
                         }
                         className="mt-0.5"
                       />
@@ -388,9 +459,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
             <CardTitle className="font-display text-lg flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-amber-600" /> Areas for Improvement
             </CardTitle>
-            {!isOfficial && (
-              <CardDescription>Uncheck to reject AI-flagged evidence.</CardDescription>
-            )}
+            {!isOfficial && <CardDescription>Uncheck to reject AI-flagged evidence.</CardDescription>}
           </CardHeader>
           <CardContent>
             <ul className="space-y-2">
@@ -401,7 +470,9 @@ export function DraftReport({ result, level, levelCode, language, institution, g
                       <Checkbox
                         checked={acceptedImprovements[i]}
                         onCheckedChange={(checked) =>
-                          setAcceptedImprovements((prev) => prev.map((v, idx) => idx === i ? !!checked : v))
+                          setAllAcceptedImprovements(prev => prev.map((arr, idx) =>
+                            idx === activeCandidate ? arr.map((v, j) => j === i ? !!checked : v) : arr
+                          ))
                         }
                         className="mt-0.5"
                       />
@@ -420,8 +491,8 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         </Card>
       </div>
 
-      {/* Examiner Notes */}
-      {draft.examinerNotes && (
+      {/* Examiner Notes (shared) */}
+      {sharedDraft.examinerNotes && (
         <Card>
           <CardHeader>
             <CardTitle className="font-display text-lg flex items-center gap-2">
@@ -429,24 +500,24 @@ export function DraftReport({ result, level, levelCode, language, institution, g
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {isOfficial ? (
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{draft.examinerNotes}</p>
+            {allOfficial ? (
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{sharedDraft.examinerNotes}</p>
             ) : (
-              <Textarea value={draft.examinerNotes} onChange={(e) => setDraft((prev) => ({ ...prev, examinerNotes: e.target.value }))} className="text-sm min-h-[80px]" />
+              <Textarea value={sharedDraft.examinerNotes} onChange={(e) => setSharedDraft(prev => ({ ...prev, examinerNotes: e.target.value }))} className="text-sm min-h-[80px]" />
             )}
           </CardContent>
         </Card>
       )}
 
-      {/* Transcript */}
-      {draft.transcript && (
+      {/* Transcript (shared) */}
+      {sharedDraft.transcript && (
         <Card>
           <CardHeader>
             <CardTitle className="font-display text-lg">Transcript</CardTitle>
-            <CardDescription>AI-generated approximate transcription</CardDescription>
+            <CardDescription>AI-generated approximate transcription with speaker labels</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="rounded-lg bg-muted/50 p-4 text-sm leading-relaxed whitespace-pre-wrap">{draft.transcript}</div>
+            <div className="rounded-lg bg-muted/50 p-4 text-sm leading-relaxed whitespace-pre-wrap">{sharedDraft.transcript}</div>
           </CardContent>
         </Card>
       )}
@@ -460,7 +531,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
               <CardTitle className="font-display text-lg flex items-center gap-2">
                 <BookOpen className="h-5 w-5 text-primary" /> Recommended Practice
               </CardTitle>
-              <CardDescription>Personalised resources based on the lowest-scoring criteria.</CardDescription>
+              <CardDescription>Personalised resources for {draft.candidateName || candidateNames[activeCandidate]} based on the lowest-scoring criteria.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {recommendations.length > 0 ? recommendations.map((link, i) => (
@@ -490,7 +561,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
           )}
           <Button size="lg" onClick={handleConfirmSign} disabled={saving} className="gap-2 px-8">
             {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <ShieldCheck className="h-5 w-5" />}
-            {saving ? "Saving…" : "Confirm & Sign as Official"}
+            {saving ? "Saving…" : `Confirm & Sign — ${draft.candidateName || candidateNames[activeCandidate]}`}
           </Button>
         </div>
       )}
