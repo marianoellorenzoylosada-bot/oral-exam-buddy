@@ -25,13 +25,11 @@ const LANGUAGES = [
 ];
 
 const EXAM_LEVELS = [
-  { value: "A1", label: "A1 – Beginner" },
-  { value: "A2", label: "A2 – Elementary" },
-  { value: "B1", label: "B1 – Intermediate" },
-  { value: "B2", label: "B2 – Upper Intermediate" },
-  { value: "C1", label: "C1 – Advanced" },
-  { value: "C2", label: "C2 – Proficiency" },
-  { value: "diagnostic", label: "Diagnostic" },
+  { value: "A2", label: "A2 Key (KET)" },
+  { value: "B1", label: "B1 Preliminary (PET)" },
+  { value: "B2", label: "B2 First (FCE)" },
+  { value: "C1", label: "C1 Advanced (CAE)" },
+  { value: "C2", label: "C2 Proficiency (CPE)" },
 ];
 
 function formatTime(seconds: number) {

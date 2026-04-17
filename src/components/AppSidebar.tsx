@@ -1,6 +1,7 @@
 import {
   LayoutDashboard,
   Plus,
+  Layers,
   BookOpen,
   FileText,
   TrendingUp,
@@ -28,6 +29,7 @@ import { useAuth } from "@/hooks/useAuth";
 const mainNav = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "New Exam", url: "/new-exam", icon: Plus },
+  { title: "Batch Session", url: "/batch-session", icon: Layers },
   { title: "Question Bank", url: "/question-bank", icon: BookOpen },
 ];
 
