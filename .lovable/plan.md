@@ -1,72 +1,50 @@
 
 
-# Multi-Candidate Oral Exam Support
+## Cambridge-Aligned Batch Recording Mode
 
-## What changes
+I've reviewed both Cambridge PDFs. They confirm the 5 official Speaking criteria and the 0–5 band scale (whole bands at the cell level, half-bands awarded between for shared features). I'll embed the official descriptors directly into the app so the AI always has them — even if the teacher doesn't upload anything.
 
-Currently each exam session assesses a single candidate. The app needs to support **2–3 candidates per exam**, with the AI identifying speakers as Examiner, Candidate A, Candidate B, and optionally Candidate C.
+### What I'll build
 
-## Plan
+**1. Cambridge rubric library** — new `src/lib/cambridgeRubrics.ts`
+Ships the official 0–5 descriptors per CEFR level (A2, B1, B2, C1, C2) for the 5 areas: **Grammar & Vocabulary, Discourse Management, Pronunciation, Interactive Communication, Global Achievement**. Half-bands (0.5 steps) are explained in the prompt as "shares features of the bands above and below".
 
-### 1. Update the Setup form to collect multiple candidate names
+**2. Updated AI prompt** — `supabase/functions/analyze-exam/index.ts`
+- Switch criteria from CEFR-generic to the 5 Cambridge areas above.
+- Use 0–5 scale, 0.5 increments.
+- Inject the matching level's descriptors from `cambridgeRubrics.ts` automatically; if the teacher uploaded a handbook/sample, append it as additional reference.
+- Overall mark = average of the 5 band scores, mapped to a Cambridge grade band when relevant.
 
-Replace the single "Candidate Name" input with a dynamic list where the teacher enters names for Candidate A, Candidate B, and optionally adds Candidate C. A toggle or "Add candidate" button controls whether it's a 2- or 3-person exam. The `candidateName` field in `useExamStore` will be replaced by `candidateNames: string[]` (default 2 slots).
+**3. Batch recording flow** — new `src/pages/BatchSession.tsx` + `src/hooks/useBatchQueue.ts`
+- Set shared context once (level, language, institution, group, booklet, handbook).
+- For each exam: enter candidate names (2 or 3) → record → "Save & next exam" (audio kept in memory).
+- Queue panel shows each item with status: `Recorded`, `Queued`, `Analyzing`, `Done`, `Failed`.
+- "Analyze all" button runs `analyze-exam` sequentially in the background; teacher can keep recording while earlier ones process.
+- Click a finished item to open the existing `DraftReport` for review/sign.
 
-**Files**: `src/hooks/useExamStore.ts`, `src/pages/NewExam.tsx`
+**4. Sidebar + routing**
+- New "Batch Session" entry under "Examine" in `AppSidebar`.
+- Route added in `App.tsx`.
+- Existing single-exam flow stays as-is.
 
-### 2. Update the AI prompt to identify speakers per-candidate
+**5. Exam levels in setup**
+Level dropdown in `NewExam.tsx` and the new batch page will list Cambridge exams (A2 Key, B1 Preliminary, B2 First, C1 Advanced, C2 Proficiency) with the underlying CEFR code stored.
 
-Modify the `analyze-exam` edge function's system prompt to instruct the AI to:
-- Identify speakers: Examiner, Candidate A (name), Candidate B (name), [Candidate C (name)]
-- Produce **per-candidate scores** for all 5 CEFR criteria
-- Return a JSON array of candidate assessments instead of a single assessment
+### What does NOT change
+- DB schema — `exams.criteria` JSON already stores arbitrary criterion arrays, so the new 5 areas drop in cleanly. One row per candidate (already supported).
+- Reports & Progress pages — automatically pick up the new criterion names; the radar chart will display the 5 Cambridge areas for new exams.
+- DraftReport — already handles arbitrary criteria and multi-candidate; no structural changes.
+- PDF generation — already iterates over criteria array; no changes.
 
-New response format:
-```text
-{
-  "candidates": [
-    {
-      "candidateName": "María García",
-      "overallBand": "B1",
-      "overallScore": 3.2,
-      "criteria": [...],
-      "strengths": [...],
-      "areasForImprovement": [...]
-    },
-    { ... }
-  ],
-  "transcript": "...",
-  "examinerNotes": "..."
-}
-```
+### Files
+- new `src/lib/cambridgeRubrics.ts`
+- new `src/pages/BatchSession.tsx`
+- new `src/hooks/useBatchQueue.ts`
+- edit `supabase/functions/analyze-exam/index.ts` (Cambridge prompt + descriptors)
+- edit `src/pages/NewExam.tsx` (Cambridge level labels)
+- edit `src/components/AppSidebar.tsx` (new entry)
+- edit `src/App.tsx` (new route)
 
-**Files**: `supabase/functions/analyze-exam/index.ts`
-
-### 3. Update DraftReport to show per-candidate results
-
-Add a tabbed or accordion view inside DraftReport so the teacher can review and override scores for each candidate independently. The transcript and examiner notes remain shared. Each candidate gets their own "Confirm & Sign" flow.
-
-**Files**: `src/components/DraftReport.tsx`
-
-### 4. Save one exam record per candidate
-
-When the teacher confirms, insert one row in the `exams` table per candidate (each with their own scores, same audio reference). The `candidate_name` column already exists. The `candidates` column (integer) stays as the total count.
-
-**Files**: `src/components/DraftReport.tsx` (save logic)
-
-### 5. Update reports and progress pages
-
-No structural changes needed — these already filter by `candidate_name` and display individual records. The multi-candidate save from step 4 naturally populates them correctly.
-
-### 6. Update PDF generation
-
-The report PDF already works per-candidate since each saved exam is one candidate. No changes needed unless we want a combined multi-candidate PDF (can be added later).
-
----
-
-### Technical details
-
-- **Database**: No schema changes required. The existing `exams` table and `candidate_name` column support this model (one row per candidate).
-- **Edge function**: The AI prompt change is the most significant modification — it switches from single-assessment to multi-assessment output.
-- **Backward compatibility**: Old single-candidate exams will continue to display correctly since they already have `candidate_name` set.
+### About your uploads
+Both PDFs are useful — I'll encode the **B2 First** descriptors verbatim and adapt the same template for A2/B1/C1/C2 from the overall scales table on page 7. If you later assess other levels, drop the matching handbook into the Context tab during a session and it'll be sent to the AI alongside the built-in descriptors.
 
