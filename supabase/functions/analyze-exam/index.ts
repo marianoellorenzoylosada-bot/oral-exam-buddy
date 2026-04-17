@@ -6,6 +6,76 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// ─── Cambridge official Speaking descriptors (0–5 scale, 0.5 increments) ───
+// Mirrors src/lib/cambridgeRubrics.ts. Kept inline because edge functions
+// cannot import from the src/ folder.
+type CambridgeLevel = "A2" | "B1" | "B2" | "C1" | "C2";
+const CAMBRIDGE_CRITERIA = [
+  "Grammar and Vocabulary",
+  "Discourse Management",
+  "Pronunciation",
+  "Interactive Communication",
+  "Global Achievement",
+] as const;
+
+const CAMBRIDGE_DESCRIPTORS: Record<CambridgeLevel, Record<string, { "5": string; "3": string; "1": string }>> = {
+  A2: {
+    "Grammar and Vocabulary": { "5": "Shows sufficient control of simple grammatical forms. Uses a range of appropriate vocabulary when talking about everyday situations.", "3": "Shows sufficient control of simple grammatical forms. Uses appropriate vocabulary to talk about everyday situations.", "1": "Shows only limited control of a few grammatical forms. Uses a vocabulary of isolated words and phrases." },
+    "Discourse Management": { "5": "Produces responses extended beyond short phrases, despite hesitation. Contributions are mostly relevant. Uses basic cohesive devices.", "3": "Produces short phrases with frequent hesitation. Repeats information or digresses.", "1": "Produces very short responses. Sometimes difficult to follow." },
+    "Pronunciation": { "5": "Mostly intelligible with some control of phonological features.", "3": "Mostly intelligible despite limited control of phonological features.", "1": "Very limited phonological control; often unintelligible." },
+    "Interactive Communication": { "5": "Maintains simple exchanges despite some difficulty. Requires prompting and support.", "3": "Maintains simple exchanges. Requires prompting and support.", "1": "Considerable difficulty maintaining simple exchanges." },
+    "Global Achievement": { "5": "Handles communication in everyday situations. Constructs longer utterances but cannot use complex language except in well-rehearsed utterances.", "3": "Handles short, basic exchanges despite hesitation.", "1": "Conveys basic meaning in very short utterances; mainly isolated words or formulaic phrases." },
+  },
+  B1: {
+    "Grammar and Vocabulary": { "5": "Good control of simple grammatical forms; attempts some complex forms. Range of appropriate vocabulary on familiar topics.", "3": "Sufficient control of simple grammatical forms. Range of appropriate vocabulary on familiar topics.", "1": "Sufficient control of a few simple grammatical forms. Limited range of vocabulary on familiar topics." },
+    "Discourse Management": { "5": "Extended stretches of language despite some hesitation. Clear organisation of ideas. Range of cohesive devices.", "3": "Responses extended beyond short phrases despite hesitation. Mostly relevant. Basic cohesive devices.", "1": "Short phrases with frequent hesitation. Repeats or digresses." },
+    "Pronunciation": { "5": "Intelligible. Intonation generally appropriate. Stress generally accurate.", "3": "Mostly intelligible with some control of phonological features.", "1": "Mostly intelligible despite limited control of phonological features." },
+    "Interactive Communication": { "5": "Initiates and responds appropriately. Maintains and develops the interaction with very little support.", "3": "Maintains simple exchanges despite some difficulty. Requires prompting.", "1": "Considerable difficulty maintaining simple exchanges." },
+    "Global Achievement": { "5": "Handles communication on familiar topics despite some hesitation. Organises extended discourse, occasional incoherence.", "3": "Handles communication in everyday situations despite hesitation.", "1": "Handles short, basic exchanges despite hesitation." },
+  },
+  B2: {
+    "Grammar and Vocabulary": { "5": "Good control of a range of simple and complex grammatical forms. Range of appropriate vocabulary to give and exchange views on familiar and unfamiliar topics.", "3": "Good control of simple grammatical forms; attempts some complex forms. Range of appropriate vocabulary on familiar topics.", "1": "Sufficient control of simple grammatical forms. Limited range of vocabulary on familiar topics." },
+    "Discourse Management": { "5": "Extended stretches of language with very little hesitation. Relevant, coherent, varied. Wide range of cohesive devices and discourse markers.", "3": "Extended stretches despite some hesitation. Relevant with clear organisation. Range of cohesive devices.", "1": "Responses extended beyond short phrases despite hesitation. Mostly relevant; basic cohesive devices." },
+    "Pronunciation": { "5": "Intelligible. Intonation appropriate. Sentence/word stress accurately placed. Sounds clearly articulated.", "3": "Intelligible. Intonation generally appropriate. Stress generally accurate. Sounds generally clear.", "1": "Mostly intelligible with some control of phonological features." },
+    "Interactive Communication": { "5": "Initiates and responds appropriately, linking contributions. Maintains and develops the interaction and negotiates towards an outcome.", "3": "Initiates and responds appropriately. Maintains and develops the interaction with very little support.", "1": "Maintains simple exchanges despite some difficulty. Requires prompting." },
+    "Global Achievement": { "5": "Handles communication on a range of familiar and unfamiliar topics with very little hesitation. Coherent, easy-to-follow extended discourse.", "3": "Handles communication on familiar topics despite hesitation. Organises extended discourse with occasional incoherence.", "1": "Handles communication in everyday situations despite hesitation." },
+  },
+  C1: {
+    "Grammar and Vocabulary": { "5": "Maintains control of a wide range of grammatical forms with flexibility. Wide range of vocabulary used flexibly on familiar and unfamiliar topics.", "3": "Good control of a range of simple and complex grammatical forms. Range of appropriate vocabulary on familiar and unfamiliar topics.", "1": "Good control of simple grammatical forms; attempts some complex forms." },
+    "Discourse Management": { "5": "Extended language with ease and very little hesitation. Relevant, coherent, varied, detailed. Full effective use of a wide range of cohesive devices.", "3": "Extended stretches with very little hesitation. Relevant, coherent and varied. Wide range of cohesive devices.", "1": "Extended stretches despite some hesitation. Relevant with clear organisation." },
+    "Pronunciation": { "5": "Intelligible. Intonation appropriate. Stress accurate. Sounds clearly articulated. Effortless to understand.", "3": "Intelligible. Intonation appropriate. Stress accurate. Sounds clearly articulated.", "1": "Intelligible. Intonation generally appropriate. Stress generally accurate." },
+    "Interactive Communication": { "5": "Interacts with ease, linking contributions. Widens scope of interaction; develops it fully and effectively towards a negotiated outcome.", "3": "Initiates and responds appropriately, linking contributions. Maintains, develops, negotiates towards an outcome.", "1": "Initiates and responds appropriately. Maintains and develops the interaction with very little support." },
+    "Global Achievement": { "5": "Handles communication on a wide range of familiar and unfamiliar topics with very little hesitation. Coherent, easy-to-follow, detailed extended discourse.", "3": "Handles communication on a range of familiar and unfamiliar topics with very little hesitation.", "1": "Handles communication on familiar topics despite some hesitation." },
+  },
+  C2: {
+    "Grammar and Vocabulary": { "5": "Maintains control of a wide range of grammatical forms with full flexibility and precision. Wide range of vocabulary, including idiomatic and less common items, used flexibly and precisely.", "3": "Maintains control of a wide range of grammatical forms used flexibly. Wide range of vocabulary used flexibly on familiar and unfamiliar topics.", "1": "Good control of a range of simple and complex grammatical forms." },
+    "Discourse Management": { "5": "Extended language with ease and no hesitation. Relevant, coherent, fully extended, varied, detailed. Full flexible use of a wide range of cohesive devices.", "3": "Extended language with ease and very little hesitation. Relevant, coherent, varied, detailed.", "1": "Extended stretches with very little hesitation. Relevant, coherent and varied." },
+    "Pronunciation": { "5": "Readily intelligible. Intonation effective for meaning. Stress accurate. Sounds clearly articulated. Effortless throughout.", "3": "Intelligible. Intonation appropriate. Stress accurate. Sounds clearly articulated. Effortless to understand.", "1": "Intelligible. Intonation appropriate. Stress accurate. Sounds clearly articulated." },
+    "Interactive Communication": { "5": "Interacts with ease by skilfully interweaving contributions. Widens scope; develops fully and effectively towards a negotiated outcome.", "3": "Interacts with ease, linking contributions. Widens scope; develops fully and effectively towards a negotiated outcome.", "1": "Initiates and responds appropriately, linking contributions." },
+    "Global Achievement": { "5": "Handles communication on a wide range of familiar and unfamiliar topics with no hesitation. Coherent, fully extended, easy-to-follow, detailed.", "3": "Handles communication on a wide range of familiar and unfamiliar topics with very little hesitation. Coherent, easy to follow, detailed.", "1": "Handles communication on a range of familiar and unfamiliar topics with very little hesitation." },
+  },
+};
+
+function buildRubricBlock(level: string): string {
+  const lvl = (level as CambridgeLevel);
+  const descriptors = CAMBRIDGE_DESCRIPTORS[lvl];
+  if (!descriptors) {
+    return `OFFICIAL CAMBRIDGE SPEAKING ASSESSMENT — Level ${level}\nUse standard CEFR descriptors. Score each criterion 0–5 in 0.5 increments.`;
+  }
+  const lines: string[] = [];
+  lines.push(`OFFICIAL CAMBRIDGE SPEAKING ASSESSMENT — Level ${level}`);
+  lines.push("Marking scale: 0–5 per criterion, in 0.5 increments.");
+  lines.push("• Whole bands (5, 3, 1) have explicit descriptors below.");
+  lines.push("• Bands 4 and 2 are awarded when performance shares features of the bands above and below.");
+  lines.push("• Half-bands (e.g. 3.5) are awarded for borderline performance.");
+  lines.push("• Band 0 indicates performance below band 1.");
+  for (const c of CAMBRIDGE_CRITERIA) {
+    const d = descriptors[c];
+    lines.push(`\n### ${c}\nBand 5: ${d["5"]}\nBand 3: ${d["3"]}\nBand 1: ${d["1"]}`);
+  }
+  return lines.join("\n");
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -21,42 +91,49 @@ serve(async (req) => {
 
     const names = candidateNames || ["Candidate A", "Candidate B"];
     const candidateList = names.map((n: string, i: number) => `Candidate ${String.fromCharCode(65 + i)} (${n || "unnamed"})`).join(", ");
+    const rubricBlock = buildRubricBlock(level);
 
-    const systemPrompt = `You are an expert oral language examination assessor. You evaluate spoken language proficiency based on official CEFR (Common European Framework of Reference) standards.
+    const systemPrompt = `You are an official Cambridge Assessment English Speaking examiner. You evaluate oral performance using the official Cambridge Speaking assessment scales.
 
-Your task: Analyze an oral examination recording with MULTIPLE candidates and produce a structured assessment report for EACH candidate individually.
+Your task: Analyze an oral examination recording with MULTIPLE candidates and produce a structured assessment report for EACH candidate individually, using the Cambridge 0–5 scale (0.5 increments).
 
 EXAM CONTEXT:
-- CEFR Level: ${level}
+- Cambridge Level: ${level}
 - Language being assessed: ${language}
 - Speakers: Examiner (teacher), ${candidateList}
-${bookletText ? `\nEXAM BOOKLET CONTENT:\n${bookletText}` : ""}
-${rubricText ? `\nCUSTOM RUBRIC:\n${rubricText}` : ""}
 
-If no custom rubric is provided, use the standard CEFR descriptors for the specified level.
+${rubricBlock}
+${bookletText ? `\nADDITIONAL REFERENCE — EXAM BOOKLET / SAMPLE PAPER:\n${bookletText}` : ""}
+${rubricText ? `\nADDITIONAL REFERENCE — UPLOADED HANDBOOK / RUBRIC (use as primary source if provided):\n${rubricText}` : ""}
 
-IMPORTANT: Identify each speaker in the recording. The Examiner is the teacher asking questions. Each candidate should be assessed INDEPENDENTLY based on their own performance.
+IMPORTANT:
+- Identify each speaker. The Examiner is the teacher; assess only the candidates.
+- Score each candidate INDEPENDENTLY on the 5 Cambridge criteria below.
+- Use the 0–5 scale in 0.5 increments. Half-bands are valid (e.g. 2.5, 3.5, 4.5).
+- Compute "overallScore" as the average of the 5 criterion scores (rounded to 1 decimal).
+- Map "overallBand" to the CEFR level the performance most closely matches (e.g. "B2", "B1", "C1").
+- Feedback for each criterion should reference the Cambridge descriptors above.
 
-ASSESSMENT CRITERIA (score each 0-5 per candidate):
-1. **Range** — Variety of vocabulary, grammar structures, and idiomatic expressions
-2. **Accuracy** — Grammatical correctness, pronunciation, and appropriate word choice
-3. **Fluency** — Natural flow, pace, hesitation patterns, and self-correction ability
-4. **Interaction** — Turn-taking, initiating/responding, negotiating meaning
-5. **Coherence** — Logical organization, discourse markers, topic development
+THE 5 CAMBRIDGE CRITERIA (must appear in this exact order, with these exact names):
+1. Grammar and Vocabulary
+2. Discourse Management
+3. Pronunciation
+4. Interactive Communication
+5. Global Achievement
 
 RESPOND IN THIS EXACT JSON FORMAT:
 {
   "candidates": [
     {
       "candidateName": "${names[0] || "Candidate A"}",
-      "overallBand": "B1",
-      "overallScore": 3.2,
+      "overallBand": "B2",
+      "overallScore": 3.5,
       "criteria": [
-        { "name": "Range", "score": 3, "maxScore": 5, "feedback": "..." },
-        { "name": "Accuracy", "score": 3, "maxScore": 5, "feedback": "..." },
-        { "name": "Fluency", "score": 4, "maxScore": 5, "feedback": "..." },
-        { "name": "Interaction", "score": 3, "maxScore": 5, "feedback": "..." },
-        { "name": "Coherence", "score": 3, "maxScore": 5, "feedback": "..." }
+        { "name": "Grammar and Vocabulary", "score": 3.5, "maxScore": 5, "feedback": "..." },
+        { "name": "Discourse Management", "score": 3, "maxScore": 5, "feedback": "..." },
+        { "name": "Pronunciation", "score": 4, "maxScore": 5, "feedback": "..." },
+        { "name": "Interactive Communication", "score": 3.5, "maxScore": 5, "feedback": "..." },
+        { "name": "Global Achievement", "score": 3.5, "maxScore": 5, "feedback": "..." }
       ],
       "strengths": ["strength 1", "strength 2"],
       "areasForImprovement": ["area 1", "area 2"]
