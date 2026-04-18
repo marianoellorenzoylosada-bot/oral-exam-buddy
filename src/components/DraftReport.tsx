@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -42,7 +42,21 @@ interface DraftReportProps {
   group?: string;
   candidateNames: string[];
   audioBlob?: Blob | null;
+  /** Stable id used to autosave draft edits to localStorage (e.g. batch item id). */
+  draftKey?: string;
   onReset: () => void;
+}
+
+const DRAFT_STORAGE_PREFIX = "oralassess-draft:";
+
+interface PersistedDraft {
+  drafts: MultiCandidateResult["candidates"];
+  sharedDraft: { transcript: string; examinerNotes: string };
+  allOverrides: Record<number, Record<number, string>>;
+  allAcceptedStrengths: boolean[][];
+  allAcceptedImprovements: boolean[][];
+  officialStatus: boolean[];
+  savedAt: number;
 }
 
 function EditableScore({ value, max, onChange }: { value: number; max: number; onChange: (v: number) => void }) {
