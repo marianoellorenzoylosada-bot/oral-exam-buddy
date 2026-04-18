@@ -89,6 +89,28 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
+    // Server-side guards: reject oversized payloads with a clear, actionable error
+    // before we burn time/credits calling the AI gateway.
+    const MAX_AUDIO_BASE64_LEN = 30 * 1024 * 1024; // ~22 MB raw audio after base64 inflation
+    const MAX_CONTEXT_CHARS = 60_000;
+    if (typeof audioBase64 === "string" && audioBase64.length > MAX_AUDIO_BASE64_LEN) {
+      return new Response(
+        JSON.stringify({
+          error: `Audio payload too large (${(audioBase64.length / (1024 * 1024)).toFixed(1)} MB encoded). Please record shorter exams (under ~22 MB).`,
+        }),
+        { status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    const contextLen = (bookletText?.length ?? 0) + (rubricText?.length ?? 0);
+    if (contextLen > MAX_CONTEXT_CHARS) {
+      return new Response(
+        JSON.stringify({
+          error: `Reference text (booklet + rubric) is ${contextLen} characters; please trim to under ${MAX_CONTEXT_CHARS}.`,
+        }),
+        { status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const names = candidateNames || ["Candidate A", "Candidate B"];
     const candidateList = names.map((n: string, i: number) => `Candidate ${String.fromCharCode(65 + i)} (${n || "unnamed"})`).join(", ");
     const rubricBlock = buildRubricBlock(level);
