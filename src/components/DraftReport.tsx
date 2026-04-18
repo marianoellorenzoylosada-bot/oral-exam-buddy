@@ -270,7 +270,14 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         }
       }
 
-      setOfficialStatus(prev => prev.map((v, i) => i === activeCandidate ? true : v));
+      setOfficialStatus(prev => {
+        const next = prev.map((v, i) => i === activeCandidate ? true : v);
+        // If every candidate is now signed, drop the autosave entry — it's no longer needed.
+        if (draftKey && next.every(Boolean)) {
+          try { localStorage.removeItem(DRAFT_STORAGE_PREFIX + draftKey); } catch { /* ignore */ }
+        }
+        return next;
+      });
       toast({ title: `Report confirmed for ${candidateName}`, description: "Saved to your records." });
 
       // Auto-advance to next unconfirmed candidate
