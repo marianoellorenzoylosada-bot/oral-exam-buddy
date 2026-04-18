@@ -77,27 +77,41 @@ function EditableScore({ value, max, onChange }: { value: number; max: number; o
 
 const COPYRIGHT_TEXT = "© 2026 Int'l Oral Exam Assistant. Evaluation methodology and AI results are subject to teacher supervision.";
 
-export function DraftReport({ result, level, levelCode, language, institution, group, candidateNames, audioBlob, onReset }: DraftReportProps) {
+export function DraftReport({ result, level, levelCode, language, institution, group, candidateNames, audioBlob, draftKey, onReset }: DraftReportProps) {
   const { toast } = useToast();
   const navigate = useNavigate();
   const [activeCandidate, setActiveCandidate] = useState(0);
   const [saving, setSaving] = useState(false);
 
+  // Try to restore a previously auto-saved draft for this exam.
+  const persisted = useMemo<PersistedDraft | null>(() => {
+    if (!draftKey) return null;
+    try {
+      const raw = localStorage.getItem(DRAFT_STORAGE_PREFIX + draftKey);
+      if (!raw) return null;
+      return JSON.parse(raw) as PersistedDraft;
+    } catch {
+      return null;
+    }
+  }, [draftKey]);
+
   // Per-candidate draft state
   const [drafts, setDrafts] = useState<MultiCandidateResult["candidates"]>(() =>
-    JSON.parse(JSON.stringify(result.candidates))
+    persisted?.drafts ?? JSON.parse(JSON.stringify(result.candidates))
   );
-  const [sharedDraft, setSharedDraft] = useState({
-    transcript: result.transcript,
-    examinerNotes: result.examinerNotes,
-  });
+  const [sharedDraft, setSharedDraft] = useState(() =>
+    persisted?.sharedDraft ?? {
+      transcript: result.transcript,
+      examinerNotes: result.examinerNotes,
+    }
+  );
 
   // Per-candidate overrides
   const [allOverrides, setAllOverrides] = useState<Record<number, Record<number, string>>>(() =>
-    Object.fromEntries(result.candidates.map((_, i) => [i, {}]))
+    persisted?.allOverrides ?? Object.fromEntries(result.candidates.map((_, i) => [i, {}]))
   );
 
-  // Per-candidate original scores
+  // Per-candidate original scores (always from the AI response, never persisted)
   const allOriginalScores = useMemo(() =>
     result.candidates.map(c => c.criteria.map(cr => cr.score)),
     [result]
@@ -105,16 +119,49 @@ export function DraftReport({ result, level, levelCode, language, institution, g
 
   // Per-candidate accepted evidence
   const [allAcceptedStrengths, setAllAcceptedStrengths] = useState<boolean[][]>(() =>
-    result.candidates.map(c => c.strengths.map(() => true))
+    persisted?.allAcceptedStrengths ?? result.candidates.map(c => c.strengths.map(() => true))
   );
   const [allAcceptedImprovements, setAllAcceptedImprovements] = useState<boolean[][]>(() =>
-    result.candidates.map(c => c.areasForImprovement.map(() => true))
+    persisted?.allAcceptedImprovements ?? result.candidates.map(c => c.areasForImprovement.map(() => true))
   );
 
   // Per-candidate official status
   const [officialStatus, setOfficialStatus] = useState<boolean[]>(() =>
-    result.candidates.map(() => false)
+    persisted?.officialStatus ?? result.candidates.map(() => false)
   );
+
+  // Auto-save: persist editable state to localStorage whenever anything changes.
+  // Debounced lightly via microtask coalescing — localStorage is sync but small.
+  useEffect(() => {
+    if (!draftKey) return;
+    try {
+      const payload: PersistedDraft = {
+        drafts,
+        sharedDraft,
+        allOverrides,
+        allAcceptedStrengths,
+        allAcceptedImprovements,
+        officialStatus,
+        savedAt: Date.now(),
+      };
+      localStorage.setItem(DRAFT_STORAGE_PREFIX + draftKey, JSON.stringify(payload));
+    } catch (err) {
+      // Quota exceeded or disabled — silently ignore; sign & save still works.
+      console.warn("[DraftReport] autosave failed:", err);
+    }
+  }, [draftKey, drafts, sharedDraft, allOverrides, allAcceptedStrengths, allAcceptedImprovements, officialStatus]);
+
+  // Notify the user once if we restored from autosave (only on initial mount).
+  useEffect(() => {
+    if (persisted) {
+      const ageMin = Math.round((Date.now() - persisted.savedAt) / 60000);
+      toast({
+        title: "Draft restored",
+        description: `Recovered your edits from ${ageMin === 0 ? "moments ago" : `${ageMin} min ago`}.`,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const allOfficial = officialStatus.every(Boolean);
   const institutionName = institution || localStorage.getItem("oralassess-institution") || "";
