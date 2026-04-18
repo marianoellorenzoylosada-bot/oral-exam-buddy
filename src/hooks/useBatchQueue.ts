@@ -78,10 +78,16 @@ export function useBatchQueue() {
   const removeItem = useCallback((id: string) => {
     setItems(prev => prev.filter(i => i.id !== id));
     void db.deleteItem(id);
+    try { localStorage.removeItem(`oralassess-draft:batch-${id}`); } catch { /* ignore */ }
   }, []);
 
   const clearAll = useCallback(() => {
-    setItems([]);
+    setItems(prev => {
+      for (const i of prev) {
+        try { localStorage.removeItem(`oralassess-draft:batch-${i.id}`); } catch { /* ignore */ }
+      }
+      return [];
+    });
     void db.clearAll();
   }, []);
 
