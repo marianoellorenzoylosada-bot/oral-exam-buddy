@@ -15,6 +15,7 @@ import { extractTextFromFile } from "@/lib/extractText";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { LiveTranscript } from "@/components/LiveTranscript";
+import { checkAudioSize, checkAudioDuration, checkContextSize } from "@/lib/uploadGuards";
 
 const LANGUAGES = [
   { value: "en", label: "English" },
@@ -158,6 +159,23 @@ export default function NewExamPage() {
       return;
     }
 
+    // Pre-flight guards: catch oversized recordings/context before the upload starts.
+    const sizeCheck = checkAudioSize(recorder.audioBlob);
+    if (!sizeCheck.ok) {
+      toast({ title: "Recording too large", description: sizeCheck.reason, variant: "destructive" });
+      return;
+    }
+    const durCheck = checkAudioDuration(recorder.duration);
+    if (!durCheck.ok) {
+      toast({ title: "Recording too long", description: durCheck.reason, variant: "destructive" });
+      return;
+    }
+    const ctxCheck = checkContextSize(exam.bookletText ?? "", exam.rubricText ?? "");
+    if (!ctxCheck.ok) {
+      toast({ title: "Reference text too long", description: ctxCheck.reason, variant: "destructive" });
+      return;
+    }
+
     setAnalyzing(true);
     try {
       const arrayBuffer = await recorder.audioBlob.arrayBuffer();
@@ -215,6 +233,7 @@ export default function NewExamPage() {
         group={exam.group}
         candidateNames={exam.candidateNames}
         audioBlob={recorder.audioBlob}
+        draftKey={`new-${exam.title}-${exam.candidateNames.filter(Boolean).join("|")}`}
         onReset={handleReset}
       />
     );

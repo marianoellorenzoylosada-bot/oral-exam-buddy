@@ -1,6 +1,8 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { MultiCandidateResult } from "@/components/DraftReport";
+import * as db from "@/lib/batchQueueDb";
+import { checkAudioSize, checkAudioDuration, checkContextSize } from "@/lib/uploadGuards";
 
 export type BatchItemStatus =
   | "recorded"
@@ -41,27 +43,81 @@ async function blobToBase64(blob: Blob): Promise<string> {
 export function useBatchQueue() {
   const [items, setItems] = useState<BatchItem[]>([]);
   const [analyzingAll, setAnalyzingAll] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const itemsRef = useRef<BatchItem[]>([]);
+  itemsRef.current = items;
+
+  // Hydrate from IndexedDB on mount
+  useEffect(() => {
+    let cancelled = false;
+    db.loadQueue().then(stored => {
+      if (cancelled) return;
+      if (stored.length > 0) setItems(stored);
+      setHydrated(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const persistItem = useCallback((item: BatchItem) => {
+    void db.saveItem(item);
+  }, []);
 
   const addItem = useCallback((item: Omit<BatchItem, "id" | "status" | "recordedAt">) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    setItems(prev => [
-      ...prev,
-      { ...item, id, status: "recorded", recordedAt: Date.now() },
-    ]);
+    const newItem: BatchItem = {
+      ...item,
+      id,
+      status: "recorded",
+      recordedAt: Date.now(),
+    };
+    setItems(prev => [...prev, newItem]);
+    persistItem(newItem);
     return id;
-  }, []);
+  }, [persistItem]);
 
   const removeItem = useCallback((id: string) => {
     setItems(prev => prev.filter(i => i.id !== id));
+    void db.deleteItem(id);
+    try { localStorage.removeItem(`oralassess-draft:batch-${id}`); } catch { /* ignore */ }
   }, []);
 
-  const clearAll = useCallback(() => setItems([]), []);
+  const clearAll = useCallback(() => {
+    setItems(prev => {
+      for (const i of prev) {
+        try { localStorage.removeItem(`oralassess-draft:batch-${i.id}`); } catch { /* ignore */ }
+      }
+      return [];
+    });
+    void db.clearAll();
+  }, []);
 
   const updateItem = useCallback((id: string, patch: Partial<BatchItem>) => {
-    setItems(prev => prev.map(i => (i.id === id ? { ...i, ...patch } : i)));
-  }, []);
+    setItems(prev => {
+      const next = prev.map(i => (i.id === id ? { ...i, ...patch } : i));
+      const updated = next.find(i => i.id === id);
+      if (updated) persistItem(updated);
+      return next;
+    });
+  }, [persistItem]);
 
   const analyzeOne = useCallback(async (item: BatchItem, ctx: AnalyzeContext) => {
+    // Pre-flight guards: fail fast with a clear reason
+    const sizeCheck = checkAudioSize(item.audioBlob);
+    if (!sizeCheck.ok) {
+      updateItem(item.id, { status: "failed", error: sizeCheck.reason });
+      return;
+    }
+    const durCheck = checkAudioDuration(item.durationSeconds);
+    if (!durCheck.ok) {
+      updateItem(item.id, { status: "failed", error: durCheck.reason });
+      return;
+    }
+    const ctxCheck = checkContextSize(ctx.bookletText, ctx.rubricText);
+    if (!ctxCheck.ok) {
+      updateItem(item.id, { status: "failed", error: ctxCheck.reason });
+      return;
+    }
+
     updateItem(item.id, { status: "analyzing", error: undefined });
     try {
       const audioBase64 = await blobToBase64(item.audioBlob);
@@ -90,23 +146,27 @@ export function useBatchQueue() {
     setAnalyzingAll(true);
     try {
       // Snapshot current pending items to avoid analyzing newly added ones twice.
-      const pending = items.filter(
+      const pending = itemsRef.current.filter(
         i => i.status === "recorded" || i.status === "queued" || i.status === "failed"
       );
       // Mark queued upfront for visual feedback
       setItems(prev =>
-        prev.map(i =>
-          pending.some(p => p.id === i.id) ? { ...i, status: "queued", error: undefined } : i
-        )
+        prev.map(i => {
+          if (pending.some(p => p.id === i.id)) {
+            const next = { ...i, status: "queued" as BatchItemStatus, error: undefined };
+            persistItem(next);
+            return next;
+          }
+          return i;
+        })
       );
       for (const item of pending) {
-        // Re-fetch fresh ref (needed because state has been replaced)
         await analyzeOne({ ...item, status: "queued" }, ctx);
       }
     } finally {
       setAnalyzingAll(false);
     }
-  }, [items, analyzeOne]);
+  }, [analyzeOne, persistItem]);
 
   return {
     items,
@@ -117,5 +177,6 @@ export function useBatchQueue() {
     analyzeOne,
     analyzeAll,
     analyzingAll,
+    hydrated,
   };
 }
