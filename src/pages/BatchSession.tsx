@@ -186,6 +186,7 @@ export default function BatchSessionPage() {
         group={group}
         candidateNames={reviewItem.candidateNames}
         audioBlob={reviewItem.audioBlob}
+        draftKey={`batch-${reviewItem.id}`}
         onReset={() => setReviewItemId(null)}
       />
     );
