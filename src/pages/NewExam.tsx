@@ -233,6 +233,7 @@ export default function NewExamPage() {
         group={exam.group}
         candidateNames={exam.candidateNames}
         audioBlob={recorder.audioBlob}
+        draftKey={`new-${exam.title}-${exam.candidateNames.filter(Boolean).join("|")}`}
         onReset={handleReset}
       />
     );
