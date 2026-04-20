@@ -18,6 +18,8 @@ import { CAMBRIDGE_EXAMS } from "@/lib/cambridgeRubrics";
 import { extractTextFromFile } from "@/lib/extractText";
 import { useToast } from "@/hooks/use-toast";
 import { DraftReport } from "@/components/DraftReport";
+import { GroupPicker } from "@/components/GroupPicker";
+import { CandidatePicker } from "@/components/CandidatePicker";
 
 const LANGUAGES = [
   { value: "en", label: "English" },
@@ -110,6 +112,7 @@ export default function BatchSessionPage() {
   const [language, setLanguage] = useState("en");
   const [institution, setInstitution] = useState("");
   const [group, setGroup] = useState("");
+  const [groupId, setGroupId] = useState<string | null>(null);
   const [bookletFile, setBookletFile] = useState<File | null>(null);
   const [bookletText, setBookletText] = useState("");
   const [rubricFile, setRubricFile] = useState<File | null>(null);
@@ -246,8 +249,30 @@ export default function BatchSessionPage() {
                 <Input id="batch-institution" value={institution} onChange={(e) => setInstitution(e.target.value)} disabled={contextLocked} placeholder="e.g. Cambridge Academy" />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="batch-group">Group</Label>
+                <Label htmlFor="batch-group">Group (free-text)</Label>
                 <Input id="batch-group" value={group} onChange={(e) => setGroup(e.target.value)} disabled={contextLocked} placeholder="e.g. Group A" />
+              </div>
+
+              <div className="sm:col-span-2 space-y-2">
+                <Label className="flex items-center gap-2">
+                  <Users className="h-4 w-4" /> Active Class Roster
+                </Label>
+                <GroupPicker
+                  value={groupId}
+                  filterInstitution={institution}
+                  onChange={(id, info) => {
+                    setGroupId(id);
+                    if (info) {
+                      if (info.institution) setInstitution(info.institution);
+                      if (info.name) setGroup(info.name);
+                      if (info.level_code) setLevel(info.level_code);
+                      if (info.language) setLanguage(info.language);
+                    }
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Pick a class to autocomplete candidate names from the roster. Manage rosters in <strong>Class Roster</strong>.
+                </p>
               </div>
 
               <div className="sm:col-span-2 grid gap-3 sm:grid-cols-2">
@@ -317,10 +342,12 @@ export default function BatchSessionPage() {
                     {candidateNames.map((name, i) => (
                       <div key={i} className="space-y-1">
                         <Label className="text-xs text-muted-foreground">Candidate {String.fromCharCode(65 + i)}</Label>
-                        <Input
-                          placeholder={`e.g. ${i === 0 ? "María García" : i === 1 ? "João Silva" : "Anna Müller"}`}
+                        <CandidatePicker
                           value={name}
-                          onChange={(e) => updateCandidateName(i, e.target.value)}
+                          onChange={(v) => updateCandidateName(i, v)}
+                          groupId={groupId}
+                          placeholder={`e.g. ${i === 0 ? "María García" : i === 1 ? "João Silva" : "Anna Müller"}`}
+                          excludeNames={candidateNames}
                         />
                       </div>
                     ))}
