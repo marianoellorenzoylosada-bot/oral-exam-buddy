@@ -9,6 +9,7 @@ import { AppLayout } from "@/components/AppLayout";
 import Index from "./pages/Index";
 import NewExam from "./pages/NewExam";
 import BatchSession from "./pages/BatchSession";
+import Roster from "./pages/Roster";
 import QuestionBank from "./pages/QuestionBank";
 import Reports from "./pages/Reports";
 import Progress from "./pages/Progress";
@@ -48,6 +49,7 @@ const App = () => (
                 <Route path="/" element={<Index />} />
                 <Route path="/new-exam" element={<NewExam />} />
                 <Route path="/batch-session" element={<BatchSession />} />
+                <Route path="/roster" element={<Roster />} />
                 <Route path="/question-bank" element={<QuestionBank />} />
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/progress" element={<Progress />} />

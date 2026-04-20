@@ -16,6 +16,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { LiveTranscript } from "@/components/LiveTranscript";
 import { checkAudioSize, checkAudioDuration, checkContextSize } from "@/lib/uploadGuards";
+import { GroupPicker } from "@/components/GroupPicker";
+import { CandidatePicker } from "@/components/CandidatePicker";
 
 const LANGUAGES = [
   { value: "en", label: "English" },
@@ -120,6 +122,7 @@ export default function NewExamPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [report, setReport] = useState<MultiCandidateResult | null>(null);
   const [liveTranscript, setLiveTranscript] = useState("");
+  const [groupId, setGroupId] = useState<string | null>(null);
 
   const selectedLevel = EXAM_LEVELS.find(l => l.value === exam.title);
   const selectedLang = LANGUAGES.find(l => l.value === exam.language);
@@ -289,8 +292,32 @@ export default function NewExamPage() {
                   <Input id="institution" placeholder="e.g. Cambridge Academy" value={exam.institution} onChange={(e) => update({ institution: e.target.value })} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="group">Group</Label>
+                  <Label htmlFor="group">Group (free-text)</Label>
                   <Input id="group" placeholder="e.g. Group A" value={exam.group} onChange={(e) => update({ group: e.target.value })} />
+                </div>
+
+                <div className="sm:col-span-2 space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Users className="h-4 w-4" /> Active Class Roster
+                  </Label>
+                  <GroupPicker
+                    value={groupId}
+                    filterInstitution={exam.institution}
+                    onChange={(id, info) => {
+                      setGroupId(id);
+                      if (info) {
+                        const patch: Record<string, string> = {};
+                        if (info.institution) patch.institution = info.institution;
+                        if (info.name) patch.group = info.name;
+                        if (info.level_code) patch.title = info.level_code;
+                        if (info.language) patch.language = info.language;
+                        update(patch);
+                      }
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Pick a class to autocomplete candidate names. Manage rosters in <strong>Class Roster</strong>.
+                  </p>
                 </div>
 
                 {/* Candidate Names */}
@@ -318,10 +345,12 @@ export default function NewExamPage() {
                         <Label className="text-xs text-muted-foreground">
                           Candidate {String.fromCharCode(65 + i)}
                         </Label>
-                        <Input
-                          placeholder={`e.g. ${i === 0 ? "María García" : i === 1 ? "João Silva" : "Anna Müller"}`}
+                        <CandidatePicker
                           value={name}
-                          onChange={(e) => updateCandidateName(i, e.target.value)}
+                          onChange={(v) => updateCandidateName(i, v)}
+                          groupId={groupId}
+                          placeholder={`e.g. ${i === 0 ? "María García" : i === 1 ? "João Silva" : "Anna Müller"}`}
+                          excludeNames={exam.candidateNames}
                         />
                       </div>
                     ))}

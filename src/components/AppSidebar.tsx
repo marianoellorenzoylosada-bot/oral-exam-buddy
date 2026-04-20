@@ -8,6 +8,7 @@ import {
   Settings,
   Mic,
   LogOut,
+  Users,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -30,6 +31,7 @@ const mainNav = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "New Exam", url: "/new-exam", icon: Plus },
   { title: "Batch Session", url: "/batch-session", icon: Layers },
+  { title: "Class Roster", url: "/roster", icon: Users },
   { title: "Question Bank", url: "/question-bank", icon: BookOpen },
 ];
 
