@@ -11,15 +11,17 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Printer, CheckCircle2, AlertTriangle, ShieldCheck, BookOpen,
-  ExternalLink, Download, Trash2, EyeOff, Volume2,
+  ExternalLink, Download, Trash2, EyeOff, Volume2, Info,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getRecommendations } from "@/lib/practiceData";
 import { generateReportPdf } from "@/lib/generateReportPdf";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import { SpeakerTranscript } from "@/components/SpeakerTranscript";
 
 const langLabel: Record<string, string> = {
   en: "English", es: "Spanish", fr: "French", de: "German", pt: "Portuguese", it: "Italian",
@@ -71,7 +73,7 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
   }, [exam.id]);
 
   const criteria = Array.isArray(exam.criteria)
-    ? (exam.criteria as { name: string; score: number; maxScore: number; feedback: string }[])
+    ? (exam.criteria as { name: string; score: number; maxScore: number; feedback: string; confidence?: number }[])
     : [];
   const strengths = Array.isArray(exam.strengths) ? (exam.strengths as string[]) : [];
   const improvements = Array.isArray(exam.areas_for_improvement) ? (exam.areas_for_improvement as string[]) : [];
