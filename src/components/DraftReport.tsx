@@ -463,6 +463,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm">{c.name}</span>
+                    <ConfidenceBadge confidence={c.confidence} />
                     {wasOverridden && !isOfficial && (
                       <Badge variant="outline" className="text-xs gap-1 border-blue-500/30 text-blue-600">
                         <PenLine className="h-3 w-3" /> Modified (was {originalScores[i]})
@@ -606,10 +607,10 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         <Card>
           <CardHeader>
             <CardTitle className="font-display text-lg">Transcript</CardTitle>
-            <CardDescription>AI-generated approximate transcription with speaker labels</CardDescription>
+            <CardDescription>AI-generated transcription with speaker labels</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="rounded-lg bg-muted/50 p-4 text-sm leading-relaxed whitespace-pre-wrap">{sharedDraft.transcript}</div>
+            <SpeakerTranscript transcript={sharedDraft.transcript} maxHeight="24rem" />
           </CardContent>
         </Card>
       )}
