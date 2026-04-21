@@ -77,6 +77,28 @@ function EditableScore({ value, max, onChange }: { value: number; max: number; o
   );
 }
 
+function ConfidenceBadge({ confidence }: { confidence?: number }) {
+  if (confidence == null) return null;
+  const label = confidence >= 90 ? "High" : confidence >= 70 ? "Good" : confidence >= 50 ? "Low" : "Very Low";
+  const color =
+    confidence >= 90 ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" :
+    confidence >= 70 ? "border-primary/30 bg-primary/10 text-primary" :
+    confidence >= 50 ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400" :
+    "border-destructive/30 bg-destructive/10 text-destructive";
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge variant="outline" className={`text-xs gap-1 cursor-help ${color}`}>
+          <Info className="h-3 w-3" /> {label} ({confidence}%)
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-[220px] text-xs">
+        AI confidence in this score based on audio evidence quality. Low confidence means the examiner should review carefully.
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 const COPYRIGHT_TEXT = "© 2026 Int'l Oral Exam Assistant. Evaluation methodology and AI results are subject to teacher supervision.";
 
 export function DraftReport({ result, level, levelCode, language, institution, group, candidateNames, audioBlob, draftKey, onReset }: DraftReportProps) {
