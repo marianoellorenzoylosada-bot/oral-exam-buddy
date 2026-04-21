@@ -11,15 +11,17 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Printer, CheckCircle2, AlertTriangle, ShieldCheck, BookOpen,
-  ExternalLink, Download, Trash2, EyeOff, Volume2,
+  ExternalLink, Download, Trash2, EyeOff, Volume2, Info,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getRecommendations } from "@/lib/practiceData";
 import { generateReportPdf } from "@/lib/generateReportPdf";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import { SpeakerTranscript } from "@/components/SpeakerTranscript";
 
 const langLabel: Record<string, string> = {
   en: "English", es: "Spanish", fr: "French", de: "German", pt: "Portuguese", it: "Italian",
@@ -71,7 +73,7 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
   }, [exam.id]);
 
   const criteria = Array.isArray(exam.criteria)
-    ? (exam.criteria as { name: string; score: number; maxScore: number; feedback: string }[])
+    ? (exam.criteria as { name: string; score: number; maxScore: number; feedback: string; confidence?: number }[])
     : [];
   const strengths = Array.isArray(exam.strengths) ? (exam.strengths as string[]) : [];
   const improvements = Array.isArray(exam.areas_for_improvement) ? (exam.areas_for_improvement as string[]) : [];
@@ -151,7 +153,26 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
               return (
                 <div key={i}>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="font-medium">{c.name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{c.name}</span>
+                      {c.confidence != null && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge variant="outline" className={`text-xs gap-0.5 cursor-help ${
+                              c.confidence >= 90 ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" :
+                              c.confidence >= 70 ? "border-primary/30 bg-primary/10 text-primary" :
+                              c.confidence >= 50 ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400" :
+                              "border-destructive/30 bg-destructive/10 text-destructive"
+                            }`}>
+                              <Info className="h-3 w-3" /> {c.confidence}%
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[200px] text-xs">
+                            AI confidence in this score
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
                     <span className={`font-bold ${pct >= 80 ? "text-emerald-600" : pct >= 50 ? "text-amber-600" : "text-destructive"}`}>
                       {c.score}/{c.maxScore}
                     </span>
@@ -211,9 +232,7 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
         {exam.transcript && (
           <div>
             <h3 className="font-display font-semibold text-sm mb-1">Transcript</h3>
-            <div className="text-xs text-muted-foreground whitespace-pre-wrap rounded-lg bg-muted/50 p-3 max-h-40 overflow-y-auto">
-              {anonymize ? "[Transcript hidden — anonymization enabled]" : exam.transcript}
-            </div>
+            <SpeakerTranscript transcript={exam.transcript} hidden={anonymize} maxHeight="12rem" />
           </div>
         )}
 

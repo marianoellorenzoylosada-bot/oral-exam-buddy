@@ -143,6 +143,13 @@ THE 5 CAMBRIDGE CRITERIA (must appear in this exact order, with these exact name
 4. Interactive Communication
 5. Global Achievement
 
+For each criterion, also include a "confidence" field (0–100) indicating how confident you are in the score.
+Guidelines for confidence:
+- 90–100: Very clear evidence in the audio; score is unambiguous.
+- 70–89: Good evidence but some ambiguity (e.g. short speaking time, background noise).
+- 50–69: Limited evidence; score is an estimate.
+- Below 50: Very little evidence; the examiner should review carefully.
+
 RESPOND IN THIS EXACT JSON FORMAT:
 {
   "candidates": [
@@ -151,11 +158,11 @@ RESPOND IN THIS EXACT JSON FORMAT:
       "overallBand": "B2",
       "overallScore": 3.5,
       "criteria": [
-        { "name": "Grammar and Vocabulary", "score": 3.5, "maxScore": 5, "feedback": "..." },
-        { "name": "Discourse Management", "score": 3, "maxScore": 5, "feedback": "..." },
-        { "name": "Pronunciation", "score": 4, "maxScore": 5, "feedback": "..." },
-        { "name": "Interactive Communication", "score": 3.5, "maxScore": 5, "feedback": "..." },
-        { "name": "Global Achievement", "score": 3.5, "maxScore": 5, "feedback": "..." }
+        { "name": "Grammar and Vocabulary", "score": 3.5, "maxScore": 5, "confidence": 85, "feedback": "..." },
+        { "name": "Discourse Management", "score": 3, "maxScore": 5, "confidence": 78, "feedback": "..." },
+        { "name": "Pronunciation", "score": 4, "maxScore": 5, "confidence": 90, "feedback": "..." },
+        { "name": "Interactive Communication", "score": 3.5, "maxScore": 5, "confidence": 72, "feedback": "..." },
+        { "name": "Global Achievement", "score": 3.5, "maxScore": 5, "confidence": 80, "feedback": "..." }
       ],
       "strengths": ["strength 1", "strength 2"],
       "areasForImprovement": ["area 1", "area 2"]

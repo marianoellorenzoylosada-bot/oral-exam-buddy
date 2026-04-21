@@ -11,8 +11,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   FileText, CheckCircle2, AlertTriangle, RotateCcw, Printer, ShieldCheck,
-  BookOpen, ExternalLink, Home, Loader2, Download, PenLine, Users,
+  BookOpen, ExternalLink, Home, Loader2, Download, PenLine, Users, Info,
 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { SpeakerTranscript } from "@/components/SpeakerTranscript";
 import { useToast } from "@/hooks/use-toast";
 import { getRecommendations } from "@/lib/practiceData";
 import { supabase } from "@/integrations/supabase/client";
@@ -22,7 +24,7 @@ import { useAuth } from "@/hooks/useAuth";
 export interface AssessmentResult {
   overallBand: string;
   overallScore: number;
-  criteria: { name: string; score: number; maxScore: number; feedback: string }[];
+  criteria: { name: string; score: number; maxScore: number; feedback: string; confidence?: number }[];
   strengths: string[];
   areasForImprovement: string[];
 }
@@ -72,6 +74,28 @@ function EditableScore({ value, max, onChange }: { value: number; max: number; o
       onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
       className={`w-20 text-right font-display text-lg font-bold ${color}`}
     />
+  );
+}
+
+function ConfidenceBadge({ confidence }: { confidence?: number }) {
+  if (confidence == null) return null;
+  const label = confidence >= 90 ? "High" : confidence >= 70 ? "Good" : confidence >= 50 ? "Low" : "Very Low";
+  const color =
+    confidence >= 90 ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" :
+    confidence >= 70 ? "border-primary/30 bg-primary/10 text-primary" :
+    confidence >= 50 ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400" :
+    "border-destructive/30 bg-destructive/10 text-destructive";
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge variant="outline" className={`text-xs gap-1 cursor-help ${color}`}>
+          <Info className="h-3 w-3" /> {label} ({confidence}%)
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-[220px] text-xs">
+        AI confidence in this score based on audio evidence quality. Low confidence means the examiner should review carefully.
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -439,6 +463,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm">{c.name}</span>
+                    <ConfidenceBadge confidence={c.confidence} />
                     {wasOverridden && !isOfficial && (
                       <Badge variant="outline" className="text-xs gap-1 border-blue-500/30 text-blue-600">
                         <PenLine className="h-3 w-3" /> Modified (was {originalScores[i]})
@@ -582,10 +607,10 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         <Card>
           <CardHeader>
             <CardTitle className="font-display text-lg">Transcript</CardTitle>
-            <CardDescription>AI-generated approximate transcription with speaker labels</CardDescription>
+            <CardDescription>AI-generated transcription with speaker labels</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="rounded-lg bg-muted/50 p-4 text-sm leading-relaxed whitespace-pre-wrap">{sharedDraft.transcript}</div>
+            <SpeakerTranscript transcript={sharedDraft.transcript} maxHeight="24rem" />
           </CardContent>
         </Card>
       )}
