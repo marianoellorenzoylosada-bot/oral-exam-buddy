@@ -11,8 +11,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   FileText, CheckCircle2, AlertTriangle, RotateCcw, Printer, ShieldCheck,
-  BookOpen, ExternalLink, Home, Loader2, Download, PenLine, Users,
+  BookOpen, ExternalLink, Home, Loader2, Download, PenLine, Users, Info,
 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { SpeakerTranscript } from "@/components/SpeakerTranscript";
 import { useToast } from "@/hooks/use-toast";
 import { getRecommendations } from "@/lib/practiceData";
 import { supabase } from "@/integrations/supabase/client";
@@ -22,7 +24,7 @@ import { useAuth } from "@/hooks/useAuth";
 export interface AssessmentResult {
   overallBand: string;
   overallScore: number;
-  criteria: { name: string; score: number; maxScore: number; feedback: string }[];
+  criteria: { name: string; score: number; maxScore: number; feedback: string; confidence?: number }[];
   strengths: string[];
   areasForImprovement: string[];
 }
