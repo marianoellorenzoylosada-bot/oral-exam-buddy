@@ -153,7 +153,26 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
               return (
                 <div key={i}>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="font-medium">{c.name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{c.name}</span>
+                      {c.confidence != null && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge variant="outline" className={`text-xs gap-0.5 cursor-help ${
+                              c.confidence >= 90 ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" :
+                              c.confidence >= 70 ? "border-primary/30 bg-primary/10 text-primary" :
+                              c.confidence >= 50 ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400" :
+                              "border-destructive/30 bg-destructive/10 text-destructive"
+                            }`}>
+                              <Info className="h-3 w-3" /> {c.confidence}%
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[200px] text-xs">
+                            AI confidence in this score
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
                     <span className={`font-bold ${pct >= 80 ? "text-emerald-600" : pct >= 50 ? "text-amber-600" : "text-destructive"}`}>
                       {c.score}/{c.maxScore}
                     </span>
@@ -213,9 +232,7 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
         {exam.transcript && (
           <div>
             <h3 className="font-display font-semibold text-sm mb-1">Transcript</h3>
-            <div className="text-xs text-muted-foreground whitespace-pre-wrap rounded-lg bg-muted/50 p-3 max-h-40 overflow-y-auto">
-              {anonymize ? "[Transcript hidden — anonymization enabled]" : exam.transcript}
-            </div>
+            <SpeakerTranscript transcript={exam.transcript} hidden={anonymize} maxHeight="12rem" />
           </div>
         )}
 
