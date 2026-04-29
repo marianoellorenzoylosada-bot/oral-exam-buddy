@@ -1,63 +1,51 @@
+## Add Payments: Institution Licenses and Per-Exam Credits (Paddle)
 
-The user is asking for improvement ideas, not requesting implementation. This is a research/advisory question, so I'll give a focused list rather than a full build plan. Let me think about what's been built and where the real gaps are.
+### Overview
+Integrate Lovable's built-in payments (Paddle) to sell per-exam credit packs and institution-wide yearly licenses. Paddle is Merchant of Record — it handles tax, invoicing, and compliance globally. No monthly fee; 5% + 50¢ per transaction.
 
-**Current state recap**
-- Multi-candidate exams (2–3) with Cambridge criteria + 0–5 scale
-- Batch session mode with in-memory queue
-- Per-candidate draft review, overrides with justification, sign & save
-- Reports (search/filter/group), Progress (radar/trends), PDF exports
-- ElevenLabs Scribe transcription, IndexedDB caching, anonymisation toggle
-- Auth + RLS, question bank, practice link recommendations
+### Step 1 — Enable Paddle (test environment)
+Run the eligibility check, then enable Paddle. A sandbox is created immediately so checkout can be tested without real money. Going live later requires a short Paddle verification.
 
-**Real gaps I'd prioritise**
+### Step 2 — Create products (placeholder pricing, easy to change)
+| Product | Type | Placeholder price | Grants |
+|---|---|---|---|
+| Starter Credit Pack | One-time | $19 | 10 exam analyses |
+| Growth Credit Pack | One-time | $79 | 50 exam analyses |
+| Institution License | Yearly subscription | $499/yr | Unlimited exams for everyone at one institution |
 
-# How the app can be improved
+### Step 3 — Database changes (migration)
+- Add `credits` (integer, default 0) to `profiles`.
+- Create `institution_licenses` table:
+  - `id uuid pk`, `institution text`, `purchased_by uuid`, `expires_at timestamptz`, `paddle_subscription_id text`, `status text`, timestamps.
+  - RLS: a user can read a license row if `profiles.institution` (their own) matches `institution_licenses.institution`. Only service role writes.
+- Add helper SQL function `has_active_license(_user_id uuid)` (SECURITY DEFINER) that checks if the user's institution has an active, non-expired license — used by the edge function and UI.
 
-Grouped by impact. Pick whichever resonates and I'll plan it in detail.
+### Step 4 — Webhook edge function `handle-paddle-webhook`
+- Verifies Paddle signature, parses event.
+- On successful one-time purchase → increment `profiles.credits` by the pack size for the buyer.
+- On subscription created/renewed → upsert `institution_licenses` for the buyer's institution with new `expires_at`.
+- On subscription cancelled/expired → mark license `status = 'cancelled'`.
+- Uses service role key; deployed automatically.
 
-## 1. Reliability & data safety (highest value before coworker validation)
-- **Persist the batch queue to IndexedDB** — right now a page reload during a long session loses all unanalysed recordings. Critical for real exam days.
-- **Auto-save draft reports** — overrides and accepted strengths are lost if the browser crashes before "Confirm & Sign".
-- **Resumable uploads for long audio** — a 30-min exam at poor connectivity can fail the single edge-function call. Chunked upload + background analysis would fix this.
-- **Edge-function timeout guard** — large audio + long handbook PDFs can exceed limits. Add explicit duration/size pre-checks with friendly errors.
+### Step 5 — Pricing page (`/pricing`)
+- New route + sidebar link "Pricing".
+- Shows the 3 plans with Paddle checkout buttons.
+- Header chip shows current credit balance and (if applicable) institution license status + renewal date.
 
-## 2. Examiner workflow
-- **Class roster manager** — pre-load student lists per institution/group and pick names from a dropdown instead of re-typing every session. Also prevents typos that fragment the Progress view.
-- **Live note-taking during recording** — a side panel where the examiner jots timestamps/observations that get attached to the transcript and shown to the AI.
-- **Pause / resume between Parts 1–4** — Cambridge Speaking has 4 parts; let the examiner mark part boundaries so the AI can score each part's Interactive Communication separately.
-- **Re-analyze with adjusted context** — if the AI misidentifies a speaker or misses context, allow re-running analysis with a corrected prompt without re-recording.
+### Step 6 — Pre-flight gate in exam analysis
+- Before calling `analyze-exam`, check: institution license active OR `credits > 0`.
+- If neither → show a friendly modal "You're out of credits" with a Pricing CTA; block the upload.
+- After a successful analysis (and no active license), decrement `credits` by 1 in the edge function.
 
-## 3. Assessment quality
-- **Speaker-labelled transcript view** — show the diarised transcript with colour-coded speakers (Examiner / Cand A / Cand B / Cand C) so teachers can verify the AI mapped voices correctly before trusting scores.
-- **Confidence indicators per criterion** — have the AI return a confidence value; flag low-confidence scores for mandatory teacher review.
-- **Inter-rater calibration mode** — two examiners score the same recording independently; the app shows the gap and a reconciliation view. Great for departmental moderation.
-- **Combined multi-candidate PDF** — one document per session with all candidates side-by-side, plus a session summary header. Currently each candidate exports separately.
+### Step 7 — Tracking who subscribed
+Two layers, automatically kept in sync:
+- **Paddle Dashboard** — full customer/subscription/revenue management, renewals, refunds, invoices.
+- **In-app** — `profiles.credits` per user; `institution_licenses` per institution. Optional simple "Billing" view in Settings showing current balance, license status, and a link to manage their Paddle subscription (Paddle-hosted customer portal).
 
-## 4. Reporting & analytics
-- **Group/cohort dashboards** — average band per criterion across a group, distribution charts, identify weakest skills for whole-class teaching focus.
-- **Email report to candidate/parent** — one click to send the PDF (with anonymisation rules respected) via Resend.
-- **Exportable CSV of all scores** — for institutional reporting and spreadsheets.
-- **Trend alerts** — flag candidates whose scores drop ≥1 band between sessions.
+### Costs to expect (recap)
+- Paddle: 5% + 50¢ per transaction. No monthly fee.
+- Lovable Cloud: $25/mo free balance.
+- Lovable AI Gateway: $1/mo free balance, then usage-based.
 
-## 5. Collaboration & governance
-- **Shared institution workspace** — multiple examiners in one institution see the same roster and reports (with role-based permissions: examiner / head of department / admin).
-- **Audit log** — who changed which score, when, with the justification. Required in many exam centres.
-- **Approval workflow** — drafts go from "examiner signed" → "moderator approved" before being marked official.
-
-## 6. UX polish
-- **Keyboard shortcuts** during recording (space = pause, N = next exam in batch).
-- **Audio waveform + scrubber** on the recording panel and report detail, with click-to-jump synced to the transcript.
-- **Mobile/tablet recording layout** — examiners often use iPads; the current layout works but could be optimised.
-- **Onboarding tour** — first-time users get a 4-step walkthrough of New Exam → Batch → Reports → Progress.
-
-## 7. Internationalisation
-- App UI is currently English-only despite supporting 6 exam languages. Adding i18n (ES/PT/DE/FR/IT) would let non-English-speaking examiners use the tool comfortably.
-
----
-
-**My top 3 recommendations to do next**, in order:
-1. Persist batch queue + auto-save drafts (reliability).
-2. Class roster manager (huge daily time saver, fixes Progress fragmentation).
-3. Speaker-labelled transcript + confidence indicators (trust in AI scores — essential before coworker validation).
-
-Tell me which area(s) you want and I'll come back with a concrete build plan.
+### What I need from you to start
+Just confirm and I'll: (1) run the eligibility check, (2) enable Paddle, (3) create the 3 placeholder products, (4) ship the schema + webhook + pricing page + credit gate. Pricing/quantities can be edited any time afterward.
