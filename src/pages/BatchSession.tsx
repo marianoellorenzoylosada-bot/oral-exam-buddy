@@ -119,7 +119,8 @@ export default function BatchSessionPage() {
   const [reviewItemId, setReviewItemId] = useState<string | null>(null);
 
   const langLabel = useMemo(() => LANGUAGES.find(l => l.value === language)?.label ?? "English", [language]);
-  const examMeta = useMemo(() => CAMBRIDGE_EXAMS.find(e => e.value === level), [level]);
+  const examLevels = useMemo(() => getExamLevels(language), [language]);
+  const examMeta = useMemo(() => ({ value: level, label: getExamLabel(level, language) }), [level, language]);
 
   const handleFileUpload = useCallback(async (file: File, type: "booklet" | "rubric") => {
     const text = await extractTextFromFile(file);
