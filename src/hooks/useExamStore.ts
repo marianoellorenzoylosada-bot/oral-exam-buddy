@@ -13,26 +13,26 @@ export interface ExamContext {
   audioBlob: Blob | null;
 }
 
-const defaultContext: ExamContext = {
+const buildDefaultContext = (): ExamContext => ({
   title: "",
-  institution: "",
+  institution: typeof window !== "undefined" ? localStorage.getItem("oralassess-institution") ?? "" : "",
   group: "",
-  language: "en",
+  language: typeof window !== "undefined" ? localStorage.getItem("oralassess-lang") ?? "en" : "en",
   candidateNames: ["", ""],
   bookletFile: null,
   bookletText: "",
   rubricFile: null,
   rubricText: "",
   audioBlob: null,
-};
+});
 
 export function useExamStore() {
-  const [exam, setExam] = useState<ExamContext>(defaultContext);
+  const [exam, setExam] = useState<ExamContext>(() => buildDefaultContext());
 
   const update = (partial: Partial<ExamContext>) =>
     setExam((prev) => ({ ...prev, ...partial }));
 
-  const reset = () => setExam(defaultContext);
+  const reset = () => setExam(buildDefaultContext());
 
   return { exam, update, reset };
 }
