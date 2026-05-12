@@ -18,22 +18,9 @@ import { LiveTranscript } from "@/components/LiveTranscript";
 import { checkAudioSize, checkAudioDuration, checkContextSize } from "@/lib/uploadGuards";
 import { GroupPicker } from "@/components/GroupPicker";
 import { CandidatePicker } from "@/components/CandidatePicker";
+import { SUPPORTED_LANGUAGES, getExamLevels } from "@/lib/examLevels";
 
-const LANGUAGES = [
-  { value: "en", label: "English" },
-  { value: "es", label: "Spanish" },
-  { value: "pt", label: "Portuguese" },
-  { value: "fr", label: "French" },
-  { value: "it", label: "Italian" },
-];
-
-const EXAM_LEVELS = [
-  { value: "A2", label: "A2 Key (KET)" },
-  { value: "B1", label: "B1 Preliminary (PET)" },
-  { value: "B2", label: "B2 First (FCE)" },
-  { value: "C1", label: "C1 Advanced (CAE)" },
-  { value: "C2", label: "C2 Proficiency (CPE)" },
-];
+const LANGUAGES = SUPPORTED_LANGUAGES;
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60).toString().padStart(2, "0");
@@ -124,7 +111,8 @@ export default function NewExamPage() {
   const [liveTranscript, setLiveTranscript] = useState("");
   const [groupId, setGroupId] = useState<string | null>(null);
 
-  const selectedLevel = EXAM_LEVELS.find(l => l.value === exam.title);
+  const examLevels = getExamLevels(exam.language);
+  const selectedLevel = examLevels.find(l => l.value === exam.title);
   const selectedLang = LANGUAGES.find(l => l.value === exam.language);
 
   const handleFileUpload = useCallback(async (file: File, type: "booklet" | "rubric") => {
@@ -270,7 +258,7 @@ export default function NewExamPage() {
                   <Select value={exam.title} onValueChange={(v) => update({ title: v })}>
                     <SelectTrigger><SelectValue placeholder="Select level…" /></SelectTrigger>
                     <SelectContent>
-                      {EXAM_LEVELS.map((l) => (
+                      {examLevels.map((l) => (
                         <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
                       ))}
                     </SelectContent>

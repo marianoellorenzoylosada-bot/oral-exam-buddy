@@ -20,14 +20,9 @@ import { useToast } from "@/hooks/use-toast";
 import { DraftReport } from "@/components/DraftReport";
 import { GroupPicker } from "@/components/GroupPicker";
 import { CandidatePicker } from "@/components/CandidatePicker";
+import { SUPPORTED_LANGUAGES, getExamLevels, getExamLabel } from "@/lib/examLevels";
 
-const LANGUAGES = [
-  { value: "en", label: "English" },
-  { value: "es", label: "Spanish" },
-  { value: "pt", label: "Portuguese" },
-  { value: "fr", label: "French" },
-  { value: "it", label: "Italian" },
-];
+const LANGUAGES = SUPPORTED_LANGUAGES;
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60).toString().padStart(2, "0");
@@ -124,7 +119,8 @@ export default function BatchSessionPage() {
   const [reviewItemId, setReviewItemId] = useState<string | null>(null);
 
   const langLabel = useMemo(() => LANGUAGES.find(l => l.value === language)?.label ?? "English", [language]);
-  const examMeta = useMemo(() => CAMBRIDGE_EXAMS.find(e => e.value === level), [level]);
+  const examLevels = useMemo(() => getExamLevels(language), [language]);
+  const examMeta = useMemo(() => ({ value: level, label: getExamLabel(level, language) }), [level, language]);
 
   const handleFileUpload = useCallback(async (file: File, type: "booklet" | "rubric") => {
     const text = await extractTextFromFile(file);
@@ -225,11 +221,11 @@ export default function BatchSessionPage() {
             </CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>Cambridge Exam</Label>
+                <Label>Exam</Label>
                 <Select value={level} onValueChange={setLevel} disabled={contextLocked}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {CAMBRIDGE_EXAMS.map(e => (
+                    {examLevels.map(e => (
                       <SelectItem key={e.value} value={e.value}>{e.label}</SelectItem>
                     ))}
                   </SelectContent>
