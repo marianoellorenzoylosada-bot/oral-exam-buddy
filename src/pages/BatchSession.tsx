@@ -20,14 +20,9 @@ import { useToast } from "@/hooks/use-toast";
 import { DraftReport } from "@/components/DraftReport";
 import { GroupPicker } from "@/components/GroupPicker";
 import { CandidatePicker } from "@/components/CandidatePicker";
+import { SUPPORTED_LANGUAGES, getExamLevels, getExamLabel } from "@/lib/examLevels";
 
-const LANGUAGES = [
-  { value: "en", label: "English" },
-  { value: "es", label: "Spanish" },
-  { value: "pt", label: "Portuguese" },
-  { value: "fr", label: "French" },
-  { value: "it", label: "Italian" },
-];
+const LANGUAGES = SUPPORTED_LANGUAGES;
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60).toString().padStart(2, "0");
