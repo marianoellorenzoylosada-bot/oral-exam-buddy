@@ -109,8 +109,8 @@ export default function BatchSessionPage() {
 
   // Shared exam context
   const [level, setLevel] = useState<string>("B2");
-  const [language, setLanguage] = useState("en");
-  const [institution, setInstitution] = useState("");
+  const [language, setLanguage] = useState(() => localStorage.getItem("oralassess-lang") ?? "en");
+  const [institution, setInstitution] = useState(() => localStorage.getItem("oralassess-institution") ?? "");
   const [group, setGroup] = useState("");
   const [groupId, setGroupId] = useState<string | null>(null);
   const [bookletFile, setBookletFile] = useState<File | null>(null);

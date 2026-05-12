@@ -26,7 +26,7 @@ export default function SettingsPage() {
     localStorage.setItem("oralassess-lang", defaultLang);
     localStorage.setItem("oralassess-institution", institution);
     localStorage.setItem("oralassess-examiner", examinerName);
-    toast({ title: "Settings saved", description: "Your preferences have been updated." });
+    toast({ title: "Settings saved", description: "Defaults will apply to new exams you start from now on." });
   };
 
   return (
