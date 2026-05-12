@@ -111,7 +111,8 @@ export default function NewExamPage() {
   const [liveTranscript, setLiveTranscript] = useState("");
   const [groupId, setGroupId] = useState<string | null>(null);
 
-  const selectedLevel = EXAM_LEVELS.find(l => l.value === exam.title);
+  const examLevels = getExamLevels(exam.language);
+  const selectedLevel = examLevels.find(l => l.value === exam.title);
   const selectedLang = LANGUAGES.find(l => l.value === exam.language);
 
   const handleFileUpload = useCallback(async (file: File, type: "booklet" | "rubric") => {
