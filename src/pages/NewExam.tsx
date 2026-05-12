@@ -18,22 +18,9 @@ import { LiveTranscript } from "@/components/LiveTranscript";
 import { checkAudioSize, checkAudioDuration, checkContextSize } from "@/lib/uploadGuards";
 import { GroupPicker } from "@/components/GroupPicker";
 import { CandidatePicker } from "@/components/CandidatePicker";
+import { SUPPORTED_LANGUAGES, getExamLevels } from "@/lib/examLevels";
 
-const LANGUAGES = [
-  { value: "en", label: "English" },
-  { value: "es", label: "Spanish" },
-  { value: "pt", label: "Portuguese" },
-  { value: "fr", label: "French" },
-  { value: "it", label: "Italian" },
-];
-
-const EXAM_LEVELS = [
-  { value: "A2", label: "A2 Key (KET)" },
-  { value: "B1", label: "B1 Preliminary (PET)" },
-  { value: "B2", label: "B2 First (FCE)" },
-  { value: "C1", label: "C1 Advanced (CAE)" },
-  { value: "C2", label: "C2 Proficiency (CPE)" },
-];
+const LANGUAGES = SUPPORTED_LANGUAGES;
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60).toString().padStart(2, "0");
