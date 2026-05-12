@@ -221,11 +221,11 @@ export default function BatchSessionPage() {
             </CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>Cambridge Exam</Label>
+                <Label>Exam</Label>
                 <Select value={level} onValueChange={setLevel} disabled={contextLocked}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {CAMBRIDGE_EXAMS.map(e => (
+                    {examLevels.map(e => (
                       <SelectItem key={e.value} value={e.value}>{e.label}</SelectItem>
                     ))}
                   </SelectContent>
