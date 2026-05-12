@@ -258,7 +258,7 @@ export default function NewExamPage() {
                   <Select value={exam.title} onValueChange={(v) => update({ title: v })}>
                     <SelectTrigger><SelectValue placeholder="Select level…" /></SelectTrigger>
                     <SelectContent>
-                      {EXAM_LEVELS.map((l) => (
+                      {examLevels.map((l) => (
                         <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
                       ))}
                     </SelectContent>
