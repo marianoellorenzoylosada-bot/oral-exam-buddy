@@ -32,6 +32,8 @@ export type Database = {
           overall_band: string
           overall_score: number
           phase_marks: Json | null
+          previous_analyses: Json
+          regrade_count: number
           status: string
           strengths: Json
           title: string
@@ -56,6 +58,8 @@ export type Database = {
           overall_band: string
           overall_score: number
           phase_marks?: Json | null
+          previous_analyses?: Json
+          regrade_count?: number
           status?: string
           strengths?: Json
           title: string
@@ -80,6 +84,8 @@ export type Database = {
           overall_band?: string
           overall_score?: number
           phase_marks?: Json | null
+          previous_analyses?: Json
+          regrade_count?: number
           status?: string
           strengths?: Json
           title?: string

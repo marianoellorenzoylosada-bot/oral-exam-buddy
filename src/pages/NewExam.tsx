@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Mic, Square, Pause, Play, Upload, FileText, BookOpen, Trash2, Clock, Users, ExternalLink, Info, Loader2, AlertCircle, Plus, X } from "lucide-react";
+import { Mic, Square, Pause, Play, Upload, FileText, BookOpen, Trash2, Clock, Users, ExternalLink, Info, Loader2, AlertCircle, Plus, X, WifiOff } from "lucide-react";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { useExamStore } from "@/hooks/useExamStore";
 
@@ -23,6 +23,8 @@ import { checkAudioSize, checkAudioDuration, checkContextSize } from "@/lib/uplo
 import { GroupPicker } from "@/components/GroupPicker";
 import { CandidatePicker } from "@/components/CandidatePicker";
 import { SUPPORTED_LANGUAGES, getExamLevels } from "@/lib/examLevels";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { saveDraft, loadDraft, clearDraft } from "@/lib/examDraftDb";
 
 const LANGUAGES = SUPPORTED_LANGUAGES;
 
@@ -109,6 +111,7 @@ export default function NewExamPage() {
   const { exam, update, reset } = useExamStore();
   const recorder = useAudioRecorder();
   const { toast } = useToast();
+  const online = useOnlineStatus();
   const [activeTab, setActiveTab] = useState("setup");
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzingStep, setAnalyzingStep] = useState<"" | "transcribing" | "scoring">("");
@@ -118,10 +121,17 @@ export default function NewExamPage() {
   const [phaseMarks, setPhaseMarks] = useState<PhaseMark[]>([]);
   const [quickTags, setQuickTags] = useState<QuickTag[]>([]);
   const [groupId, setGroupId] = useState<string | null>(null);
+  // Offline support: blob restored from a previous session
+  const [restoredBlob, setRestoredBlob] = useState<Blob | null>(null);
+  const [restoredDuration, setRestoredDuration] = useState<number>(0);
+  const [pendingAnalysis, setPendingAnalysis] = useState(false);
+  const draftRestoredRef = useRef(false);
 
   const examLevels = getExamLevels(exam.language);
   const selectedLevel = examLevels.find(l => l.value === exam.title);
   const selectedLang = LANGUAGES.find(l => l.value === exam.language);
+
+  const audioBlobForSubmit = recorder.audioBlob ?? restoredBlob;
 
   const handleFileUpload = useCallback(async (file: File, type: "booklet" | "rubric") => {
     const text = await extractTextFromFile(file);
@@ -152,19 +162,38 @@ export default function NewExamPage() {
   };
 
   const handleSubmitForAnalysis = useCallback(async () => {
-    if (!recorder.audioBlob) return;
+    const blob = recorder.audioBlob ?? restoredBlob;
+    const dur = recorder.audioBlob ? recorder.duration : restoredDuration;
+    if (!blob) return;
     if (!exam.title) {
       toast({ title: "Missing exam level", description: "Please select a CEFR level in the Setup tab.", variant: "destructive" });
       return;
     }
 
+    // Offline guard — defer the analysis and let the auto-retry effect run it later.
+    if (!navigator.onLine) {
+      setPendingAnalysis(true);
+      try {
+        await saveDraft({
+          pendingAnalysis: true,
+          title: exam.title, language: exam.language, institution: exam.institution,
+          group: exam.group, candidateNames: exam.candidateNames,
+          bookletText: exam.bookletText, rubricText: exam.rubricText,
+          audioBlob: blob, duration: dur,
+          liveTranscript, scribeWords, phaseMarks, quickTags,
+        });
+      } catch { /* ignore */ }
+      toast({ title: "You're offline", description: "Analysis is queued and will run automatically when you reconnect." });
+      return;
+    }
+
     // Pre-flight guards: catch oversized recordings/context before the upload starts.
-    const sizeCheck = checkAudioSize(recorder.audioBlob);
+    const sizeCheck = checkAudioSize(blob);
     if (!sizeCheck.ok) {
       toast({ title: "Recording too large", description: sizeCheck.reason, variant: "destructive" });
       return;
     }
-    const durCheck = checkAudioDuration(recorder.duration);
+    const durCheck = checkAudioDuration(dur);
     if (!durCheck.ok) {
       toast({ title: "Recording too long", description: durCheck.reason, variant: "destructive" });
       return;
@@ -182,7 +211,7 @@ export default function NewExamPage() {
       let words: ScribeWord[] = scribeWords;
       if (transcriptText.split(/\s+/).filter(Boolean).length < 30) {
         setAnalyzingStep("transcribing");
-        const out = await transcribeBlob(recorder.audioBlob);
+        const out = await transcribeBlob(blob);
         transcriptText = out.transcript;
         words = out.words;
         setScribeWords(words);
@@ -211,6 +240,9 @@ export default function NewExamPage() {
       // Make sure the transcript on the report is the verbatim one we sent.
       const enriched = { ...(data as MultiCandidateResult), transcript: transcriptText };
       setReport(enriched);
+      setPendingAnalysis(false);
+      // Successful analysis — clear persisted draft.
+      clearDraft().catch(() => undefined);
     } catch (err: any) {
       console.error("Analysis error:", err);
       toast({
@@ -222,15 +254,73 @@ export default function NewExamPage() {
       setAnalyzing(false);
       setAnalyzingStep("");
     }
-  }, [recorder.audioBlob, exam, selectedLang, toast, liveTranscript, scribeWords, quickTags]);
+  }, [recorder.audioBlob, recorder.duration, restoredBlob, restoredDuration, exam, selectedLang, toast, liveTranscript, scribeWords, quickTags, phaseMarks]);
 
   const handleReset = useCallback(() => {
     reset();
     recorder.reset();
     setReport(null);
     setLiveTranscript("");
+    setRestoredBlob(null);
+    setRestoredDuration(0);
+    setPendingAnalysis(false);
+    clearDraft().catch(() => undefined);
     setActiveTab("setup");
   }, [reset, recorder]);
+
+  // ── Draft restore on mount ─────────────────────────────────────────────
+  useEffect(() => {
+    if (draftRestoredRef.current) return;
+    draftRestoredRef.current = true;
+    loadDraft().then((draft) => {
+      if (!draft || !draft.audioBlob) return;
+      toast({
+        title: draft.pendingAnalysis ? "Recovered offline session" : "Previous draft found",
+        description: draft.pendingAnalysis
+          ? "Restoring your unsubmitted recording so analysis can run when you reconnect."
+          : "Restoring your last unsubmitted recording.",
+      });
+      update({
+        title: draft.title, language: draft.language, institution: draft.institution,
+        group: draft.group, candidateNames: draft.candidateNames,
+        bookletText: draft.bookletText, rubricText: draft.rubricText,
+      });
+      setRestoredBlob(draft.audioBlob);
+      setRestoredDuration(draft.duration || 0);
+      setLiveTranscript(draft.liveTranscript || "");
+      setScribeWords(draft.scribeWords || []);
+      setPhaseMarks(draft.phaseMarks || []);
+      setQuickTags(draft.quickTags || []);
+      setPendingAnalysis(!!draft.pendingAnalysis);
+      setActiveTab("record");
+    });
+  }, [toast, update]);
+
+  // ── Auto-save draft once a recording has been captured ────────────────
+  useEffect(() => {
+    const blob = recorder.audioBlob ?? restoredBlob;
+    if (!blob) return;
+    const handle = setTimeout(() => {
+      saveDraft({
+        pendingAnalysis,
+        title: exam.title, language: exam.language, institution: exam.institution,
+        group: exam.group, candidateNames: exam.candidateNames,
+        bookletText: exam.bookletText, rubricText: exam.rubricText,
+        audioBlob: blob,
+        duration: recorder.audioBlob ? recorder.duration : restoredDuration,
+        liveTranscript, scribeWords, phaseMarks, quickTags,
+      });
+    }, 800);
+    return () => clearTimeout(handle);
+  }, [recorder.audioBlob, recorder.duration, restoredBlob, restoredDuration, exam, liveTranscript, scribeWords, phaseMarks, quickTags, pendingAnalysis]);
+
+  // ── Auto-retry pending analysis when we come back online ───────────────
+  useEffect(() => {
+    if (online && pendingAnalysis && !analyzing) {
+      toast({ title: "Back online", description: "Resuming queued analysis…" });
+      handleSubmitForAnalysis();
+    }
+  }, [online, pendingAnalysis, analyzing, handleSubmitForAnalysis, toast]);
 
   // Show draft report if available
   if (report) {
@@ -544,15 +634,33 @@ export default function NewExamPage() {
                   </div>
                 )}
 
+                {/* Pending offline analysis notice */}
+                {pendingAnalysis && (
+                  <div className="w-full max-w-md rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
+                    <WifiOff className="h-4 w-4 shrink-0" />
+                    Analysis queued — will run automatically when you're back online.
+                  </div>
+                )}
+
+                {/* Restored draft notice */}
+                {restoredBlob && !recorder.audioBlob && (
+                  <div className="w-full max-w-md rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+                    <p className="font-medium">Recovered recording ready ({Math.floor(restoredDuration / 60)}:{String(restoredDuration % 60).padStart(2, "0")})</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Submit below, or use "Record Again" to discard and re-record.</p>
+                  </div>
+                )}
+
                 <div className="w-full max-w-md flex justify-between">
                   <Button variant="outline" onClick={() => setActiveTab("context")}>← Back</Button>
                   <Button
-                    disabled={recorder.state !== "stopped" || analyzing || !exam.title}
+                    disabled={(!audioBlobForSubmit || (recorder.state !== "stopped" && !restoredBlob)) || analyzing || !exam.title}
                     onClick={handleSubmitForAnalysis}
                     className="gap-2"
                   >
                     {analyzing ? (
                       <><Loader2 className="h-4 w-4 animate-spin" /> {analyzingStep === "transcribing" ? "Transcribing…" : "Scoring…"}</>
+                    ) : !online ? (
+                      <><WifiOff className="h-4 w-4" /> Queue for analysis</>
                     ) : (
                       "Submit for Analysis →"
                     )}

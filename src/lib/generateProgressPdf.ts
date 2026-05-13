@@ -3,6 +3,7 @@ import autoTable from "jspdf-autotable";
 
 interface ProgressPdfData {
   candidateName: string | null; // null = all candidates
+  groupName?: string | null;
   totalExams: number;
   avgScore: number;
   bestScore: number;
@@ -15,6 +16,7 @@ interface ProgressPdfData {
     band: string;
   }[];
   criteriaAverages: { name: string; average: number }[];
+  studentBreakdown?: { name: string; avg: number; exams: number }[];
 }
 
 const BRAND: [number, number, number] = [30, 64, 175];
@@ -52,7 +54,12 @@ export function generateProgressPdf(data: ProgressPdfData) {
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
-  doc.text(data.candidateName ? `Progress: ${data.candidateName}` : "Progress: All Candidates", margin, y);
+  const heading = data.groupName
+    ? `Group Progress: ${data.groupName}`
+    : data.candidateName
+      ? `Progress: ${data.candidateName}`
+      : "Progress: All Candidates";
+  doc.text(heading, margin, y);
   y += 10;
 
   // Summary stats
@@ -88,6 +95,32 @@ export function generateProgressPdf(data: ProgressPdfData) {
     y = (doc as any).lastAutoTable.finalY + 8;
   }
 
+  // Group student breakdown table
+  if (data.studentBreakdown && data.studentBreakdown.length > 0) {
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("Students in this group", margin, y);
+    y += 2;
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margin, right: margin },
+      head: [["Student", "Exams", "Average Score"]],
+      body: data.studentBreakdown.map((s) => [s.name, String(s.exams), `${s.avg.toFixed(2)} / 5`]),
+      headStyles: { fillColor: BRAND, fontSize: 8, fontStyle: "bold" },
+      bodyStyles: { fontSize: 8, cellPadding: 3 },
+      columnStyles: { 1: { halign: "center" }, 2: { halign: "center" } },
+      didParseCell(hookData) {
+        if (hookData.section === "body" && hookData.column.index === 2) {
+          const s = data.studentBreakdown![hookData.row.index];
+          if (s) hookData.cell.styles.textColor = scoreColor((s.avg / 5) * 100);
+        }
+      },
+    });
+    y = (doc as any).lastAutoTable.finalY + 8;
+  }
+
   // Exams table
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(12);
@@ -115,6 +148,6 @@ export function generateProgressPdf(data: ProgressPdfData) {
     doc.text(`${p} / ${totalPages}`, pageW - margin, doc.internal.pageSize.getHeight() - 8, { align: "right" });
   }
 
-  const label = data.candidateName?.replace(/\s+/g, "_") ?? "All";
+  const label = (data.groupName || data.candidateName || "All").replace(/\s+/g, "_");
   doc.save(`Progress_${label}_${today.replace(/\//g, "-")}.pdf`);
 }

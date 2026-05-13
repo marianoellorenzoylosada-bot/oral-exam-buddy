@@ -3,8 +3,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import {
   DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  Dialog, DialogFooter,
 } from "@/components/ui/dialog";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -13,8 +16,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
+  Accordion, AccordionContent, AccordionItem, AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
   Printer, CheckCircle2, AlertTriangle, ShieldCheck, BookOpen,
   ExternalLink, Download, Trash2, EyeOff, Volume2, Info, Clock, GraduationCap,
+  RefreshCw, History, Loader2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getRecommendations } from "@/lib/practiceData";
@@ -50,6 +57,8 @@ export type Exam = {
   audio_path?: string | null;
   audio_expires_at?: string | null;
   words_json?: any;
+  previous_analyses?: any;
+  regrade_count?: number | null;
 };
 
 interface Props {
@@ -70,6 +79,16 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioGone, setAudioGone] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Re-grade state
+  const [regradeOpen, setRegradeOpen] = useState(false);
+  const [regrading, setRegrading] = useState(false);
+  const [editTranscript, setEditTranscript] = useState(exam.transcript ?? "");
+  const [editNotes, setEditNotes] = useState(exam.examiner_notes ?? "");
+  const [extraObservation, setExtraObservation] = useState("");
+  const [viewingPrevIdx, setViewingPrevIdx] = useState<number | null>(null);
+
+  const previousAnalyses: any[] = Array.isArray(exam.previous_analyses) ? exam.previous_analyses : [];
 
   useEffect(() => {
     const path = exam.audio_path ?? `${exam.id}.wav`;
@@ -98,11 +117,19 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
     a.addEventListener("timeupdate", onTime);
   };
 
-  const criteria = Array.isArray(exam.criteria)
-    ? (exam.criteria as { name: string; score: number; maxScore: number; feedback: string; confidence?: number }[])
+  // When viewing a previous version, swap displayed analysis (read-only).
+  const viewing = viewingPrevIdx != null ? previousAnalyses[viewingPrevIdx] : null;
+  const displayedCriteria = viewing?.criteria ?? exam.criteria;
+  const displayedStrengths = viewing?.strengths ?? exam.strengths;
+  const displayedImprovements = viewing?.areas_for_improvement ?? exam.areas_for_improvement;
+  const displayedBand = viewing?.overall_band ?? exam.overall_band;
+  const displayedScore = viewing?.overall_score ?? exam.overall_score;
+
+  const criteria = Array.isArray(displayedCriteria)
+    ? (displayedCriteria as { name: string; score: number; maxScore: number; feedback: string; confidence?: number }[])
     : [];
-  const strengths = Array.isArray(exam.strengths) ? (exam.strengths as string[]) : [];
-  const improvements = Array.isArray(exam.areas_for_improvement) ? (exam.areas_for_improvement as string[]) : [];
+  const strengths = Array.isArray(displayedStrengths) ? (displayedStrengths as string[]) : [];
+  const improvements = Array.isArray(displayedImprovements) ? (displayedImprovements as string[]) : [];
   const recommendations = getRecommendations(criteria, exam.level_code, 2);
 
   const displayName = anonymize ? mask(exam.candidate_name) : (exam.candidate_name || null);
@@ -151,6 +178,76 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
     }
   };
 
+  const handleRegrade = async () => {
+    if (editTranscript.trim().split(/\s+/).filter(Boolean).length < 30) {
+      toast({ title: "Transcript too short", description: "Need at least 30 words to re-analyze.", variant: "destructive" });
+      return;
+    }
+    setRegrading(true);
+    try {
+      // 1. Snapshot current analysis
+      const snapshot = {
+        regraded_at: new Date().toISOString(),
+        overall_band: exam.overall_band,
+        overall_score: exam.overall_score,
+        criteria: exam.criteria,
+        strengths: exam.strengths,
+        areas_for_improvement: exam.areas_for_improvement,
+        examiner_notes: exam.examiner_notes,
+        transcript: exam.transcript,
+      };
+      const newHistory = [snapshot, ...previousAnalyses];
+
+      // 2. Build optional examiner tag from extra observation
+      const tags = extraObservation.trim()
+        ? [{ atSec: 0, candidate: "?", label: extraObservation.trim() }]
+        : [];
+
+      // 3. Re-invoke analysis
+      const { data, error } = await supabase.functions.invoke("analyze-exam", {
+        body: {
+          level: exam.level_code,
+          language: langLabel[exam.language] || exam.language,
+          candidateNames: exam.candidate_name ? [exam.candidate_name] : ["Candidate A"],
+          transcript: editTranscript,
+          examinerTags: tags,
+        },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+
+      // analyze-exam returns { candidates: [...], examinerNotes }. Use first candidate.
+      const first = (data as any).candidates?.[0];
+      if (!first) throw new Error("No analysis returned.");
+
+      const { error: updErr } = await supabase
+        .from("exams")
+        .update({
+          overall_band: first.overallBand,
+          overall_score: first.overallScore,
+          criteria: first.criteria,
+          strengths: first.strengths,
+          areas_for_improvement: first.areasForImprovement,
+          transcript: editTranscript,
+          examiner_notes: editNotes,
+          previous_analyses: newHistory as any,
+          regrade_count: (exam.regrade_count ?? 0) + 1,
+        })
+        .eq("id", exam.id);
+      if (updErr) throw updErr;
+
+      toast({ title: "Re-analysis complete", description: "Previous version saved to history." });
+      setRegradeOpen(false);
+      setExtraObservation("");
+      queryClient.invalidateQueries({ queryKey: ["exams-reports"] });
+      onClose();
+    } catch (err: any) {
+      toast({ title: "Re-analysis failed", description: err.message, variant: "destructive" });
+    } finally {
+      setRegrading(false);
+    }
+  };
+
   return (
     <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
       <DialogHeader>
@@ -162,6 +259,11 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
               <EyeOff className="h-3 w-3" /> Anonymized
             </Badge>
           )}
+          {(exam.regrade_count ?? 0) > 0 && (
+            <Badge variant="secondary" className="gap-1 text-xs">
+              <RefreshCw className="h-3 w-3" /> Re-graded {exam.regrade_count}×
+            </Badge>
+          )}
         </DialogTitle>
         <DialogDescription>
           {displayName && <span className="font-medium">{displayName} · </span>}
@@ -170,20 +272,57 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
       </DialogHeader>
 
       <div className="space-y-5 mt-2">
+        {viewing && (
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400 flex items-center justify-between">
+            <span>Viewing previous version from {new Date(viewing.regraded_at).toLocaleString()}</span>
+            <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => setViewingPrevIdx(null)}>Back to current</Button>
+          </div>
+        )}
+
         {/* Overall */}
         <div className="flex items-center gap-4 rounded-lg border border-primary/20 bg-primary/5 p-4">
           <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <span className="font-display text-2xl font-bold">{exam.overall_band}</span>
+            <span className="font-display text-2xl font-bold">{displayedBand}</span>
           </div>
           <div>
             <p className="text-sm text-muted-foreground">Overall Score</p>
-            <p className="font-display text-xl font-bold">{Number(exam.overall_score).toFixed(1)}/5.0</p>
+            <p className="font-display text-xl font-bold">{Number(displayedScore).toFixed(1)}/5.0</p>
             <div className="flex gap-2 mt-1">
               <Badge variant="secondary">{exam.level_code}</Badge>
               <Badge variant="outline">{langLabel[exam.language] || exam.language}</Badge>
             </div>
           </div>
         </div>
+
+        {/* Version history */}
+        {previousAnalyses.length > 0 && (
+          <Accordion type="single" collapsible>
+            <AccordionItem value="history" className="border rounded-lg px-3">
+              <AccordionTrigger className="text-sm font-display py-2 hover:no-underline">
+                <span className="flex items-center gap-2">
+                  <History className="h-4 w-4 text-muted-foreground" />
+                  Version history ({previousAnalyses.length})
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-1.5 pb-2">
+                  {previousAnalyses.map((p: any, i: number) => (
+                    <div key={i} className="flex items-center justify-between rounded-md border bg-muted/20 px-2.5 py-1.5 text-xs">
+                      <div>
+                        <span className="font-medium">{p.overall_band}</span>
+                        <span className="text-muted-foreground"> · {Number(p.overall_score).toFixed(1)}/5</span>
+                        <span className="text-muted-foreground ml-2">{new Date(p.regraded_at).toLocaleString()}</span>
+                      </div>
+                      <Button size="sm" variant={viewingPrevIdx === i ? "secondary" : "ghost"} className="h-6 text-xs" onClick={() => setViewingPrevIdx(viewingPrevIdx === i ? null : i)}>
+                        {viewingPrevIdx === i ? "Hide" : "View"}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        )}
 
         {/* Audio playback */}
         {audioUrl && !audioGone && (
@@ -351,7 +490,10 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
             </AlertDialogContent>
           </AlertDialog>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap justify-end">
+            <Button variant="outline" size="sm" onClick={() => { setEditTranscript(exam.transcript ?? ""); setEditNotes(exam.examiner_notes ?? ""); setRegradeOpen(true); }} className="gap-2" disabled={viewing != null}>
+              <RefreshCw className="h-4 w-4" /> Re-analyze
+            </Button>
             <Button variant="outline" size="sm" onClick={() => generateReportPdf({
               title: exam.title,
               candidateName: anonymize ? "Anonymous" : (exam.candidate_name || ""),
@@ -359,8 +501,8 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
               group: anonymize ? "" : (exam.group || ""),
               levelCode: exam.level_code,
               language: exam.language,
-              overallBand: exam.overall_band,
-              overallScore: exam.overall_score,
+              overallBand: Number.isNaN(Number(displayedScore)) ? exam.overall_band : String(displayedBand),
+              overallScore: Number(displayedScore),
               criteria,
               strengths,
               areasForImprovement: improvements,
@@ -378,8 +520,8 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
                 candidateName: anonymize ? "Student" : (exam.candidate_name || "Student"),
                 levelCode: exam.level_code,
                 language: langLabel[exam.language] || exam.language,
-                overallBand: exam.overall_band,
-                overallScore: exam.overall_score,
+                overallBand: String(displayedBand),
+                overallScore: Number(displayedScore),
                 criteria,
                 strengths,
                 areasForImprovement: improvements,
@@ -396,6 +538,40 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Re-analyze dialog */}
+      <Dialog open={regradeOpen} onOpenChange={setRegradeOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <RefreshCw className="h-5 w-5 text-primary" /> Re-analyze Exam
+            </DialogTitle>
+            <DialogDescription>
+              Edit the transcript, add notes or extra observations, then run the AI again. The current scores will be saved to version history.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="rg-transcript" className="text-xs">Transcript</Label>
+              <Textarea id="rg-transcript" value={editTranscript} onChange={(e) => setEditTranscript(e.target.value)} className="min-h-[180px] font-mono text-xs" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="rg-notes" className="text-xs">Examiner notes</Label>
+              <Textarea id="rg-notes" value={editNotes} onChange={(e) => setEditNotes(e.target.value)} className="min-h-[60px] text-xs" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="rg-extra" className="text-xs">Additional observation (optional)</Label>
+              <Textarea id="rg-extra" value={extraObservation} onChange={(e) => setExtraObservation(e.target.value)} placeholder="e.g. Candidate was very nervous in the first minute and self-corrected several times" className="min-h-[50px] text-xs" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRegradeOpen(false)} disabled={regrading}>Cancel</Button>
+            <Button onClick={handleRegrade} disabled={regrading} className="gap-2">
+              {regrading ? <><Loader2 className="h-4 w-4 animate-spin" /> Re-analyzing…</> : <><RefreshCw className="h-4 w-4" /> Run analysis</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DialogContent>
   );
 }
