@@ -12,9 +12,17 @@ export interface CalibrationCriterion {
   rationale: string;
 }
 
+export type SpeakingTaskType =
+  | "Interview"
+  | "Collaborative Task"
+  | "Long Turn"
+  | "Discussion"
+  | "Picture Comparison";
+
 export interface CalibrationCase {
   id: string;
   level: "A2" | "B1" | "B2" | "C1" | "C2";
+  taskType: SpeakingTaskType;
   title: string;
   description: string;
   transcript: string;
