@@ -13,9 +13,12 @@ interface LiveTranscriptProps {
 export function LiveTranscript({ isRecording, onTranscriptUpdate }: LiveTranscriptProps) {
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dropped, setDropped] = useState(false);
   const [fullTranscript, setFullTranscript] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const triedRef = useRef(false);
+  const wasConnectedRef = useRef(false);
+  const reconnectAttemptedRef = useRef(false);
 
   const scribe = useScribe({
     modelId: "scribe_v2_realtime",
@@ -45,6 +48,7 @@ export function LiveTranscript({ isRecording, onTranscriptUpdate }: LiveTranscri
         token: data.token,
         microphone: { echoCancellation: true, noiseSuppression: true },
       });
+      setDropped(false);
     } catch (err: any) {
       console.error("Transcription start failed:", err);
       setError(err?.message || "Could not start live transcription.");
@@ -61,9 +65,28 @@ export function LiveTranscript({ isRecording, onTranscriptUpdate }: LiveTranscri
     }
     if (!isRecording) {
       triedRef.current = false;
+      reconnectAttemptedRef.current = false;
+      wasConnectedRef.current = false;
+      setDropped(false);
       if (scribe.isConnected) scribe.disconnect();
     }
   }, [isRecording, scribe, connecting, startTranscription]);
+
+  // Detect a silent disconnect mid-recording: warn the examiner and try ONE silent reconnect.
+  useEffect(() => {
+    if (scribe.isConnected) {
+      wasConnectedRef.current = true;
+      setDropped(false);
+      return;
+    }
+    if (isRecording && wasConnectedRef.current && !connecting) {
+      setDropped(true);
+      if (!reconnectAttemptedRef.current) {
+        reconnectAttemptedRef.current = true;
+        void startTranscription();
+      }
+    }
+  }, [scribe.isConnected, isRecording, connecting, startTranscription]);
 
   const committedTexts = scribe.committedTranscripts?.map((t) => t.text) ?? [];
   const displayText = [...committedTexts, scribe.partialTranscript].filter(Boolean).join(" ");
@@ -107,6 +130,23 @@ export function LiveTranscript({ isRecording, onTranscriptUpdate }: LiveTranscri
         </div>
       )}
 
+      {dropped && !error && (
+        <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
+          <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+          <span className="flex-1">
+            Live captions paused — keep recording. The full audio is still being captured and will be transcribed at the end.
+          </span>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 gap-1 px-2 text-xs text-amber-700 hover:text-amber-800 dark:text-amber-400"
+            onClick={() => { reconnectAttemptedRef.current = false; void startTranscription(); }}
+          >
+            <RefreshCw className="h-3 w-3" /> Retry captions
+          </Button>
+        </div>
+      )}
+
       <div
         ref={scrollRef}
         className="rounded-lg border bg-muted/20 p-4 min-h-[120px] max-h-[240px] overflow-y-auto"
@@ -136,6 +176,10 @@ export function LiveTranscript({ isRecording, onTranscriptUpdate }: LiveTranscri
           {fullTranscript.split(/\s+/).length} words transcribed live
         </p>
       )}
+
+      <p className="text-[11px] leading-snug text-muted-foreground">
+        Live captions are an aid only. The full audio is always recorded and re-transcribed at the end — keep recording even if captions pause.
+      </p>
     </div>
   );
 }
