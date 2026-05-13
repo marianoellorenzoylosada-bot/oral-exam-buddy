@@ -20,6 +20,7 @@ import { getRecommendations } from "@/lib/practiceData";
 import { supabase } from "@/integrations/supabase/client";
 import { generateReportPdf } from "@/lib/generateReportPdf";
 import { useAuth } from "@/hooks/useAuth";
+import { computeWeightedSpeakingScore } from "@/lib/speakingScore";
 
 export interface AssessmentResult {
   overallBand: string;
@@ -204,9 +205,11 @@ export function DraftReport({ result, level, levelCode, language, institution, g
       const next = [...prev];
       const c = { ...next[activeCandidate] };
       c.criteria = c.criteria.map((cr, i) => i === index ? { ...cr, [field]: value } : cr);
-      const total = c.criteria.reduce((s, cr) => s + cr.score, 0);
-      const maxTotal = c.criteria.reduce((s, cr) => s + cr.maxScore, 0);
-      c.overallScore = maxTotal > 0 ? (total / maxTotal) * 5 : 0;
+      // Overall score is computed deterministically by computeWeightedSpeakingScore at render time;
+      // we keep `overallScore` on the draft only as a /5 back-compat field for storage.
+      const weighted = computeWeightedSpeakingScore(c.criteria, levelCode);
+      c.overallScore = Math.round((weighted.percent / 100) * 5 * 10) / 10;
+      c.overallBand = weighted.approxLevel;
       next[activeCandidate] = c;
       return next;
     });
