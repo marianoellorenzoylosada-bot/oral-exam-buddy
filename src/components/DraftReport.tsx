@@ -536,6 +536,14 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         </CardContent>
       </Card>
 
+      {/* Examiner feedback by part */}
+      <PartFeedbackSection
+        levelCode={levelCode}
+        partFeedback={draft.partFeedback}
+        overallSummary={draft.overallSummary}
+        fallbackSummary={sharedDraft.examinerNotes}
+      />
+
       {/* Strengths & Improvements */}
       <div className="grid gap-6 sm:grid-cols-2">
         <Card>
