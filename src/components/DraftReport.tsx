@@ -44,6 +44,8 @@ interface DraftReportProps {
   group?: string;
   candidateNames: string[];
   audioBlob?: Blob | null;
+  scribeWords?: { text: string; start: number; end: number; speaker?: string | null }[];
+  phaseMarks?: { phaseIndex: number; startedAtSec: number }[];
   /** Stable id used to autosave draft edits to localStorage (e.g. batch item id). */
   draftKey?: string;
   onReset: () => void;
@@ -101,7 +103,7 @@ function ConfidenceBadge({ confidence }: { confidence?: number }) {
 
 const COPYRIGHT_TEXT = "© 2026 Int'l Oral Exam Assistant. Evaluation methodology and AI results are subject to teacher supervision.";
 
-export function DraftReport({ result, level, levelCode, language, institution, group, candidateNames, audioBlob, draftKey, onReset }: DraftReportProps) {
+export function DraftReport({ result, level, levelCode, language, institution, group, candidateNames, audioBlob, scribeWords, phaseMarks, draftKey, onReset }: DraftReportProps) {
   const { toast } = useToast();
   const navigate = useNavigate();
   const [activeCandidate, setActiveCandidate] = useState(0);
@@ -263,6 +265,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
       const candidateName = draft.candidateName || candidateNames[activeCandidate] || `Candidate ${String.fromCharCode(65 + activeCandidate)}`;
       const examTitle = `${levelCode} ${language} Oral — ${candidateName}`;
 
+      const audioPath = audioBlob ? `${crypto.randomUUID()}.webm` : null;
       const { data: insertData, error } = await supabase.from("exams").insert({
         title: examTitle,
         level_code: levelCode,
@@ -280,15 +283,18 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         examiner_notes: finalNotes,
         status: "completed",
         user_id: (await supabase.auth.getUser()).data.user?.id,
+        words_json: scribeWords && scribeWords.length > 0 ? (scribeWords as any) : null,
+        phase_marks: phaseMarks && phaseMarks.length > 0 ? (phaseMarks as any) : null,
+        audio_path: audioPath,
+        audio_expires_at: audioPath ? new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString() : null,
       }).select("id").single();
       if (error) throw error;
 
       // Upload audio to storage if available (only for the first candidate to avoid duplicates)
-      if (audioBlob && insertData?.id && !officialStatus.some(Boolean)) {
-        const path = `${insertData.id}.wav`;
+      if (audioBlob && audioPath && !officialStatus.some(Boolean)) {
         const { error: uploadError } = await supabase.storage
           .from("exam-audio")
-          .upload(path, audioBlob, { contentType: "audio/wav", upsert: true });
+          .upload(audioPath, audioBlob, { contentType: audioBlob.type || "audio/webm", upsert: true });
         if (uploadError) {
           console.warn("Audio upload failed:", uploadError.message);
         }
