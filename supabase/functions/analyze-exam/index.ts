@@ -157,8 +157,7 @@ IMPORTANT:
 - Identify each speaker. The Examiner is the teacher; assess only the candidates.
 - Score each candidate INDEPENDENTLY on the 5 Cambridge criteria below.
 - Use the 0–5 scale in 0.5 increments. Half-bands are valid (e.g. 2.5, 3.5, 4.5).
-- Compute "overallScore" as the average of the 5 criterion scores (rounded to 1 decimal).
-- Map "overallBand" to the CEFR level the performance most closely matches (e.g. "B2", "B1", "C1").
+- Do NOT estimate the overall band or overall score yourself. Return only the five criterion scores and feedback. The application computes the weighted result deterministically. The "overallScore" and "overallBand" fields in the schema below are placeholders kept for backwards compatibility; you may set them to the simple mean and best-guess CEFR letter, but the client will overwrite them.
 - Feedback for each criterion should reference the Cambridge descriptors above.
 
 THE 5 CAMBRIDGE CRITERIA (must appear in this exact order, with these exact names):

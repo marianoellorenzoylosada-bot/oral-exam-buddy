@@ -31,6 +31,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { SpeakerTranscript } from "@/components/SpeakerTranscript";
 import { QuotedAudio, type ScribeWord } from "@/components/QuotedAudio";
+import { computeWeightedSpeakingScore } from "@/lib/speakingScore";
 
 const langLabel: Record<string, string> = {
   en: "English", es: "Spanish", fr: "French", de: "German", pt: "Portuguese", it: "Italian",
@@ -279,20 +280,31 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
           </div>
         )}
 
-        {/* Overall */}
-        <div className="flex items-center gap-4 rounded-lg border border-primary/20 bg-primary/5 p-4">
-          <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <span className="font-display text-2xl font-bold">{displayedBand}</span>
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">Overall Score</p>
-            <p className="font-display text-xl font-bold">{Number(displayedScore).toFixed(1)}/5.0</p>
-            <div className="flex gap-2 mt-1">
-              <Badge variant="secondary">{exam.level_code}</Badge>
-              <Badge variant="outline">{langLabel[exam.language] || exam.language}</Badge>
+        {/* Overall (deterministic, weighted) */}
+        {(() => {
+          const weighted = computeWeightedSpeakingScore(criteria, exam.level_code);
+          return (
+            <div className="flex items-center gap-4 rounded-lg border border-primary/20 bg-primary/5 p-4">
+              <div className="flex h-14 w-20 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                <span className="font-display text-lg font-bold tabular-nums">
+                  {weighted.raw}<span className="text-sm opacity-80">/{weighted.max}</span>
+                </span>
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm text-muted-foreground">Weighted Speaking Score</p>
+                <p className="font-display text-base font-bold">{weighted.approxLevel}</p>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  <Badge variant="secondary">{exam.level_code}</Badge>
+                  <Badge variant="outline">{langLabel[exam.language] || exam.language}</Badge>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Diagnostic estimate based on weighted criterion scores. Not an official exam result.
+                  {!weighted.isOfficial && " Weighting for this level is a temporary equal-weight fallback pending official review."}
+                </p>
+              </div>
             </div>
-          </div>
-        </div>
+          );
+        })()}
 
         {/* Version history */}
         {previousAnalyses.length > 0 && (

@@ -20,6 +20,7 @@ import { getRecommendations } from "@/lib/practiceData";
 import { supabase } from "@/integrations/supabase/client";
 import { generateReportPdf } from "@/lib/generateReportPdf";
 import { useAuth } from "@/hooks/useAuth";
+import { computeWeightedSpeakingScore } from "@/lib/speakingScore";
 
 export interface AssessmentResult {
   overallBand: string;
@@ -204,9 +205,11 @@ export function DraftReport({ result, level, levelCode, language, institution, g
       const next = [...prev];
       const c = { ...next[activeCandidate] };
       c.criteria = c.criteria.map((cr, i) => i === index ? { ...cr, [field]: value } : cr);
-      const total = c.criteria.reduce((s, cr) => s + cr.score, 0);
-      const maxTotal = c.criteria.reduce((s, cr) => s + cr.maxScore, 0);
-      c.overallScore = maxTotal > 0 ? (total / maxTotal) * 5 : 0;
+      // Overall score is computed deterministically by computeWeightedSpeakingScore at render time;
+      // we keep `overallScore` on the draft only as a /5 back-compat field for storage.
+      const weighted = computeWeightedSpeakingScore(c.criteria, levelCode);
+      c.overallScore = Math.round((weighted.percent / 100) * 5 * 10) / 10;
+      c.overallBand = weighted.approxLevel;
       next[activeCandidate] = c;
       return next;
     });
@@ -274,8 +277,8 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         group: group || "",
         candidate_name: candidateName,
         candidates: candidateNames.length,
-        overall_band: draft.overallBand,
-        overall_score: draft.overallScore,
+        overall_band: computeWeightedSpeakingScore(draft.criteria, levelCode).approxLevel,
+        overall_score: Math.round((computeWeightedSpeakingScore(draft.criteria, levelCode).percent / 100) * 5 * 10) / 10,
         criteria: draft.criteria as any,
         strengths: finalStrengths as any,
         areas_for_improvement: finalImprovements as any,
@@ -419,39 +422,50 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         </div>
       )}
 
-      {/* Overall Score */}
-      <Card className="border-primary/20 bg-primary/5">
-        <CardContent className="flex items-center gap-6 pt-6">
-          <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-            <span className="font-display text-3xl font-bold">{draft.overallBand}</span>
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-medium text-muted-foreground">
-              {draft.candidateName || candidateNames[activeCandidate]} — Overall CEFR Band
-            </p>
-            <p className="font-display text-2xl font-bold">{draft.overallBand} — Score: {draft.overallScore.toFixed(1)}/5.0</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Badge variant="secondary">Level: {level}</Badge>
-              <Badge variant="outline">{language}</Badge>
-              {institutionName && <Badge variant="outline">{institutionName}</Badge>}
-              {isOfficial ? (
-                <Badge variant="default" className="gap-1 bg-emerald-600 hover:bg-emerald-700">
-                  <ShieldCheck className="h-3 w-3" /> Official
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700">
-                  <AlertTriangle className="mr-1 h-3 w-3" /> Draft
-                </Badge>
-              )}
-              {Object.keys(overrides).length > 0 && !isOfficial && (
-                <Badge variant="outline" className="gap-1 border-blue-500/30 bg-blue-500/10 text-blue-700">
-                  <PenLine className="h-3 w-3" /> {Object.keys(overrides).length} override{Object.keys(overrides).length > 1 ? "s" : ""}
-                </Badge>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Overall Score (deterministic, weighted) */}
+      {(() => {
+        const weighted = computeWeightedSpeakingScore(draft.criteria, levelCode);
+        return (
+          <Card className="border-primary/20 bg-primary/5">
+            <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-center sm:gap-6">
+              <div className="flex h-20 w-28 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
+                <span className="font-display text-2xl font-bold tabular-nums">
+                  {weighted.raw}<span className="text-lg opacity-80">/{weighted.max}</span>
+                </span>
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-muted-foreground">
+                  {draft.candidateName || candidateNames[activeCandidate]} — Weighted Speaking Score
+                </p>
+                <p className="font-display text-xl font-bold">{weighted.approxLevel}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Badge variant="secondary">Level: {level}</Badge>
+                  <Badge variant="outline">{language}</Badge>
+                  {institutionName && <Badge variant="outline">{institutionName}</Badge>}
+                  {isOfficial ? (
+                    <Badge variant="default" className="gap-1 bg-emerald-600 hover:bg-emerald-700">
+                      <ShieldCheck className="h-3 w-3" /> Official
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700">
+                      <AlertTriangle className="mr-1 h-3 w-3" /> Draft
+                    </Badge>
+                  )}
+                  {Object.keys(overrides).length > 0 && !isOfficial && (
+                    <Badge variant="outline" className="gap-1 border-blue-500/30 bg-blue-500/10 text-blue-700">
+                      <PenLine className="h-3 w-3" /> {Object.keys(overrides).length} override{Object.keys(overrides).length > 1 ? "s" : ""}
+                    </Badge>
+                  )}
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Diagnostic estimate based on weighted criterion scores. Not an official exam result.
+                  {!weighted.isOfficial && " Weighting for this level is a temporary equal-weight fallback pending official review."}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Criteria Scores */}
       <Card>
