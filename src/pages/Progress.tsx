@@ -83,12 +83,26 @@ function computeStats(exams: any[]) {
     return row;
   });
 
-  return { avg, best, total: exams.length, radarData, trendData, levelData, langData, criteriaTrendData, criteriaNames };
+  // Per-student breakdown (used in group view + PDF)
+  const studentMap: Record<string, { total: number; count: number }> = {};
+  exams.forEach((e) => {
+    const name = (e.candidate_name || "").trim();
+    if (!name) return;
+    if (!studentMap[name]) studentMap[name] = { total: 0, count: 0 };
+    studentMap[name].total += Number(e.overall_score);
+    studentMap[name].count += 1;
+  });
+  const studentBreakdown = Object.entries(studentMap)
+    .map(([name, v]) => ({ name, avg: +(v.total / v.count).toFixed(2), exams: v.count }))
+    .sort((a, b) => b.avg - a.avg);
+
+  return { avg, best, total: exams.length, radarData, trendData, levelData, langData, criteriaTrendData, criteriaNames, studentBreakdown };
 }
 
 export default function ProgressPage() {
   const { data: allExams = [], isLoading } = useExams();
   const [selectedCandidate, setSelectedCandidate] = useState<string>("__all__");
+  const [selectedGroup, setSelectedGroup] = useState<string>("__all__");
 
   const candidateNames = useMemo(() => {
     const names = new Set<string>();
@@ -96,18 +110,29 @@ export default function ProgressPage() {
     return Array.from(names).sort();
   }, [allExams]);
 
+  const groupNames = useMemo(() => {
+    const names = new Set<string>();
+    allExams.forEach((e) => { if (e.group) names.add(e.group); });
+    return Array.from(names).sort();
+  }, [allExams]);
+
   const exams = useMemo(() => {
-    if (selectedCandidate === "__all__") return allExams;
-    return allExams.filter((e) => e.candidate_name === selectedCandidate);
-  }, [allExams, selectedCandidate]);
+    return allExams.filter((e) => {
+      if (selectedGroup !== "__all__" && e.group !== selectedGroup) return false;
+      if (selectedCandidate !== "__all__" && e.candidate_name !== selectedCandidate) return false;
+      return true;
+    });
+  }, [allExams, selectedCandidate, selectedGroup]);
 
   const stats = useMemo(() => computeStats(exams), [exams]);
+  const isGroupView = selectedGroup !== "__all__" && selectedCandidate === "__all__";
 
   const handleExport = () => {
     if (!stats) return;
     const criteriaAverages = stats.radarData.map((r) => ({ name: r.criterion, average: r.average }));
     generateProgressPdf({
       candidateName: selectedCandidate === "__all__" ? null : selectedCandidate,
+      groupName: isGroupView ? selectedGroup : null,
       totalExams: stats.total,
       avgScore: stats.avg,
       bestScore: stats.best,
@@ -120,6 +145,7 @@ export default function ProgressPage() {
         band: e.overall_band,
       })),
       criteriaAverages,
+      studentBreakdown: isGroupView ? stats.studentBreakdown : undefined,
     });
   };
 
