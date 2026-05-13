@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SpeakerTranscript } from "@/components/SpeakerTranscript";
-import { PartFeedbackSection } from "@/components/PartFeedbackSection";
+import { PartFeedbackSection, hasPartFeedbackContent } from "@/components/PartFeedbackSection";
 import { useToast } from "@/hooks/use-toast";
 import { getRecommendations } from "@/lib/practiceData";
 import { supabase } from "@/integrations/supabase/client";
@@ -536,13 +536,14 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         </CardContent>
       </Card>
 
-      {/* Examiner feedback by part */}
-      <PartFeedbackSection
-        levelCode={levelCode}
-        partFeedback={draft.partFeedback}
-        overallSummary={draft.overallSummary}
-        fallbackSummary={sharedDraft.examinerNotes}
-      />
+      {/* Examiner feedback by part — only when the AI returned usable structured content */}
+      {hasPartFeedbackContent(draft.partFeedback, draft.overallSummary) && (
+        <PartFeedbackSection
+          levelCode={levelCode}
+          partFeedback={draft.partFeedback}
+          overallSummary={draft.overallSummary}
+        />
+      )}
 
       {/* Strengths & Improvements */}
       <div className="grid gap-6 sm:grid-cols-2">
