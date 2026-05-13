@@ -411,6 +411,12 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
           </div>
         )}
 
+        {/* Examiner feedback by part (legacy reports show structured fallback) */}
+        <PartFeedbackSection
+          levelCode={exam.level_code}
+          fallbackSummary={exam.examiner_notes ?? undefined}
+        />
+
         {/* Strengths & Improvements */}
         <div className="grid gap-4 sm:grid-cols-2">
           {strengths.length > 0 && (
