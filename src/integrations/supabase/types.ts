@@ -14,6 +14,51 @@ export type Database = {
   }
   public: {
     Tables: {
+      calibration_examples: {
+        Row: {
+          approved_at: string
+          case_id: string
+          examiner_id: string
+          id: string
+          level: string
+          original_gold: Json
+          rationale_differences: Json
+          score_differences: Json
+          senior_corrections: Json
+          senior_notes: string
+          task_type: string
+          transcript: string
+        }
+        Insert: {
+          approved_at?: string
+          case_id: string
+          examiner_id: string
+          id?: string
+          level: string
+          original_gold?: Json
+          rationale_differences?: Json
+          score_differences?: Json
+          senior_corrections?: Json
+          senior_notes?: string
+          task_type?: string
+          transcript: string
+        }
+        Update: {
+          approved_at?: string
+          case_id?: string
+          examiner_id?: string
+          id?: string
+          level?: string
+          original_gold?: Json
+          rationale_differences?: Json
+          score_differences?: Json
+          senior_corrections?: Json
+          senior_notes?: string
+          task_type?: string
+          transcript?: string
+        }
+        Relationships: []
+      }
       exams: {
         Row: {
           areas_for_improvement: Json
