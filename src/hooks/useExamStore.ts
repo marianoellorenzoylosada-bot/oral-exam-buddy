@@ -17,7 +17,7 @@ const buildDefaultContext = (): ExamContext => ({
   title: "",
   institution: typeof window !== "undefined" ? localStorage.getItem("oralassess-institution") ?? "" : "",
   group: "",
-  language: typeof window !== "undefined" ? localStorage.getItem("oralassess-lang") ?? "en" : "en",
+  language: "en",
   candidateNames: ["", ""],
   bookletFile: null,
   bookletText: "",
