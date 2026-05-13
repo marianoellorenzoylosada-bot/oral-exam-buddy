@@ -162,19 +162,38 @@ export default function NewExamPage() {
   };
 
   const handleSubmitForAnalysis = useCallback(async () => {
-    if (!recorder.audioBlob) return;
+    const blob = recorder.audioBlob ?? restoredBlob;
+    const dur = recorder.audioBlob ? recorder.duration : restoredDuration;
+    if (!blob) return;
     if (!exam.title) {
       toast({ title: "Missing exam level", description: "Please select a CEFR level in the Setup tab.", variant: "destructive" });
       return;
     }
 
+    // Offline guard — defer the analysis and let the auto-retry effect run it later.
+    if (!navigator.onLine) {
+      setPendingAnalysis(true);
+      try {
+        await saveDraft({
+          pendingAnalysis: true,
+          title: exam.title, language: exam.language, institution: exam.institution,
+          group: exam.group, candidateNames: exam.candidateNames,
+          bookletText: exam.bookletText, rubricText: exam.rubricText,
+          audioBlob: blob, duration: dur,
+          liveTranscript, scribeWords, phaseMarks, quickTags,
+        });
+      } catch { /* ignore */ }
+      toast({ title: "You're offline", description: "Analysis is queued and will run automatically when you reconnect." });
+      return;
+    }
+
     // Pre-flight guards: catch oversized recordings/context before the upload starts.
-    const sizeCheck = checkAudioSize(recorder.audioBlob);
+    const sizeCheck = checkAudioSize(blob);
     if (!sizeCheck.ok) {
       toast({ title: "Recording too large", description: sizeCheck.reason, variant: "destructive" });
       return;
     }
-    const durCheck = checkAudioDuration(recorder.duration);
+    const durCheck = checkAudioDuration(dur);
     if (!durCheck.ok) {
       toast({ title: "Recording too long", description: durCheck.reason, variant: "destructive" });
       return;
@@ -192,7 +211,7 @@ export default function NewExamPage() {
       let words: ScribeWord[] = scribeWords;
       if (transcriptText.split(/\s+/).filter(Boolean).length < 30) {
         setAnalyzingStep("transcribing");
-        const out = await transcribeBlob(recorder.audioBlob);
+        const out = await transcribeBlob(blob);
         transcriptText = out.transcript;
         words = out.words;
         setScribeWords(words);
@@ -221,6 +240,9 @@ export default function NewExamPage() {
       // Make sure the transcript on the report is the verbatim one we sent.
       const enriched = { ...(data as MultiCandidateResult), transcript: transcriptText };
       setReport(enriched);
+      setPendingAnalysis(false);
+      // Successful analysis — clear persisted draft.
+      clearDraft().catch(() => undefined);
     } catch (err: any) {
       console.error("Analysis error:", err);
       toast({
@@ -232,15 +254,73 @@ export default function NewExamPage() {
       setAnalyzing(false);
       setAnalyzingStep("");
     }
-  }, [recorder.audioBlob, exam, selectedLang, toast, liveTranscript, scribeWords, quickTags]);
+  }, [recorder.audioBlob, recorder.duration, restoredBlob, restoredDuration, exam, selectedLang, toast, liveTranscript, scribeWords, quickTags, phaseMarks]);
 
   const handleReset = useCallback(() => {
     reset();
     recorder.reset();
     setReport(null);
     setLiveTranscript("");
+    setRestoredBlob(null);
+    setRestoredDuration(0);
+    setPendingAnalysis(false);
+    clearDraft().catch(() => undefined);
     setActiveTab("setup");
   }, [reset, recorder]);
+
+  // ── Draft restore on mount ─────────────────────────────────────────────
+  useEffect(() => {
+    if (draftRestoredRef.current) return;
+    draftRestoredRef.current = true;
+    loadDraft().then((draft) => {
+      if (!draft || !draft.audioBlob) return;
+      toast({
+        title: draft.pendingAnalysis ? "Recovered offline session" : "Previous draft found",
+        description: draft.pendingAnalysis
+          ? "Restoring your unsubmitted recording so analysis can run when you reconnect."
+          : "Restoring your last unsubmitted recording.",
+      });
+      update({
+        title: draft.title, language: draft.language, institution: draft.institution,
+        group: draft.group, candidateNames: draft.candidateNames,
+        bookletText: draft.bookletText, rubricText: draft.rubricText,
+      });
+      setRestoredBlob(draft.audioBlob);
+      setRestoredDuration(draft.duration || 0);
+      setLiveTranscript(draft.liveTranscript || "");
+      setScribeWords(draft.scribeWords || []);
+      setPhaseMarks(draft.phaseMarks || []);
+      setQuickTags(draft.quickTags || []);
+      setPendingAnalysis(!!draft.pendingAnalysis);
+      setActiveTab("record");
+    });
+  }, [toast, update]);
+
+  // ── Auto-save draft once a recording has been captured ────────────────
+  useEffect(() => {
+    const blob = recorder.audioBlob ?? restoredBlob;
+    if (!blob) return;
+    const handle = setTimeout(() => {
+      saveDraft({
+        pendingAnalysis,
+        title: exam.title, language: exam.language, institution: exam.institution,
+        group: exam.group, candidateNames: exam.candidateNames,
+        bookletText: exam.bookletText, rubricText: exam.rubricText,
+        audioBlob: blob,
+        duration: recorder.audioBlob ? recorder.duration : restoredDuration,
+        liveTranscript, scribeWords, phaseMarks, quickTags,
+      });
+    }, 800);
+    return () => clearTimeout(handle);
+  }, [recorder.audioBlob, recorder.duration, restoredBlob, restoredDuration, exam, liveTranscript, scribeWords, phaseMarks, quickTags, pendingAnalysis]);
+
+  // ── Auto-retry pending analysis when we come back online ───────────────
+  useEffect(() => {
+    if (online && pendingAnalysis && !analyzing) {
+      toast({ title: "Back online", description: "Resuming queued analysis…" });
+      handleSubmitForAnalysis();
+    }
+  }, [online, pendingAnalysis, analyzing, handleSubmitForAnalysis, toast]);
 
   // Show draft report if available
   if (report) {
