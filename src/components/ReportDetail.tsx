@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -14,7 +14,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Printer, CheckCircle2, AlertTriangle, ShieldCheck, BookOpen,
-  ExternalLink, Download, Trash2, EyeOff, Volume2, Info,
+  ExternalLink, Download, Trash2, EyeOff, Volume2, Info, Clock,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getRecommendations } from "@/lib/practiceData";
@@ -22,6 +22,7 @@ import { generateReportPdf } from "@/lib/generateReportPdf";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { SpeakerTranscript } from "@/components/SpeakerTranscript";
+import { QuotedAudio, type ScribeWord } from "@/components/QuotedAudio";
 
 const langLabel: Record<string, string> = {
   en: "English", es: "Spanish", fr: "French", de: "German", pt: "Portuguese", it: "Italian",
@@ -45,6 +46,9 @@ export type Exam = {
   examiner_notes: string | null;
   status: string;
   created_at: string;
+  audio_path?: string | null;
+  audio_expires_at?: string | null;
+  words_json?: any;
 };
 
 interface Props {
@@ -61,16 +65,37 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [deleting, setDeleting] = useState(false);
+  const [deletingAudio, setDeletingAudio] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioGone, setAudioGone] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
+    const path = exam.audio_path ?? `${exam.id}.wav`;
     supabase.storage
       .from("exam-audio")
-      .createSignedUrl(`${exam.id}.wav`, 3600)
+      .createSignedUrl(path, 3600)
       .then(({ data, error }) => {
         if (!error && data?.signedUrl) setAudioUrl(data.signedUrl);
       });
-  }, [exam.id]);
+  }, [exam.id, exam.audio_path]);
+
+  const words: ScribeWord[] = Array.isArray(exam.words_json) ? (exam.words_json as ScribeWord[]) : [];
+
+  const seekAudio = (start: number, end: number) => {
+    const a = audioRef.current;
+    if (!a) return;
+    a.currentTime = Math.max(0, start);
+    a.play().catch(() => { /* ignore */ });
+    const stopAt = Math.max(end + 0.2, start + 0.5);
+    const onTime = () => {
+      if (a.currentTime >= stopAt) {
+        a.pause();
+        a.removeEventListener("timeupdate", onTime);
+      }
+    };
+    a.addEventListener("timeupdate", onTime);
+  };
 
   const criteria = Array.isArray(exam.criteria)
     ? (exam.criteria as { name: string; score: number; maxScore: number; feedback: string; confidence?: number }[])
@@ -82,6 +107,12 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
   const displayName = anonymize ? mask(exam.candidate_name) : (exam.candidate_name || null);
   const displayInstitution = anonymize ? mask(exam.institution) : (exam.institution || "—");
   const displayGroup = anonymize ? mask(exam.group) : (exam.group || "—");
+
+  const expiryNotice = (() => {
+    if (!exam.audio_expires_at || audioGone) return null;
+    const days = Math.max(0, Math.ceil((new Date(exam.audio_expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+    return days;
+  })();
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -95,6 +126,27 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
       toast({ title: "Delete failed", description: err.message, variant: "destructive" });
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleDeleteAudio = async () => {
+    if (!exam.audio_path) return;
+    setDeletingAudio(true);
+    try {
+      await supabase.storage.from("exam-audio").remove([exam.audio_path]);
+      const { error } = await supabase
+        .from("exams")
+        .update({ audio_path: null, audio_expires_at: null, words_json: null })
+        .eq("id", exam.id);
+      if (error) throw error;
+      setAudioUrl(null);
+      setAudioGone(true);
+      queryClient.invalidateQueries({ queryKey: ["exams-reports"] });
+      toast({ title: "Audio deleted", description: "The recording was removed; the report is kept." });
+    } catch (err: any) {
+      toast({ title: "Could not delete audio", description: err.message, variant: "destructive" });
+    } finally {
+      setDeletingAudio(false);
     }
   };
 
@@ -133,14 +185,32 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
         </div>
 
         {/* Audio playback */}
-        {audioUrl && (
-          <div className="rounded-lg border bg-muted/30 p-3">
-            <h3 className="font-display font-semibold text-sm flex items-center gap-1.5 mb-2">
-              <Volume2 className="h-4 w-4 text-primary" /> Exam Recording
-            </h3>
-            <audio controls className="w-full h-10" src={audioUrl} preload="metadata">
+        {audioUrl && !audioGone && (
+          <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="font-display font-semibold text-sm flex items-center gap-1.5">
+                <Volume2 className="h-4 w-4 text-primary" /> Exam Recording
+              </h3>
+              <div className="flex items-center gap-2">
+                {expiryNotice != null && (
+                  <Badge variant="outline" className="gap-1 text-xs">
+                    <Clock className="h-3 w-3" />
+                    {expiryNotice === 0 ? "Expires today" : `${expiryNotice} day${expiryNotice === 1 ? "" : "s"} left`}
+                  </Badge>
+                )}
+                <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive gap-1" onClick={handleDeleteAudio} disabled={deletingAudio}>
+                  <Trash2 className="h-3.5 w-3.5" /> {deletingAudio ? "Deleting…" : "Delete audio"}
+                </Button>
+              </div>
+            </div>
+            <audio ref={audioRef} controls className="w-full h-10" src={audioUrl} preload="metadata">
               Your browser does not support audio playback.
             </audio>
+            {words.length > 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                Tip: click any quoted phrase below to hear it.
+              </p>
+            )}
           </div>
         )}
 
@@ -178,7 +248,9 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
                     </span>
                   </div>
                   <Progress value={pct} className="h-2 mb-1" />
-                  <p className="text-xs text-muted-foreground">{c.feedback}</p>
+                  <p className="text-xs text-muted-foreground">
+                    <QuotedAudio text={c.feedback} words={words} onSeek={audioUrl && !audioGone ? seekAudio : undefined} />
+                  </p>
                   {i < criteria.length - 1 && <Separator className="mt-3" />}
                 </div>
               );
@@ -197,7 +269,7 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
                 {strengths.map((s, i) => (
                   <li key={i} className="flex items-start gap-2 text-xs">
                     <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-                    {s}
+                    <QuotedAudio text={s} words={words} onSeek={audioUrl && !audioGone ? seekAudio : undefined} />
                   </li>
                 ))}
               </ul>
@@ -212,7 +284,7 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
                 {improvements.map((a, i) => (
                   <li key={i} className="flex items-start gap-2 text-xs">
                     <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-                    {a}
+                    <QuotedAudio text={a} words={words} onSeek={audioUrl && !audioGone ? seekAudio : undefined} />
                   </li>
                 ))}
               </ul>
