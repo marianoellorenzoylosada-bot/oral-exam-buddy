@@ -116,6 +116,20 @@ serve(async (req) => {
     const candidateList = names.map((n: string, i: number) => `Candidate ${String.fromCharCode(65 + i)} (${n || "unnamed"})`).join(", ");
     const rubricBlock = buildRubricBlock(level);
 
+    // Per-level Speaking parts (mirrors src/lib/examPhases.ts).
+    const PARTS_BY_LEVEL: Record<string, string[]> = {
+      A2: ["Part 1 — Interview", "Part 2 — Collaborative"],
+      B1: ["Part 1 — Interview", "Part 2 — Long turn", "Part 3 — Collaborative", "Part 4 — Discussion"],
+      B2: ["Part 1 — Interview", "Part 2 — Long turn", "Part 3 — Collaborative", "Part 4 — Discussion"],
+      C1: ["Part 1 — Interview", "Part 2 — Long turn", "Part 3 — Collaborative", "Part 4 — Discussion"],
+      C2: ["Part 1 — Interview", "Part 2 — Long turn", "Part 3 — Collaborative", "Part 4 — Discussion"],
+    };
+    const partsList = PARTS_BY_LEVEL[level] ?? PARTS_BY_LEVEL.B2;
+    const partsBlock = partsList.map((p) => `  - ${p}`).join("\n");
+    const partFeedbackExample = partsList
+      .map((p) => `        { "part": "${p.split(" — ")[0]}", "title": "${p.split(" — ")[1] ?? ""}", "commentary": "...", "observations": ["..."], "criteriaTouched": ["Discourse Management"], "improvement": "..." }`)
+      .join(",\n");
+
     // Format examiner-supplied quick tags as time-stamped evidence the model
     // should weigh alongside the transcript.
     const tagBlock = (() => {
@@ -174,6 +188,17 @@ Guidelines for confidence:
 - 50–69: Limited evidence; score is an estimate.
 - Below 50: Very little evidence; the examiner should review carefully.
 
+PART-BY-PART EXAMINER FEEDBACK:
+For each candidate, also produce a "partFeedback" array covering the speaking parts for this level:
+${partsBlock}
+For every part:
+- Write 2–4 sentences of professional examiner-style commentary, descriptor-informed but natural.
+- Ground every observation in the transcript; reference observable performance.
+- Mention the criteria most clearly evidenced by that part in "criteriaTouched".
+- If useful, add ONE short actionable "improvement" point. Avoid generic praise and unsupported claims.
+- Do NOT invent per-part scores — these are commentary only; the global criterion scores are unchanged.
+Also produce a short "overallSummary" (3–5 sentences) synthesising the candidate's performance across the whole exam.
+
 RESPOND IN THIS EXACT JSON FORMAT:
 {
   "candidates": [
@@ -189,7 +214,11 @@ RESPOND IN THIS EXACT JSON FORMAT:
         { "name": "Global Achievement", "score": 3.5, "maxScore": 5, "confidence": 80, "feedback": "..." }
       ],
       "strengths": ["strength 1", "strength 2"],
-      "areasForImprovement": ["area 1", "area 2"]
+      "areasForImprovement": ["area 1", "area 2"],
+      "partFeedback": [
+${partFeedbackExample}
+      ],
+      "overallSummary": "..."
     }
   ],
   "transcript": "Full transcription with speaker labels (Examiner:, Candidate A:, Candidate B:, etc.)...",

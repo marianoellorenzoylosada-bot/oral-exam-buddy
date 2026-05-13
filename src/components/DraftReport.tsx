@@ -15,12 +15,14 @@ import {
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SpeakerTranscript } from "@/components/SpeakerTranscript";
+import { PartFeedbackSection } from "@/components/PartFeedbackSection";
 import { useToast } from "@/hooks/use-toast";
 import { getRecommendations } from "@/lib/practiceData";
 import { supabase } from "@/integrations/supabase/client";
 import { generateReportPdf } from "@/lib/generateReportPdf";
 import { useAuth } from "@/hooks/useAuth";
 import { computeWeightedSpeakingScore } from "@/lib/speakingScore";
+import type { PartFeedback } from "@/lib/partFeedback";
 
 export interface AssessmentResult {
   overallBand: string;
@@ -28,6 +30,10 @@ export interface AssessmentResult {
   criteria: { name: string; score: number; maxScore: number; feedback: string; confidence?: number }[];
   strengths: string[];
   areasForImprovement: string[];
+  /** Optional, presentation-only — not persisted. */
+  partFeedback?: PartFeedback[];
+  /** Optional, presentation-only — not persisted. */
+  overallSummary?: string;
 }
 
 export interface MultiCandidateResult {
@@ -529,6 +535,14 @@ export function DraftReport({ result, level, levelCode, language, institution, g
           })}
         </CardContent>
       </Card>
+
+      {/* Examiner feedback by part */}
+      <PartFeedbackSection
+        levelCode={levelCode}
+        partFeedback={draft.partFeedback}
+        overallSummary={draft.overallSummary}
+        fallbackSummary={sharedDraft.examinerNotes}
+      />
 
       {/* Strengths & Improvements */}
       <div className="grid gap-6 sm:grid-cols-2">
