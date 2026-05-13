@@ -82,25 +82,26 @@ serve(async (req) => {
   }
 
   try {
-    const { level, language, candidateNames, bookletText, rubricText, audioBase64 } = await req.json();
+    const { level, language, candidateNames, bookletText, rubricText, transcript } = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    // Server-side guards: reject oversized payloads with a clear, actionable error
-    // before we burn time/credits calling the AI gateway.
-    const MAX_AUDIO_BASE64_LEN = 30 * 1024 * 1024; // ~22 MB raw audio after base64 inflation
-    const MAX_CONTEXT_CHARS = 60_000;
-    if (typeof audioBase64 === "string" && audioBase64.length > MAX_AUDIO_BASE64_LEN) {
+    // Hard guard: a transcript is required. Without it we cannot ground the
+    // assessment and the model would hallucinate. Refuse politely.
+    const transcriptText: string = typeof transcript === "string" ? transcript.trim() : "";
+    const wordCount = transcriptText ? transcriptText.split(/\s+/).length : 0;
+    if (wordCount < 30) {
       return new Response(
         JSON.stringify({
-          error: `Audio payload too large (${(audioBase64.length / (1024 * 1024)).toFixed(1)} MB encoded). Please record shorter exams (under ~22 MB).`,
+          error: `Not enough speech to assess (${wordCount} words transcribed). Please record a longer sample with the candidates speaking clearly.`,
         }),
-        { status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+    const MAX_CONTEXT_CHARS = 60_000;
     const contextLen = (bookletText?.length ?? 0) + (rubricText?.length ?? 0);
     if (contextLen > MAX_CONTEXT_CHARS) {
       return new Response(
@@ -128,7 +129,14 @@ ${rubricBlock}
 ${bookletText ? `\nADDITIONAL REFERENCE — EXAM BOOKLET / SAMPLE PAPER:\n${bookletText}` : ""}
 ${rubricText ? `\nADDITIONAL REFERENCE — UPLOADED HANDBOOK / RUBRIC (use as primary source if provided):\n${rubricText}` : ""}
 
+EXAM TRANSCRIPT (verbatim, with speaker labels — this is your ONLY source of evidence):
+"""
+${transcriptText}
+"""
+
 IMPORTANT:
+- Base every score and comment STRICTLY on the transcript above. Do not invent content.
+- In "strengths" and "areasForImprovement", quote the candidate VERBATIM using straight double quotes (e.g. "I have went to the park yesterday"). Each item must contain at least one verbatim quote followed by a brief comment.
 - Identify each speaker. The Examiner is the teacher; assess only the candidates.
 - Score each candidate INDEPENDENTLY on the 5 Cambridge criteria below.
 - Use the 0–5 scale in 0.5 increments. Half-bands are valid (e.g. 2.5, 3.5, 4.5).
@@ -174,22 +182,7 @@ RESPOND IN THIS EXACT JSON FORMAT:
 
 Include one entry in the "candidates" array for EACH candidate (${names.length} total). Return ONLY valid JSON.`;
 
-    const userContent: any[] = [
-      {
-        type: "text",
-        text: "Please analyze this oral examination recording and provide a detailed CEFR assessment for each candidate. Return ONLY valid JSON matching the format specified.",
-      },
-    ];
-
-    if (audioBase64) {
-      userContent.push({
-        type: "input_audio",
-        input_audio: {
-          data: audioBase64,
-          format: "wav",
-        },
-      });
-    }
+    const userContent = "Please analyze the oral examination transcript provided in the system prompt and produce a detailed Cambridge assessment for each candidate. Quote candidates verbatim in strengths and areas for improvement. Return ONLY valid JSON matching the format specified.";
 
     const response = await fetch(
       "https://ai.gateway.lovable.dev/v1/chat/completions",

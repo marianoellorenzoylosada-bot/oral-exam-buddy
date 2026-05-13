@@ -15,6 +15,8 @@ import { extractTextFromFile } from "@/lib/extractText";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { LiveTranscript } from "@/components/LiveTranscript";
+import { PhaseTimer, type PhaseMark } from "@/components/PhaseTimer";
+import { transcribeBlob, type ScribeWord } from "@/lib/transcribe";
 import { checkAudioSize, checkAudioDuration, checkContextSize } from "@/lib/uploadGuards";
 import { GroupPicker } from "@/components/GroupPicker";
 import { CandidatePicker } from "@/components/CandidatePicker";
@@ -107,8 +109,11 @@ export default function NewExamPage() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("setup");
   const [analyzing, setAnalyzing] = useState(false);
+  const [analyzingStep, setAnalyzingStep] = useState<"" | "transcribing" | "scoring">("");
   const [report, setReport] = useState<MultiCandidateResult | null>(null);
   const [liveTranscript, setLiveTranscript] = useState("");
+  const [scribeWords, setScribeWords] = useState<ScribeWord[]>([]);
+  const [phaseMarks, setPhaseMarks] = useState<PhaseMark[]>([]);
   const [groupId, setGroupId] = useState<string | null>(null);
 
   const examLevels = getExamLevels(exam.language);
@@ -169,14 +174,22 @@ export default function NewExamPage() {
 
     setAnalyzing(true);
     try {
-      const arrayBuffer = await recorder.audioBlob.arrayBuffer();
-      const uint8 = new Uint8Array(arrayBuffer);
-      let binary = "";
-      for (let i = 0; i < uint8.length; i++) {
-        binary += String.fromCharCode(uint8[i]);
+      // Step 1: ensure we have a transcript. Prefer the live one; fall back to batch Scribe.
+      let transcriptText = liveTranscript.trim();
+      let words: ScribeWord[] = scribeWords;
+      if (transcriptText.split(/\s+/).filter(Boolean).length < 30) {
+        setAnalyzingStep("transcribing");
+        const out = await transcribeBlob(recorder.audioBlob);
+        transcriptText = out.transcript;
+        words = out.words;
+        setScribeWords(words);
       }
-      const audioBase64 = btoa(binary);
 
+      if (transcriptText.split(/\s+/).filter(Boolean).length < 30) {
+        throw new Error("Not enough speech detected. Please record again with the candidates speaking clearly.");
+      }
+
+      setAnalyzingStep("scoring");
       const { data, error } = await supabase.functions.invoke("analyze-exam", {
         body: {
           level: exam.title,
@@ -184,14 +197,16 @@ export default function NewExamPage() {
           candidateNames: exam.candidateNames,
           bookletText: exam.bookletText,
           rubricText: exam.rubricText,
-          audioBase64,
+          transcript: transcriptText,
         },
       });
 
       if (error) throw error;
       if (data.error) throw new Error(data.error);
 
-      setReport(data as MultiCandidateResult);
+      // Make sure the transcript on the report is the verbatim one we sent.
+      const enriched = { ...(data as MultiCandidateResult), transcript: transcriptText };
+      setReport(enriched);
     } catch (err: any) {
       console.error("Analysis error:", err);
       toast({
@@ -201,8 +216,9 @@ export default function NewExamPage() {
       });
     } finally {
       setAnalyzing(false);
+      setAnalyzingStep("");
     }
-  }, [recorder.audioBlob, exam, selectedLang, toast]);
+  }, [recorder.audioBlob, exam, selectedLang, toast, liveTranscript, scribeWords]);
 
   const handleReset = useCallback(() => {
     reset();
@@ -224,6 +240,8 @@ export default function NewExamPage() {
         group={exam.group}
         candidateNames={exam.candidateNames}
         audioBlob={recorder.audioBlob}
+        scribeWords={scribeWords}
+        phaseMarks={phaseMarks}
         draftKey={`new-${exam.title}-${exam.candidateNames.filter(Boolean).join("|")}`}
         onReset={handleReset}
       />
@@ -470,7 +488,17 @@ export default function NewExamPage() {
                   <audio controls src={recorder.audioUrl} className="w-full max-w-md" />
                 )}
 
-                {/* Live Transcription */}
+                {/* Phase timer */}
+                {(recorder.state === "recording" || recorder.state === "paused") && exam.title && (
+                  <PhaseTimer
+                    level={exam.title}
+                    elapsedSeconds={recorder.duration}
+                    isRecording={recorder.state === "recording"}
+                    onMarksChange={setPhaseMarks}
+                  />
+                )}
+
+                {/* Live Transcription — always mounted while recording so it auto-connects */}
                 {(recorder.state === "recording" || recorder.state === "paused" || liveTranscript) && (
                   <div className="w-full max-w-md">
                     <LiveTranscript
@@ -505,7 +533,7 @@ export default function NewExamPage() {
                     className="gap-2"
                   >
                     {analyzing ? (
-                      <><Loader2 className="h-4 w-4 animate-spin" /> Analyzing…</>
+                      <><Loader2 className="h-4 w-4 animate-spin" /> {analyzingStep === "transcribing" ? "Transcribing…" : "Scoring…"}</>
                     ) : (
                       "Submit for Analysis →"
                     )}

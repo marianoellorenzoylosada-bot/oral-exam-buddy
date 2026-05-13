@@ -17,6 +17,8 @@ export type Database = {
       exams: {
         Row: {
           areas_for_improvement: Json
+          audio_expires_at: string | null
+          audio_path: string | null
           candidate_name: string | null
           candidates: number | null
           created_at: string
@@ -29,14 +31,18 @@ export type Database = {
           level_code: string
           overall_band: string
           overall_score: number
+          phase_marks: Json | null
           status: string
           strengths: Json
           title: string
           transcript: string | null
           user_id: string | null
+          words_json: Json | null
         }
         Insert: {
           areas_for_improvement?: Json
+          audio_expires_at?: string | null
+          audio_path?: string | null
           candidate_name?: string | null
           candidates?: number | null
           created_at?: string
@@ -49,14 +55,18 @@ export type Database = {
           level_code: string
           overall_band: string
           overall_score: number
+          phase_marks?: Json | null
           status?: string
           strengths?: Json
           title: string
           transcript?: string | null
           user_id?: string | null
+          words_json?: Json | null
         }
         Update: {
           areas_for_improvement?: Json
+          audio_expires_at?: string | null
+          audio_path?: string | null
           candidate_name?: string | null
           candidates?: number | null
           created_at?: string
@@ -69,11 +79,13 @@ export type Database = {
           level_code?: string
           overall_band?: string
           overall_score?: number
+          phase_marks?: Json | null
           status?: string
           strengths?: Json
           title?: string
           transcript?: string | null
           user_id?: string | null
+          words_json?: Json | null
         }
         Relationships: []
       }

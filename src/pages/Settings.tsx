@@ -2,7 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Save, Cloud, CheckCircle2, User } from "lucide-react";
+import { Save, Cloud, CheckCircle2, User, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 
@@ -68,6 +68,28 @@ export default function SettingsPage() {
             <span className="text-foreground font-medium">Connected</span>
             <span className="text-muted-foreground">— AI analysis for oral exams is ready to use.</span>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Audio retention */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+              <Clock className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <CardTitle className="font-display text-lg">Recording Retention</CardTitle>
+              <CardDescription>How long exam recordings are kept on the server.</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            Audio recordings are kept for <strong>15 days</strong> after the exam, then deleted automatically.
+            The written report, scores and transcript are kept indefinitely. You can also delete a recording
+            manually from any report at any time.
+          </p>
         </CardContent>
       </Card>
 
