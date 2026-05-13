@@ -80,6 +80,16 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
   const [audioGone, setAudioGone] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Re-grade state
+  const [regradeOpen, setRegradeOpen] = useState(false);
+  const [regrading, setRegrading] = useState(false);
+  const [editTranscript, setEditTranscript] = useState(exam.transcript ?? "");
+  const [editNotes, setEditNotes] = useState(exam.examiner_notes ?? "");
+  const [extraObservation, setExtraObservation] = useState("");
+  const [viewingPrevIdx, setViewingPrevIdx] = useState<number | null>(null);
+
+  const previousAnalyses: any[] = Array.isArray(exam.previous_analyses) ? exam.previous_analyses : [];
+
   useEffect(() => {
     const path = exam.audio_path ?? `${exam.id}.wav`;
     supabase.storage
