@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { MultiCandidateResult } from "@/components/DraftReport";
 import * as db from "@/lib/batchQueueDb";
 import { checkAudioSize, checkAudioDuration, checkContextSize } from "@/lib/uploadGuards";
+import { transcribeBlob, type ScribeWord } from "@/lib/transcribe";
 
 export type BatchItemStatus =
   | "recorded"
@@ -19,6 +20,7 @@ export interface BatchItem {
   recordedAt: number;
   status: BatchItemStatus;
   result?: MultiCandidateResult;
+  scribeWords?: ScribeWord[];
   error?: string;
 }
 
@@ -27,17 +29,6 @@ interface AnalyzeContext {
   language: string;
   bookletText: string;
   rubricText: string;
-}
-
-async function blobToBase64(blob: Blob): Promise<string> {
-  const buf = await blob.arrayBuffer();
-  const bytes = new Uint8Array(buf);
-  let binary = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  }
-  return btoa(binary);
 }
 
 export function useBatchQueue() {
@@ -120,7 +111,12 @@ export function useBatchQueue() {
 
     updateItem(item.id, { status: "analyzing", error: undefined });
     try {
-      const audioBase64 = await blobToBase64(item.audioBlob);
+      // Step 1: Scribe transcription (always — gives us speaker diarization + word timing)
+      const { transcript, words } = await transcribeBlob(item.audioBlob);
+      if (transcript.trim().split(/\s+/).filter(Boolean).length < 30) {
+        throw new Error("Not enough speech detected in this recording.");
+      }
+      // Step 2: AI scoring on transcript
       const { data, error } = await supabase.functions.invoke("analyze-exam", {
         body: {
           level: ctx.level,
@@ -128,12 +124,13 @@ export function useBatchQueue() {
           candidateNames: item.candidateNames,
           bookletText: ctx.bookletText,
           rubricText: ctx.rubricText,
-          audioBase64,
+          transcript,
         },
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
-      updateItem(item.id, { status: "done", result: data as MultiCandidateResult });
+      const enriched = { ...(data as MultiCandidateResult), transcript };
+      updateItem(item.id, { status: "done", result: enriched, scribeWords: words });
     } catch (err: any) {
       updateItem(item.id, {
         status: "failed",
