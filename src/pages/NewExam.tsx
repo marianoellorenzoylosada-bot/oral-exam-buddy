@@ -16,6 +16,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { LiveTranscript } from "@/components/LiveTranscript";
 import { PhaseTimer, type PhaseMark } from "@/components/PhaseTimer";
+import { MicCheck } from "@/components/MicCheck";
+import { QuickTags, type QuickTag } from "@/components/QuickTags";
 import { transcribeBlob, type ScribeWord } from "@/lib/transcribe";
 import { checkAudioSize, checkAudioDuration, checkContextSize } from "@/lib/uploadGuards";
 import { GroupPicker } from "@/components/GroupPicker";
@@ -114,6 +116,7 @@ export default function NewExamPage() {
   const [liveTranscript, setLiveTranscript] = useState("");
   const [scribeWords, setScribeWords] = useState<ScribeWord[]>([]);
   const [phaseMarks, setPhaseMarks] = useState<PhaseMark[]>([]);
+  const [quickTags, setQuickTags] = useState<QuickTag[]>([]);
   const [groupId, setGroupId] = useState<string | null>(null);
 
   const examLevels = getExamLevels(exam.language);
@@ -198,6 +201,7 @@ export default function NewExamPage() {
           bookletText: exam.bookletText,
           rubricText: exam.rubricText,
           transcript: transcriptText,
+          examinerTags: quickTags,
         },
       });
 
@@ -218,7 +222,7 @@ export default function NewExamPage() {
       setAnalyzing(false);
       setAnalyzingStep("");
     }
-  }, [recorder.audioBlob, exam, selectedLang, toast, liveTranscript, scribeWords]);
+  }, [recorder.audioBlob, exam, selectedLang, toast, liveTranscript, scribeWords, quickTags]);
 
   const handleReset = useCallback(() => {
     reset();
@@ -433,8 +437,13 @@ export default function NewExamPage() {
           <TabsContent value="record">
             <Card>
               <CardHeader>
-                <CardTitle className="font-display">Live Recording</CardTitle>
-                <CardDescription>Record the oral examination. Audio will be sent to the AI for transcription and assessment.</CardDescription>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <CardTitle className="font-display">Live Recording</CardTitle>
+                    <CardDescription>Record the oral examination. Audio will be sent to the AI for transcription and assessment.</CardDescription>
+                  </div>
+                  <MicCheck />
+                </div>
               </CardHeader>
               <CardContent className="flex flex-col items-center gap-6">
                 {/* Timer */}
@@ -506,6 +515,16 @@ export default function NewExamPage() {
                       onTranscriptUpdate={setLiveTranscript}
                     />
                   </div>
+                )}
+
+                {/* Per-candidate quick tags during the exam */}
+                {(recorder.state === "recording" || recorder.state === "paused" || quickTags.length > 0) && (
+                  <QuickTags
+                    elapsedSeconds={recorder.duration}
+                    active={recorder.state === "recording" || recorder.state === "paused"}
+                    candidateLetters={exam.candidateNames.map((_, i) => String.fromCharCode(65 + i))}
+                    onChange={setQuickTags}
+                  />
                 )}
 
                 {/* Context summary */}
