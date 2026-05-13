@@ -178,6 +178,76 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
     }
   };
 
+  const handleRegrade = async () => {
+    if (editTranscript.trim().split(/\s+/).filter(Boolean).length < 30) {
+      toast({ title: "Transcript too short", description: "Need at least 30 words to re-analyze.", variant: "destructive" });
+      return;
+    }
+    setRegrading(true);
+    try {
+      // 1. Snapshot current analysis
+      const snapshot = {
+        regraded_at: new Date().toISOString(),
+        overall_band: exam.overall_band,
+        overall_score: exam.overall_score,
+        criteria: exam.criteria,
+        strengths: exam.strengths,
+        areas_for_improvement: exam.areas_for_improvement,
+        examiner_notes: exam.examiner_notes,
+        transcript: exam.transcript,
+      };
+      const newHistory = [snapshot, ...previousAnalyses];
+
+      // 2. Build optional examiner tag from extra observation
+      const tags = extraObservation.trim()
+        ? [{ atSec: 0, candidate: "?", label: extraObservation.trim() }]
+        : [];
+
+      // 3. Re-invoke analysis
+      const { data, error } = await supabase.functions.invoke("analyze-exam", {
+        body: {
+          level: exam.level_code,
+          language: langLabel[exam.language] || exam.language,
+          candidateNames: exam.candidate_name ? [exam.candidate_name] : ["Candidate A"],
+          transcript: editTranscript,
+          examinerTags: tags,
+        },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+
+      // analyze-exam returns { candidates: [...], examinerNotes }. Use first candidate.
+      const first = (data as any).candidates?.[0];
+      if (!first) throw new Error("No analysis returned.");
+
+      const { error: updErr } = await supabase
+        .from("exams")
+        .update({
+          overall_band: first.overallBand,
+          overall_score: first.overallScore,
+          criteria: first.criteria,
+          strengths: first.strengths,
+          areas_for_improvement: first.areasForImprovement,
+          transcript: editTranscript,
+          examiner_notes: editNotes,
+          previous_analyses: newHistory as any,
+          regrade_count: (exam.regrade_count ?? 0) + 1,
+        })
+        .eq("id", exam.id);
+      if (updErr) throw updErr;
+
+      toast({ title: "Re-analysis complete", description: "Previous version saved to history." });
+      setRegradeOpen(false);
+      setExtraObservation("");
+      queryClient.invalidateQueries({ queryKey: ["exams-reports"] });
+      onClose();
+    } catch (err: any) {
+      toast({ title: "Re-analysis failed", description: err.message, variant: "destructive" });
+    } finally {
+      setRegrading(false);
+    }
+  };
+
   return (
     <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
       <DialogHeader>
@@ -189,6 +259,11 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
               <EyeOff className="h-3 w-3" /> Anonymized
             </Badge>
           )}
+          {(exam.regrade_count ?? 0) > 0 && (
+            <Badge variant="secondary" className="gap-1 text-xs">
+              <RefreshCw className="h-3 w-3" /> Re-graded {exam.regrade_count}×
+            </Badge>
+          )}
         </DialogTitle>
         <DialogDescription>
           {displayName && <span className="font-medium">{displayName} · </span>}
@@ -197,20 +272,57 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
       </DialogHeader>
 
       <div className="space-y-5 mt-2">
+        {viewing && (
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400 flex items-center justify-between">
+            <span>Viewing previous version from {new Date(viewing.regraded_at).toLocaleString()}</span>
+            <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => setViewingPrevIdx(null)}>Back to current</Button>
+          </div>
+        )}
+
         {/* Overall */}
         <div className="flex items-center gap-4 rounded-lg border border-primary/20 bg-primary/5 p-4">
           <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <span className="font-display text-2xl font-bold">{exam.overall_band}</span>
+            <span className="font-display text-2xl font-bold">{displayedBand}</span>
           </div>
           <div>
             <p className="text-sm text-muted-foreground">Overall Score</p>
-            <p className="font-display text-xl font-bold">{Number(exam.overall_score).toFixed(1)}/5.0</p>
+            <p className="font-display text-xl font-bold">{Number(displayedScore).toFixed(1)}/5.0</p>
             <div className="flex gap-2 mt-1">
               <Badge variant="secondary">{exam.level_code}</Badge>
               <Badge variant="outline">{langLabel[exam.language] || exam.language}</Badge>
             </div>
           </div>
         </div>
+
+        {/* Version history */}
+        {previousAnalyses.length > 0 && (
+          <Accordion type="single" collapsible>
+            <AccordionItem value="history" className="border rounded-lg px-3">
+              <AccordionTrigger className="text-sm font-display py-2 hover:no-underline">
+                <span className="flex items-center gap-2">
+                  <History className="h-4 w-4 text-muted-foreground" />
+                  Version history ({previousAnalyses.length})
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-1.5 pb-2">
+                  {previousAnalyses.map((p: any, i: number) => (
+                    <div key={i} className="flex items-center justify-between rounded-md border bg-muted/20 px-2.5 py-1.5 text-xs">
+                      <div>
+                        <span className="font-medium">{p.overall_band}</span>
+                        <span className="text-muted-foreground"> · {Number(p.overall_score).toFixed(1)}/5</span>
+                        <span className="text-muted-foreground ml-2">{new Date(p.regraded_at).toLocaleString()}</span>
+                      </div>
+                      <Button size="sm" variant={viewingPrevIdx === i ? "secondary" : "ghost"} className="h-6 text-xs" onClick={() => setViewingPrevIdx(viewingPrevIdx === i ? null : i)}>
+                        {viewingPrevIdx === i ? "Hide" : "View"}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        )}
 
         {/* Audio playback */}
         {audioUrl && !audioGone && (
