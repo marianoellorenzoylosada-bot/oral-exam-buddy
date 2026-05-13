@@ -16,6 +16,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { LiveTranscript } from "@/components/LiveTranscript";
 import { PhaseTimer, type PhaseMark } from "@/components/PhaseTimer";
+import { MicCheck } from "@/components/MicCheck";
+import { QuickTags, type QuickTag } from "@/components/QuickTags";
 import { transcribeBlob, type ScribeWord } from "@/lib/transcribe";
 import { checkAudioSize, checkAudioDuration, checkContextSize } from "@/lib/uploadGuards";
 import { GroupPicker } from "@/components/GroupPicker";
@@ -114,6 +116,7 @@ export default function NewExamPage() {
   const [liveTranscript, setLiveTranscript] = useState("");
   const [scribeWords, setScribeWords] = useState<ScribeWord[]>([]);
   const [phaseMarks, setPhaseMarks] = useState<PhaseMark[]>([]);
+  const [quickTags, setQuickTags] = useState<QuickTag[]>([]);
   const [groupId, setGroupId] = useState<string | null>(null);
 
   const examLevels = getExamLevels(exam.language);
@@ -198,6 +201,7 @@ export default function NewExamPage() {
           bookletText: exam.bookletText,
           rubricText: exam.rubricText,
           transcript: transcriptText,
+          examinerTags: quickTags,
         },
       });
 
