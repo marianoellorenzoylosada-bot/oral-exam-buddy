@@ -19,6 +19,7 @@ import { PhaseTimer, type PhaseMark } from "@/components/PhaseTimer";
 import { MicCheck } from "@/components/MicCheck";
 import { QuickTags, type QuickTag } from "@/components/QuickTags";
 import { transcribeBlob, type ScribeWord } from "@/lib/transcribe";
+import { labelTranscriptFromWords, hasClearSpeakerLabels } from "@/lib/labelTranscript";
 import { checkAudioSize, checkAudioDuration, checkContextSize } from "@/lib/uploadGuards";
 import { GroupPicker } from "@/components/GroupPicker";
 import { CandidatePicker } from "@/components/CandidatePicker";
@@ -234,8 +235,14 @@ export default function NewExamPage() {
       if (error) throw error;
       if (data.error) throw new Error(data.error);
 
-      // Make sure the transcript on the report is the verbatim one we sent.
-      const enriched = { ...(data as MultiCandidateResult), transcript: transcriptText };
+      // Prefer the AI-labelled transcript if it already contains clear speaker
+      // labels; otherwise best-effort label the verbatim transcript from
+      // Scribe's word-level diarization. Falls back to raw text on low confidence.
+      const aiTranscript = (data as any)?.transcript as string | undefined;
+      const displayTranscript = aiTranscript && hasClearSpeakerLabels(aiTranscript)
+        ? aiTranscript
+        : labelTranscriptFromWords(transcriptText, out.words);
+      const enriched = { ...(data as MultiCandidateResult), transcript: displayTranscript };
       setReport(enriched);
       setPendingAnalysis(false);
       // Successful analysis — clear persisted draft.
