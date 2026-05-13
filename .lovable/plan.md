@@ -1,23 +1,41 @@
-## Problem
+## English-Only Simplification
 
-In **Settings → Defaults**, the "Default Language" selector saves to `localStorage` (`oralassess-lang`), but nothing reads it back. As a result:
+Strip the multi-language UI without touching the underlying data model, AI flow, or design system. All call sites keep passing a `language` string — it just always equals `"en"`.
 
-- **New Exam** always starts in English (`useExamStore.ts` hardcodes `language: "en"`).
-- **Batch Session** always starts in English (`useState("en")` in `BatchSession.tsx`).
+### Changes
 
-So changing the default language in Settings has no visible effect anywhere — which matches what you saw.
+**1. `src/lib/examLevels.ts`**
+- Trim `EXAM_NAMES` to only the `en` entry.
+- Trim `SUPPORTED_LANGUAGES` to `[{ value: "en", label: "English" }]`.
+- Keep `getExamLevels()` and `getExamLabel()` exports unchanged so call sites still compile. Fallback already returns English names for any legacy language code in old records.
 
-(Note: the app does not have a UI translation layer; the "language" setting only controls the exam/assessment language, not the interface language. If you also wanted the UI itself translated, that's a separate, larger feature — let me know.)
+**2. `src/pages/NewExam.tsx`**
+- Remove the Language `<Select>` field and its label.
+- Ensure the exam is created with `language: "en"` (rely on store default).
 
-## Fix
+**3. `src/pages/BatchSession.tsx`**
+- Remove the Language `<Select>`.
+- Replace the language `useState` with a constant `const language = "en"`.
 
-1. **`src/hooks/useExamStore.ts`** — initialize `language` from `localStorage.getItem("oralassess-lang")`, falling back to `"en"`.
-2. **`src/pages/BatchSession.tsx`** — same: `useState(() => localStorage.getItem("oralassess-lang") ?? "en")`.
-3. **`src/pages/Settings.tsx`** — keep current save behavior, but also dispatch a small confirmation toast wording tweak so the user knows it applies to *new* exams started after saving (existing in-progress exams keep their current language).
+**4. `src/pages/Settings.tsx`**
+- Remove the entire "Defaults / Default Language" card.
+- Stop reading/writing the `oralassess-lang` localStorage key.
+- Keep Profile and AI Engine cards as-is.
 
-No backend / schema changes. No new dependencies.
+**5. `src/hooks/useExamStore.ts`**
+- Drop the `localStorage.getItem("oralassess-lang")` lookup; always default `language: "en"`.
+- Keep the `oralassess-institution` lookup.
 
-## Out of scope
+### Untouched
+- Supabase schema, RLS, Auth, Storage.
+- `analyze-exam` edge function and AI prompts (still receive `language`).
+- Reports, Progress, PDF generation, Cambridge rubrics, Question Bank, Roster.
+- Sidebar, layout, theme, typography — no visual redesign.
 
-- Translating the app's interface (menus, buttons, labels). Tell me if you want that and I'll plan it separately (likely `react-i18next` + dictionaries for EN/ES/PT/DE/FR/IT).
-- Changing how `Profile → Institution` / `Examiner Name` flow into new exams (also currently not auto-prefilled). Happy to include if you want.
+### Trade-offs
+- DELE / DELF / Goethe / CILS / CAPLE labels are no longer selectable.
+- Historical exams stored with non-English language codes still load and display using English exam names (graceful fallback).
+- Reversible later by restoring the trimmed entries in `examLevels.ts` and re-adding the selectors.
+
+### Memory follow-up
+- Update `mem://index.md` Core line to reflect "Languages: EN only" after implementation.
