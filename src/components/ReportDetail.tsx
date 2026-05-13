@@ -117,11 +117,19 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
     a.addEventListener("timeupdate", onTime);
   };
 
-  const criteria = Array.isArray(exam.criteria)
-    ? (exam.criteria as { name: string; score: number; maxScore: number; feedback: string; confidence?: number }[])
+  // When viewing a previous version, swap displayed analysis (read-only).
+  const viewing = viewingPrevIdx != null ? previousAnalyses[viewingPrevIdx] : null;
+  const displayedCriteria = viewing?.criteria ?? exam.criteria;
+  const displayedStrengths = viewing?.strengths ?? exam.strengths;
+  const displayedImprovements = viewing?.areas_for_improvement ?? exam.areas_for_improvement;
+  const displayedBand = viewing?.overall_band ?? exam.overall_band;
+  const displayedScore = viewing?.overall_score ?? exam.overall_score;
+
+  const criteria = Array.isArray(displayedCriteria)
+    ? (displayedCriteria as { name: string; score: number; maxScore: number; feedback: string; confidence?: number }[])
     : [];
-  const strengths = Array.isArray(exam.strengths) ? (exam.strengths as string[]) : [];
-  const improvements = Array.isArray(exam.areas_for_improvement) ? (exam.areas_for_improvement as string[]) : [];
+  const strengths = Array.isArray(displayedStrengths) ? (displayedStrengths as string[]) : [];
+  const improvements = Array.isArray(displayedImprovements) ? (displayedImprovements as string[]) : [];
   const recommendations = getRecommendations(criteria, exam.level_code, 2);
 
   const displayName = anonymize ? mask(exam.candidate_name) : (exam.candidate_name || null);
