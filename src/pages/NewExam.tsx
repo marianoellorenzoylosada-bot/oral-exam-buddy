@@ -240,6 +240,8 @@ export default function NewExamPage() {
         group={exam.group}
         candidateNames={exam.candidateNames}
         audioBlob={recorder.audioBlob}
+        scribeWords={scribeWords}
+        phaseMarks={phaseMarks}
         draftKey={`new-${exam.title}-${exam.candidateNames.filter(Boolean).join("|")}`}
         onReset={handleReset}
       />
