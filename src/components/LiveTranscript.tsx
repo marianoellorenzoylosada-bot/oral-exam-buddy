@@ -13,9 +13,12 @@ interface LiveTranscriptProps {
 export function LiveTranscript({ isRecording, onTranscriptUpdate }: LiveTranscriptProps) {
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dropped, setDropped] = useState(false);
   const [fullTranscript, setFullTranscript] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const triedRef = useRef(false);
+  const wasConnectedRef = useRef(false);
+  const reconnectAttemptedRef = useRef(false);
 
   const scribe = useScribe({
     modelId: "scribe_v2_realtime",
@@ -45,6 +48,7 @@ export function LiveTranscript({ isRecording, onTranscriptUpdate }: LiveTranscri
         token: data.token,
         microphone: { echoCancellation: true, noiseSuppression: true },
       });
+      setDropped(false);
     } catch (err: any) {
       console.error("Transcription start failed:", err);
       setError(err?.message || "Could not start live transcription.");
@@ -61,9 +65,28 @@ export function LiveTranscript({ isRecording, onTranscriptUpdate }: LiveTranscri
     }
     if (!isRecording) {
       triedRef.current = false;
+      reconnectAttemptedRef.current = false;
+      wasConnectedRef.current = false;
+      setDropped(false);
       if (scribe.isConnected) scribe.disconnect();
     }
   }, [isRecording, scribe, connecting, startTranscription]);
+
+  // Detect a silent disconnect mid-recording: warn the examiner and try ONE silent reconnect.
+  useEffect(() => {
+    if (scribe.isConnected) {
+      wasConnectedRef.current = true;
+      setDropped(false);
+      return;
+    }
+    if (isRecording && wasConnectedRef.current && !connecting) {
+      setDropped(true);
+      if (!reconnectAttemptedRef.current) {
+        reconnectAttemptedRef.current = true;
+        void startTranscription();
+      }
+    }
+  }, [scribe.isConnected, isRecording, connecting, startTranscription]);
 
   const committedTexts = scribe.committedTranscripts?.map((t) => t.text) ?? [];
   const displayText = [...committedTexts, scribe.partialTranscript].filter(Boolean).join(" ");
