@@ -242,9 +242,22 @@ export default function NewExamPage() {
       clearDraft().catch(() => undefined);
     } catch (err: any) {
       console.error("Analysis error:", err);
+      // Persist a pending-analysis marker so the audio + context survive a reload
+      // and can be re-submitted manually or auto-retried when back online.
+      setPendingAnalysis(true);
+      try {
+        await saveDraft({
+          pendingAnalysis: true,
+          title: exam.title, language: exam.language, institution: exam.institution,
+          group: exam.group, candidateNames: exam.candidateNames,
+          bookletText: exam.bookletText, rubricText: exam.rubricText,
+          audioBlob: blob, duration: dur,
+          liveTranscript, scribeWords, phaseMarks, quickTags,
+        });
+      } catch { /* ignore */ }
       toast({
         title: "Analysis failed",
-        description: err.message || "Could not process the exam. Please try again.",
+        description: err.message || "Could not process the exam. Your recording is saved — you can retry submission.",
         variant: "destructive",
       });
     } finally {
