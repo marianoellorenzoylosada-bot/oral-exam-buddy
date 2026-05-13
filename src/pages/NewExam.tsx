@@ -634,15 +634,33 @@ export default function NewExamPage() {
                   </div>
                 )}
 
+                {/* Pending offline analysis notice */}
+                {pendingAnalysis && (
+                  <div className="w-full max-w-md rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
+                    <WifiOff className="h-4 w-4 shrink-0" />
+                    Analysis queued — will run automatically when you're back online.
+                  </div>
+                )}
+
+                {/* Restored draft notice */}
+                {restoredBlob && !recorder.audioBlob && (
+                  <div className="w-full max-w-md rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+                    <p className="font-medium">Recovered recording ready ({Math.floor(restoredDuration / 60)}:{String(restoredDuration % 60).padStart(2, "0")})</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Submit below, or use "Record Again" to discard and re-record.</p>
+                  </div>
+                )}
+
                 <div className="w-full max-w-md flex justify-between">
                   <Button variant="outline" onClick={() => setActiveTab("context")}>← Back</Button>
                   <Button
-                    disabled={recorder.state !== "stopped" || analyzing || !exam.title}
+                    disabled={(!audioBlobForSubmit || (recorder.state !== "stopped" && !restoredBlob)) || analyzing || !exam.title}
                     onClick={handleSubmitForAnalysis}
                     className="gap-2"
                   >
                     {analyzing ? (
                       <><Loader2 className="h-4 w-4 animate-spin" /> {analyzingStep === "transcribing" ? "Transcribing…" : "Scoring…"}</>
+                    ) : !online ? (
+                      <><WifiOff className="h-4 w-4" /> Queue for analysis</>
                     ) : (
                       "Submit for Analysis →"
                     )}
