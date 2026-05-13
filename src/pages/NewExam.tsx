@@ -222,7 +222,7 @@ export default function NewExamPage() {
       setAnalyzing(false);
       setAnalyzingStep("");
     }
-  }, [recorder.audioBlob, exam, selectedLang, toast, liveTranscript, scribeWords]);
+  }, [recorder.audioBlob, exam, selectedLang, toast, liveTranscript, scribeWords, quickTags]);
 
   const handleReset = useCallback(() => {
     reset();
@@ -437,8 +437,13 @@ export default function NewExamPage() {
           <TabsContent value="record">
             <Card>
               <CardHeader>
-                <CardTitle className="font-display">Live Recording</CardTitle>
-                <CardDescription>Record the oral examination. Audio will be sent to the AI for transcription and assessment.</CardDescription>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <CardTitle className="font-display">Live Recording</CardTitle>
+                    <CardDescription>Record the oral examination. Audio will be sent to the AI for transcription and assessment.</CardDescription>
+                  </div>
+                  <MicCheck />
+                </div>
               </CardHeader>
               <CardContent className="flex flex-col items-center gap-6">
                 {/* Timer */}
