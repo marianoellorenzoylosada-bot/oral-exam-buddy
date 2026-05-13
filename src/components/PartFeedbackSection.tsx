@@ -12,12 +12,46 @@ interface Props {
   fallbackSummary?: string;
 }
 
+const NO_EVIDENCE = /no evidence|not covered|n\/?a\b|insufficient/i;
+
+function isMeaningful(pf?: PartFeedback): boolean {
+  if (!pf) return false;
+  const c = (pf.commentary ?? "").trim();
+  if (!c) return false;
+  if (NO_EVIDENCE.test(c)) return false;
+  return true;
+}
+
+/**
+ * Returns true when there is at least one usable part-feedback entry OR a
+ * non-empty overall summary. Callers should use this to avoid mounting the
+ * section at all on legacy / failed-parse reports.
+ */
+export function hasPartFeedbackContent(
+  partFeedback?: PartFeedback[],
+  overallSummary?: string
+): boolean {
+  const anyPart = (partFeedback ?? []).some(isMeaningful);
+  const anySummary = (overallSummary ?? "").trim().length > 0;
+  return anyPart || anySummary;
+}
+
 export function PartFeedbackSection({ levelCode, partFeedback, overallSummary, fallbackSummary }: Props) {
   const parts = getPartsForLevel(levelCode);
-  const byLabel = new Map((partFeedback ?? []).map((p) => [p.part.toLowerCase(), p]));
+  const cleaned = (partFeedback ?? []).filter(isMeaningful);
+  const byLabel = new Map(cleaned.map((p) => [p.part.toLowerCase(), p]));
 
   const summary = (overallSummary ?? "").trim() || (fallbackSummary ?? "").trim();
-  const defaultOpen = parts[0]?.part ?? "summary";
+  const hasAnyPart = cleaned.length > 0;
+
+  // Defence in depth — if a parent forgets to gate on hasPartFeedbackContent,
+  // and there is genuinely nothing to show, render nothing rather than a wall
+  // of empty accordions.
+  if (!hasAnyPart && !summary) return null;
+
+  const defaultOpen = hasAnyPart
+    ? (cleaned[0]?.part ?? parts[0]?.part ?? "summary")
+    : "summary";
 
   return (
     <Card>
@@ -28,8 +62,14 @@ export function PartFeedbackSection({ levelCode, partFeedback, overallSummary, f
         </CardTitle>
       </CardHeader>
       <CardContent>
+        {!hasAnyPart && (
+          <p className="mb-3 text-xs text-muted-foreground italic">
+            Per-part commentary is unavailable for this recording — see the criterion feedback for details.
+          </p>
+        )}
+
         <Accordion type="single" collapsible defaultValue={defaultOpen} className="w-full">
-          {parts.map(({ part, title }) => {
+          {hasAnyPart && parts.map(({ part, title }) => {
             const pf = byLabel.get(part.toLowerCase());
             return (
               <AccordionItem key={part} value={part}>
@@ -78,7 +118,7 @@ export function PartFeedbackSection({ levelCode, partFeedback, overallSummary, f
                     </div>
                   ) : (
                     <p className="text-sm text-muted-foreground italic">
-                      No part-specific commentary available for this report. See the criterion feedback and examiner notes below.
+                      Not covered in this recording.
                     </p>
                   )}
                 </AccordionContent>
@@ -86,20 +126,16 @@ export function PartFeedbackSection({ levelCode, partFeedback, overallSummary, f
             );
           })}
 
-          <AccordionItem value="summary">
-            <AccordionTrigger className="text-sm">
-              <span className="font-medium text-left">Overall Summary</span>
-            </AccordionTrigger>
-            <AccordionContent>
-              {summary ? (
+          {summary && (
+            <AccordionItem value="summary">
+              <AccordionTrigger className="text-sm">
+                <span className="font-medium text-left">Overall Summary</span>
+              </AccordionTrigger>
+              <AccordionContent>
                 <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap">{summary}</p>
-              ) : (
-                <p className="text-sm text-muted-foreground italic">
-                  No overall summary available. Refer to the criterion feedback and examiner notes.
-                </p>
-              )}
-            </AccordionContent>
-          </AccordionItem>
+              </AccordionContent>
+            </AccordionItem>
+          )}
         </Accordion>
       </CardContent>
     </Card>
