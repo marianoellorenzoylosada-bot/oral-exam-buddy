@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { AppLayout } from "@/components/AppLayout";
+import { RoleGate } from "@/components/RoleGate";
 import Index from "./pages/Index";
 import NewExam from "./pages/NewExam";
 import BatchSession from "./pages/BatchSession";
@@ -47,8 +48,8 @@ const App = () => (
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
                 <Route path="/" element={<Index />} />
-                <Route path="/new-exam" element={<NewExam />} />
-                <Route path="/batch-session" element={<BatchSession />} />
+                <Route path="/new-exam" element={<RoleGate role="educator"><NewExam /></RoleGate>} />
+                <Route path="/batch-session" element={<RoleGate role="educator"><BatchSession /></RoleGate>} />
                 <Route path="/roster" element={<Roster />} />
                 <Route path="/question-bank" element={<QuestionBank />} />
                 <Route path="/reports" element={<Reports />} />
