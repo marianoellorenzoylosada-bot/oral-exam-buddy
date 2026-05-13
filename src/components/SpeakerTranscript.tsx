@@ -1,65 +1,91 @@
 import { useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 
 /**
- * Parses a transcript string with "Speaker:" prefixes and renders
- * colour-coded blocks per speaker (Examiner, Candidate A/B/C…).
+ * Renders a transcript as a clear speaking script.
+ * - One utterance per row, with a labelled speaker tag.
+ * - Recognised speakers: Examiner, Candidate A/B/C.
+ * - Anything else (Speaker 1, Unknown, raw "speaker_0", etc.) → "Speaker unclear".
+ * - When `words` (ElevenLabs Scribe per-word timeline) is provided, a small
+ *   timestamp is shown for each utterance based on the first matched word.
+ * Original transcript text is preserved verbatim — only formatting changes.
  */
+
+export interface ScribeWordLite {
+  text: string;
+  start: number;
+  end: number;
+  speaker?: string | null;
+}
 
 interface SpeakerTranscriptProps {
   transcript: string;
   /** Hide full text (anonymization mode) */
   hidden?: boolean;
   maxHeight?: string;
+  /** Optional Scribe word timeline used to derive per-utterance timestamps. */
+  words?: ScribeWordLite[];
 }
 
 interface TranscriptLine {
-  speaker: string;
+  rawSpeaker: string;
+  label: SpeakerLabel;
   text: string;
 }
 
-// Speaker colour palette — using CSS-variable–friendly Tailwind classes
-const SPEAKER_STYLES: Record<string, { bg: string; border: string; label: string }> = {
-  examiner: {
-    bg: "bg-muted/60",
-    border: "border-muted-foreground/20",
-    label: "text-muted-foreground",
+type SpeakerLabel =
+  | "Examiner"
+  | "Candidate A"
+  | "Candidate B"
+  | "Candidate C"
+  | "Speaker unclear";
+
+const STYLES: Record<SpeakerLabel, { dot: string; tag: string; accent: string }> = {
+  Examiner: {
+    dot: "bg-muted-foreground",
+    tag: "text-muted-foreground",
+    accent: "border-l-muted-foreground/40",
   },
-  "candidate a": {
-    bg: "bg-primary/8",
-    border: "border-primary/20",
-    label: "text-primary",
+  "Candidate A": {
+    dot: "bg-primary",
+    tag: "text-primary",
+    accent: "border-l-primary/60",
   },
-  "candidate b": {
-    bg: "bg-accent/40",
-    border: "border-accent-foreground/20",
-    label: "text-accent-foreground",
+  "Candidate B": {
+    dot: "bg-accent-foreground",
+    tag: "text-accent-foreground",
+    accent: "border-l-accent-foreground/50",
   },
-  "candidate c": {
-    bg: "bg-warning/10",
-    border: "border-warning/30",
-    label: "text-warning",
+  "Candidate C": {
+    // `--warning` may not exist in every theme — fall back via tailwind amber tones.
+    dot: "bg-amber-500",
+    tag: "text-amber-600 dark:text-amber-400",
+    accent: "border-l-amber-500/60",
+  },
+  "Speaker unclear": {
+    dot: "bg-destructive/70",
+    tag: "text-destructive",
+    accent: "border-l-destructive/40",
   },
 };
 
-function getStyle(speaker: string) {
-  const key = speaker.toLowerCase().replace(/[:\s]+$/, "").trim();
-  return (
-    SPEAKER_STYLES[key] ??
-    // fallback: match partial name
-    Object.entries(SPEAKER_STYLES).find(([k]) => key.includes(k))?.[1] ?? {
-      bg: "bg-secondary/30",
-      border: "border-secondary/20",
-      label: "text-secondary-foreground",
-    }
-  );
+function normaliseSpeaker(raw: string): SpeakerLabel {
+  const k = raw.toLowerCase().replace(/[:\s]+$/, "").trim();
+  if (k === "examiner" || k === "teacher" || k === "interlocutor") return "Examiner";
+  const candMatch = k.match(/^candidate\s+([a-c])\b/);
+  if (candMatch) {
+    const letter = candMatch[1].toUpperCase();
+    if (letter === "A") return "Candidate A";
+    if (letter === "B") return "Candidate B";
+    if (letter === "C") return "Candidate C";
+  }
+  return "Speaker unclear";
 }
 
 function parseTranscript(raw: string): TranscriptLine[] {
   if (!raw) return [];
-
-  // Split on speaker labels like "Examiner:", "Candidate A:", etc.
-  const regex = /(?:^|\n)((?:Examiner|Candidate\s+[A-Z]|Teacher|Interlocutor|Speaker\s*\d*)\s*(?:\([^)]*\))?)\s*:\s*/gi;
+  const regex = /(?:^|\n)\s*((?:Examiner|Teacher|Interlocutor|Candidate\s+[A-Z]|Speaker\s*\d*|Unknown|Narrator)\s*(?:\([^)]*\))?)\s*:\s*/gi;
 
   const lines: TranscriptLine[] = [];
   let lastIndex = 0;
@@ -67,33 +93,64 @@ function parseTranscript(raw: string): TranscriptLine[] {
 
   let match: RegExpExecArray | null;
   while ((match = regex.exec(raw)) !== null) {
-    // Capture text before this match under the previous speaker
     if (lastSpeaker && match.index > lastIndex) {
       const text = raw.slice(lastIndex, match.index).trim();
-      if (text) lines.push({ speaker: lastSpeaker, text });
+      if (text) lines.push({ rawSpeaker: lastSpeaker, label: normaliseSpeaker(lastSpeaker), text });
     } else if (!lastSpeaker && match.index > 0) {
-      // Text before any speaker label
       const text = raw.slice(0, match.index).trim();
-      if (text) lines.push({ speaker: "Narrator", text });
+      if (text) lines.push({ rawSpeaker: "", label: "Speaker unclear", text });
     }
     lastSpeaker = match[1].trim();
     lastIndex = match.index + match[0].length;
   }
 
-  // Remaining text after last speaker
   if (lastSpeaker) {
     const text = raw.slice(lastIndex).trim();
-    if (text) lines.push({ speaker: lastSpeaker, text });
+    if (text) lines.push({ rawSpeaker: lastSpeaker, label: normaliseSpeaker(lastSpeaker), text });
   } else if (raw.trim()) {
-    // No speaker labels found — show as plain text
-    lines.push({ speaker: "", text: raw.trim() });
+    lines.push({ rawSpeaker: "", label: "Speaker unclear", text: raw.trim() });
   }
 
   return lines;
 }
 
-export function SpeakerTranscript({ transcript, hidden, maxHeight = "20rem" }: SpeakerTranscriptProps) {
+const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}']+/gu, " ").trim();
+
+function formatTs(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+}
+
+/** Find the timestamp of the first word of `text` inside `words`. */
+function firstTimestamp(text: string, words: ScribeWordLite[], cursor: { i: number }): number | null {
+  if (!words.length) return null;
+  const tokens = norm(text).split(/\s+/).filter(Boolean).slice(0, 6);
+  if (!tokens.length) return null;
+  // Sliding scan from cursor forward; allow some tolerance.
+  for (let i = cursor.i; i <= words.length - 1; i++) {
+    let hits = 0;
+    const window = Math.min(tokens.length, words.length - i);
+    for (let j = 0; j < window; j++) {
+      if (norm(words[i + j].text) === tokens[j]) hits++;
+    }
+    if (hits >= Math.max(1, Math.floor(tokens.length / 2))) {
+      cursor.i = i + window;
+      return words[i].start;
+    }
+  }
+  return null;
+}
+
+export function SpeakerTranscript({ transcript, hidden, maxHeight = "20rem", words }: SpeakerTranscriptProps) {
   const lines = useMemo(() => parseTranscript(transcript), [transcript]);
+
+  const timestamps = useMemo(() => {
+    if (!words || words.length === 0) return [];
+    const cursor = { i: 0 };
+    return lines.map((l) => firstTimestamp(l.text, words, cursor));
+  }, [lines, words]);
 
   if (hidden) {
     return (
@@ -103,35 +160,57 @@ export function SpeakerTranscript({ transcript, hidden, maxHeight = "20rem" }: S
     );
   }
 
-  // No speaker labels detected — plain fallback
-  if (lines.length <= 1 && lines[0]?.speaker === "") {
+  // No speaker labels detected → plain fallback (preserve original text).
+  if (lines.length === 0 || (lines.length === 1 && lines[0].rawSpeaker === "")) {
     return (
-      <ScrollArea className="rounded-lg bg-muted/50 p-4" style={{ maxHeight }}>
+      <ScrollArea className="rounded-lg bg-muted/30 p-4" style={{ maxHeight }}>
         <p className="text-sm leading-relaxed whitespace-pre-wrap">{transcript}</p>
       </ScrollArea>
     );
   }
 
   return (
-    <ScrollArea className="rounded-lg bg-muted/30 p-2" style={{ maxHeight }}>
-      <div className="space-y-1.5">
+    <ScrollArea className="rounded-lg border bg-card" style={{ maxHeight }}>
+      <ol className="divide-y divide-border">
         {lines.map((line, i) => {
-          const style = getStyle(line.speaker);
+          const style = STYLES[line.label];
+          const ts = timestamps[i] ?? null;
           return (
-            <div
+            <li
               key={i}
-              className={`rounded-md border px-3 py-2 ${style.bg} ${style.border}`}
-            >
-              {line.speaker && (
-                <span className={`text-xs font-semibold uppercase tracking-wide ${style.label}`}>
-                  {line.speaker}
-                </span>
+              className={cn(
+                "group border-l-2 px-3 py-2.5 transition-colors hover:bg-muted/40",
+                style.accent
               )}
-              <p className="text-sm leading-relaxed mt-0.5">{line.text}</p>
-            </div>
+            >
+              <div className="flex items-baseline justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span
+                    aria-hidden
+                    className={cn("inline-block h-2 w-2 shrink-0 rounded-full", style.dot)}
+                  />
+                  <span
+                    className={cn(
+                      "text-[11px] font-semibold uppercase tracking-wider",
+                      style.tag
+                    )}
+                  >
+                    {line.label}
+                  </span>
+                </div>
+                {ts !== null && (
+                  <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
+                    {formatTs(ts)}
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 pl-4 text-sm leading-relaxed whitespace-pre-wrap text-foreground">
+                {line.text}
+              </p>
+            </li>
           );
         })}
-      </div>
+      </ol>
     </ScrollArea>
   );
 }
