@@ -616,7 +616,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
             <CardDescription>AI-generated transcription with speaker labels</CardDescription>
           </CardHeader>
           <CardContent>
-            <SpeakerTranscript transcript={sharedDraft.transcript} maxHeight="24rem" />
+            <SpeakerTranscript transcript={sharedDraft.transcript} maxHeight="24rem" words={scribeWords} />
           </CardContent>
         </Card>
       )}
