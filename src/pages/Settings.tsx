@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Save, Cloud, CheckCircle2, User, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
+import { TeamAdmin } from "@/components/TeamAdmin";
 
 export default function SettingsPage() {
   const { toast } = useToast();
