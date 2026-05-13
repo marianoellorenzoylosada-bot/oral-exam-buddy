@@ -176,6 +176,10 @@ export function LiveTranscript({ isRecording, onTranscriptUpdate }: LiveTranscri
           {fullTranscript.split(/\s+/).length} words transcribed live
         </p>
       )}
+
+      <p className="text-[11px] leading-snug text-muted-foreground">
+        Live captions are an aid only. The full audio is always recorded and re-transcribed at the end — keep recording even if captions pause.
+      </p>
     </div>
   );
 }
