@@ -488,7 +488,17 @@ export default function NewExamPage() {
                   <audio controls src={recorder.audioUrl} className="w-full max-w-md" />
                 )}
 
-                {/* Live Transcription */}
+                {/* Phase timer */}
+                {(recorder.state === "recording" || recorder.state === "paused") && exam.title && (
+                  <PhaseTimer
+                    level={exam.title}
+                    elapsedSeconds={recorder.duration}
+                    isRecording={recorder.state === "recording"}
+                    onMarksChange={setPhaseMarks}
+                  />
+                )}
+
+                {/* Live Transcription — always mounted while recording so it auto-connects */}
                 {(recorder.state === "recording" || recorder.state === "paused" || liveTranscript) && (
                   <div className="w-full max-w-md">
                     <LiveTranscript
@@ -523,7 +533,7 @@ export default function NewExamPage() {
                     className="gap-2"
                   >
                     {analyzing ? (
-                      <><Loader2 className="h-4 w-4 animate-spin" /> Analyzing…</>
+                      <><Loader2 className="h-4 w-4 animate-spin" /> {analyzingStep === "transcribing" ? "Transcribing…" : "Scoring…"}</>
                     ) : (
                       "Submit for Analysis →"
                     )}
