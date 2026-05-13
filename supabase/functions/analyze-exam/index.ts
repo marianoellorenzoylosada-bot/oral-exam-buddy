@@ -269,20 +269,28 @@ Include one entry in the "candidates" array for EACH candidate (${names.length} 
     }
 
     const aiResult = await response.json();
-    const rawContent = aiResult.choices?.[0]?.message?.content ?? "";
+    const rawContent: string = aiResult.choices?.[0]?.message?.content ?? "";
 
-    // Extract JSON from the response (strip markdown fences if present)
-    let jsonStr = rawContent;
-    const fenceMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (fenceMatch) {
-      jsonStr = fenceMatch[1].trim();
+    // Robust JSON extraction:
+    //  1. Prefer fenced ```json blocks.
+    //  2. Otherwise, take the substring from the first '{' to the last '}'.
+    //  3. Fall back to the raw content.
+    function extractJson(raw: string): string {
+      const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+      if (fence) return fence[1].trim();
+      const first = raw.indexOf("{");
+      const last = raw.lastIndexOf("}");
+      if (first >= 0 && last > first) return raw.slice(first, last + 1);
+      return raw;
     }
 
-    let assessment;
+    let assessment: any;
+    let parseFailed = false;
     try {
-      assessment = JSON.parse(jsonStr);
-    } catch {
-      // If JSON parsing fails, return a fallback single-candidate result
+      assessment = JSON.parse(extractJson(rawContent));
+    } catch (err) {
+      console.error("analyze-exam: JSON parse failed", err);
+      parseFailed = true;
       assessment = {
         candidates: names.map((n: string) => ({
           candidateName: n,
@@ -293,7 +301,8 @@ Include one entry in the "candidates" array for EACH candidate (${names.length} 
           areasForImprovement: [],
         })),
         transcript: "",
-        examinerNotes: rawContent,
+        // Do NOT leak raw model output into examinerNotes — it confuses examiners.
+        examinerNotes: "",
       };
     }
 
@@ -307,10 +316,40 @@ Include one entry in the "candidates" array for EACH candidate (${names.length} 
           criteria: assessment.criteria,
           strengths: assessment.strengths,
           areasForImprovement: assessment.areasForImprovement,
+          partFeedback: assessment.partFeedback,
+          overallSummary: assessment.overallSummary,
         }],
         transcript: assessment.transcript,
         examinerNotes: assessment.examinerNotes,
       };
+    }
+
+    // Defensive normalization so the UI never crashes on missing fields,
+    // and so "no evidence" placeholder part entries are dropped before render.
+    const NO_EVIDENCE = /no evidence|not covered|n\/?a\b|insufficient/i;
+    if (Array.isArray(assessment.candidates)) {
+      assessment.candidates = assessment.candidates.map((c: any) => {
+        const cand = c && typeof c === "object" ? c : {};
+        cand.criteria = Array.isArray(cand.criteria) ? cand.criteria : [];
+        cand.strengths = Array.isArray(cand.strengths) ? cand.strengths : [];
+        cand.areasForImprovement = Array.isArray(cand.areasForImprovement) ? cand.areasForImprovement : [];
+        if (Array.isArray(cand.partFeedback)) {
+          cand.partFeedback = cand.partFeedback.filter((p: any) => {
+            if (!p || typeof p !== "object") return false;
+            const commentary = typeof p.commentary === "string" ? p.commentary.trim() : "";
+            if (!commentary) return false;
+            if (NO_EVIDENCE.test(commentary)) return false;
+            return true;
+          });
+        } else {
+          cand.partFeedback = [];
+        }
+        if (typeof cand.overallSummary !== "string") cand.overallSummary = "";
+        return cand;
+      });
+    }
+    if (parseFailed) {
+      assessment.examinerNotes = "AI analysis could not be parsed. Please re-run analysis.";
     }
 
     return new Response(JSON.stringify(assessment), {
