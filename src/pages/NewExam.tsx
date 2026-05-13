@@ -19,6 +19,7 @@ import { PhaseTimer, type PhaseMark } from "@/components/PhaseTimer";
 import { MicCheck } from "@/components/MicCheck";
 import { QuickTags, type QuickTag } from "@/components/QuickTags";
 import { transcribeBlob, type ScribeWord } from "@/lib/transcribe";
+import { labelTranscriptFromWords, hasClearSpeakerLabels } from "@/lib/labelTranscript";
 import { checkAudioSize, checkAudioDuration, checkContextSize } from "@/lib/uploadGuards";
 import { GroupPicker } from "@/components/GroupPicker";
 import { CandidatePicker } from "@/components/CandidatePicker";
