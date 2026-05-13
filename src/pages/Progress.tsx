@@ -251,7 +251,64 @@ export default function ProgressPage() {
             </Card>
           </div>
 
-          {/* Score trend */}
+          {/* Group view: per-student bars + skills heatmap */}
+          {isGroupView && stats.studentBreakdown.length > 0 && (
+            <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="font-display text-lg">Students in {selectedGroup}</CardTitle>
+                  <CardDescription>Average overall score per candidate. Click a bar to focus.</CardDescription>
+                </CardHeader>
+                <CardContent className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={stats.studentBreakdown} layout="vertical" margin={{ left: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                      <XAxis type="number" domain={[0, 5]} className="text-xs fill-muted-foreground" tick={{ fontSize: 12 }} />
+                      <YAxis type="category" dataKey="name" width={110} className="text-xs fill-muted-foreground" tick={{ fontSize: 11 }} />
+                      <Tooltip
+                        contentStyle={{ borderRadius: "0.5rem", border: "1px solid hsl(var(--border))", background: "hsl(var(--card))", color: "hsl(var(--foreground))" }}
+                        formatter={(v: any, _n, p: any) => [`${Number(v).toFixed(2)} / 5 (${p.payload.exams} exam${p.payload.exams !== 1 ? "s" : ""})`, "Average"]}
+                      />
+                      <Bar dataKey="avg" radius={[0, 6, 6, 0]} onClick={(d: any) => setSelectedCandidate(d.name)} className="cursor-pointer">
+                        {stats.studentBreakdown.map((s, i) => {
+                          const pct = (s.avg / 5) * 100;
+                          const fill = pct >= 80 ? "hsl(var(--success))" : pct >= 50 ? "hsl(var(--warning))" : "hsl(var(--destructive))";
+                          return <Cell key={i} fill={fill} />;
+                        })}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+              {stats.radarData.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="font-display text-lg">Group Skills Profile</CardTitle>
+                    <CardDescription>Average per criterion across the group. Lowest = focus area.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="h-72">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={[...stats.radarData].sort((a, b) => a.average - b.average)} layout="vertical" margin={{ left: 30 }}>
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                        <XAxis type="number" domain={[0, 5]} className="text-xs fill-muted-foreground" tick={{ fontSize: 12 }} />
+                        <YAxis type="category" dataKey="criterion" width={140} className="text-xs fill-muted-foreground" tick={{ fontSize: 10 }} />
+                        <Tooltip
+                          contentStyle={{ borderRadius: "0.5rem", border: "1px solid hsl(var(--border))", background: "hsl(var(--card))", color: "hsl(var(--foreground))" }}
+                        />
+                        <Bar dataKey="average" radius={[0, 6, 6, 0]}>
+                          {[...stats.radarData].sort((a, b) => a.average - b.average).map((_, i, arr) => {
+                            const fill = i === 0 ? "hsl(var(--destructive))" : i === arr.length - 1 ? "hsl(var(--success))" : "hsl(var(--accent))";
+                            return <Cell key={i} fill={fill} />;
+                          })}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
+
           <Card>
             <CardHeader>
               <CardTitle className="font-display text-lg">Score Trend</CardTitle>
