@@ -82,7 +82,7 @@ serve(async (req) => {
   }
 
   try {
-    const { level, language, candidateNames, bookletText, rubricText, transcript } = await req.json();
+    const { level, language, candidateNames, bookletText, rubricText, transcript, examinerTags } = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -116,6 +116,22 @@ serve(async (req) => {
     const candidateList = names.map((n: string, i: number) => `Candidate ${String.fromCharCode(65 + i)} (${n || "unnamed"})`).join(", ");
     const rubricBlock = buildRubricBlock(level);
 
+    // Format examiner-supplied quick tags as time-stamped evidence the model
+    // should weigh alongside the transcript.
+    const tagBlock = (() => {
+      if (!Array.isArray(examinerTags) || examinerTags.length === 0) return "";
+      const fmt = (s: number) => {
+        const m = Math.floor(s / 60).toString().padStart(2, "0");
+        const sec = Math.floor(s % 60).toString().padStart(2, "0");
+        return `${m}:${sec}`;
+      };
+      const lines = examinerTags
+        .filter((t: any) => t && typeof t.label === "string")
+        .map((t: any) => `- [${fmt(Number(t.atSec) || 0)}] Candidate ${t.candidate ?? "?"}: ${t.label}`);
+      if (lines.length === 0) return "";
+      return `\nEXAMINER OBSERVATIONS DURING THE EXAM (timestamped notes from the live examiner — treat as additional evidence, NOT as a substitute for the transcript):\n${lines.join("\n")}`;
+    })();
+
     const systemPrompt = `You are an official Cambridge Assessment English Speaking examiner. You evaluate oral performance using the official Cambridge Speaking assessment scales.
 
 Your task: Analyze an oral examination recording with MULTIPLE candidates and produce a structured assessment report for EACH candidate individually, using the Cambridge 0–5 scale (0.5 increments).
@@ -128,6 +144,7 @@ EXAM CONTEXT:
 ${rubricBlock}
 ${bookletText ? `\nADDITIONAL REFERENCE — EXAM BOOKLET / SAMPLE PAPER:\n${bookletText}` : ""}
 ${rubricText ? `\nADDITIONAL REFERENCE — UPLOADED HANDBOOK / RUBRIC (use as primary source if provided):\n${rubricText}` : ""}
+${tagBlock}
 
 EXAM TRANSCRIPT (verbatim, with speaker labels — this is your ONLY source of evidence):
 """
