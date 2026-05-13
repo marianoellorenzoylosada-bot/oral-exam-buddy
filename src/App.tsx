@@ -15,6 +15,7 @@ import QuestionBank from "./pages/QuestionBank";
 import Reports from "./pages/Reports";
 import Progress from "./pages/Progress";
 import Settings from "./pages/Settings";
+import Calibration from "./pages/Calibration";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
@@ -50,6 +51,7 @@ const App = () => (
                 <Route path="/" element={<Index />} />
                 <Route path="/new-exam" element={<RoleGate role="educator"><NewExam /></RoleGate>} />
                 <Route path="/batch-session" element={<RoleGate role="educator"><BatchSession /></RoleGate>} />
+                <Route path="/calibration" element={<RoleGate role="educator"><Calibration /></RoleGate>} />
                 <Route path="/roster" element={<Roster />} />
                 <Route path="/question-bank" element={<QuestionBank />} />
                 <Route path="/reports" element={<Reports />} />

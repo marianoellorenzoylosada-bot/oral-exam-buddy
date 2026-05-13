@@ -9,6 +9,7 @@ import {
   Mic,
   LogOut,
   Users,
+  Scale,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -33,6 +34,7 @@ const mainNav = [
   { title: "Batch Session", url: "/batch-session", icon: Layers },
   { title: "Class Roster", url: "/roster", icon: Users },
   { title: "Question Bank", url: "/question-bank", icon: BookOpen },
+  { title: "Calibration", url: "/calibration", icon: Scale },
 ];
 
 const reviewNav = [
