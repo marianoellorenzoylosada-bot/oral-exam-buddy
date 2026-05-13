@@ -444,7 +444,7 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
         {exam.transcript && (
           <div>
             <h3 className="font-display font-semibold text-sm mb-1">Transcript</h3>
-            <SpeakerTranscript transcript={exam.transcript} hidden={anonymize} maxHeight="12rem" />
+            <SpeakerTranscript transcript={exam.transcript} hidden={anonymize} maxHeight="12rem" words={words} />
           </div>
         )}
 
