@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Mic, Square, Pause, Play, Upload, FileText, BookOpen, Trash2, Clock, Users, ExternalLink, Info, Loader2, AlertCircle, Plus, X } from "lucide-react";
+import { Mic, Square, Pause, Play, Upload, FileText, BookOpen, Trash2, Clock, Users, ExternalLink, Info, Loader2, AlertCircle, Plus, X, WifiOff } from "lucide-react";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { useExamStore } from "@/hooks/useExamStore";
 
@@ -23,6 +23,8 @@ import { checkAudioSize, checkAudioDuration, checkContextSize } from "@/lib/uplo
 import { GroupPicker } from "@/components/GroupPicker";
 import { CandidatePicker } from "@/components/CandidatePicker";
 import { SUPPORTED_LANGUAGES, getExamLevels } from "@/lib/examLevels";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { saveDraft, loadDraft, clearDraft } from "@/lib/examDraftDb";
 
 const LANGUAGES = SUPPORTED_LANGUAGES;
 
@@ -109,6 +111,7 @@ export default function NewExamPage() {
   const { exam, update, reset } = useExamStore();
   const recorder = useAudioRecorder();
   const { toast } = useToast();
+  const online = useOnlineStatus();
   const [activeTab, setActiveTab] = useState("setup");
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzingStep, setAnalyzingStep] = useState<"" | "transcribing" | "scoring">("");
@@ -118,10 +121,17 @@ export default function NewExamPage() {
   const [phaseMarks, setPhaseMarks] = useState<PhaseMark[]>([]);
   const [quickTags, setQuickTags] = useState<QuickTag[]>([]);
   const [groupId, setGroupId] = useState<string | null>(null);
+  // Offline support: blob restored from a previous session
+  const [restoredBlob, setRestoredBlob] = useState<Blob | null>(null);
+  const [restoredDuration, setRestoredDuration] = useState<number>(0);
+  const [pendingAnalysis, setPendingAnalysis] = useState(false);
+  const draftRestoredRef = useRef(false);
 
   const examLevels = getExamLevels(exam.language);
   const selectedLevel = examLevels.find(l => l.value === exam.title);
   const selectedLang = LANGUAGES.find(l => l.value === exam.language);
+
+  const audioBlobForSubmit = recorder.audioBlob ?? restoredBlob;
 
   const handleFileUpload = useCallback(async (file: File, type: "booklet" | "rubric") => {
     const text = await extractTextFromFile(file);
