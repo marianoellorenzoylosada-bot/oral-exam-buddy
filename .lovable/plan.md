@@ -1,63 +1,22 @@
-## Fix: Lock down `exam-audio` storage bucket
+## MVP: Auto-confirm sign-ups (TEMPORARY)
 
-### Problem
-The `exam-audio` bucket has two policies on `storage.objects` granted to the `public` role:
-- `Allow public read storage` — anyone (signed in or not) can read any audio file
-- `Allow public upload` — anyone can upload arbitrary files into the bucket
+### Status: ENABLED (MVP testing only)
 
-Audio files are stored under the path convention `<user_id>/<exam_id>...` (used by `NewExam.tsx` and signed-URL generation in `ReportDetail.tsx`), so we can enforce ownership via the first path segment.
+Auth setting `auto_confirm_email = true` was applied via Lovable Cloud auth config. New sign-ups can log in immediately without clicking a verification email.
 
-### Migration
-Drop both public policies and replace them with four authenticated, owner-scoped policies on `storage.objects` for `bucket_id = 'exam-audio'`:
+### Why
+The project has no custom email sender domain, so auth emails are sent through the default shared sender. Hotmail/Outlook silently drop most of these messages, blocking testers at sign-up.
 
-```sql
-DROP POLICY "Allow public read storage" ON storage.objects;
-DROP POLICY "Allow public upload" ON storage.objects;
+### Scope of change
+- Auth config flag only. No code changes.
+- Auth UI, password reset flow, routing, RLS, and email templates are untouched.
+- Password reset still sends a real email (works for Gmail; unreliable for Hotmail until a sender domain is configured).
 
--- SELECT: only the owner (path starts with their uid)
-CREATE POLICY "Users read own exam audio"
-ON storage.objects FOR SELECT TO authenticated
-USING (
-  bucket_id = 'exam-audio'
-  AND auth.uid()::text = (storage.foldername(name))[1]
-);
+### How to revert before production
+Two options:
 
--- INSERT: only into own folder
-CREATE POLICY "Users upload own exam audio"
-ON storage.objects FOR INSERT TO authenticated
-WITH CHECK (
-  bucket_id = 'exam-audio'
-  AND auth.uid()::text = (storage.foldername(name))[1]
-);
+1. **Via the agent**: ask "Disable auto-confirm email for sign-ups." The agent will call the auth config tool with `auto_confirm_email: false`.
+2. **Manually**: open Cloud → Users → Auth Settings (gear icon) → Email settings → turn OFF "Auto-confirm email".
 
--- UPDATE: only own files
-CREATE POLICY "Users update own exam audio"
-ON storage.objects FOR UPDATE TO authenticated
-USING (
-  bucket_id = 'exam-audio'
-  AND auth.uid()::text = (storage.foldername(name))[1]
-)
-WITH CHECK (
-  bucket_id = 'exam-audio'
-  AND auth.uid()::text = (storage.foldername(name))[1]
-);
-
--- DELETE: only own files (used by purge-expired-audio via service role, which bypasses RLS)
-CREATE POLICY "Users delete own exam audio"
-ON storage.objects FOR DELETE TO authenticated
-USING (
-  bucket_id = 'exam-audio'
-  AND auth.uid()::text = (storage.foldername(name))[1]
-);
-```
-
-The bucket itself is already `public = false`; access continues to be served via signed URLs (`createSignedUrl`) generated server-/client-side for the owner. The `purge-expired-audio` edge function uses the service role key, which bypasses RLS, so cleanup keeps working.
-
-### No app code changes
-Upload paths already start with `auth.uid()`, so existing flows (NewExam upload, ReportDetail signed URL playback, purge function) continue to work unchanged.
-
-### Post-fix summary
-- **Read:** only the authenticated owner (uid matches first folder segment); admin/service-role tasks still work via service key.
-- **Upload:** only authenticated users, and only into their own `<uid>/...` folder.
-- **Modify/Delete:** only the authenticated owner; service role for automated purge.
-- **Public/anonymous:** no access of any kind.
+### Recommended next step before production
+Set up a Lovable Email sender domain (Cloud → Emails). This restores proper email verification and fixes Hotmail/Outlook deliverability for both sign-up and password reset. Once the domain is verified, re-enable email confirmation by reverting this flag.
