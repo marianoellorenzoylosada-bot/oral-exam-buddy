@@ -188,6 +188,17 @@ Guidelines for confidence:
 - 50–69: Limited evidence; score is an estimate.
 - Below 50: Very little evidence; the examiner should review carefully.
 
+PART-BY-PART EXAMINER FEEDBACK:
+For each candidate, also produce a "partFeedback" array covering the speaking parts for this level:
+${partsBlock}
+For every part:
+- Write 2–4 sentences of professional examiner-style commentary, descriptor-informed but natural.
+- Ground every observation in the transcript; reference observable performance.
+- Mention the criteria most clearly evidenced by that part in "criteriaTouched".
+- If useful, add ONE short actionable "improvement" point. Avoid generic praise and unsupported claims.
+- Do NOT invent per-part scores — these are commentary only; the global criterion scores are unchanged.
+Also produce a short "overallSummary" (3–5 sentences) synthesising the candidate's performance across the whole exam.
+
 RESPOND IN THIS EXACT JSON FORMAT:
 {
   "candidates": [
@@ -203,7 +214,11 @@ RESPOND IN THIS EXACT JSON FORMAT:
         { "name": "Global Achievement", "score": 3.5, "maxScore": 5, "confidence": 80, "feedback": "..." }
       ],
       "strengths": ["strength 1", "strength 2"],
-      "areasForImprovement": ["area 1", "area 2"]
+      "areasForImprovement": ["area 1", "area 2"],
+      "partFeedback": [
+${partFeedbackExample}
+      ],
+      "overallSummary": "..."
     }
   ],
   "transcript": "Full transcription with speaker labels (Examiner:, Candidate A:, Candidate B:, etc.)...",
