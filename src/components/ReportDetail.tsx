@@ -14,11 +14,12 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Printer, CheckCircle2, AlertTriangle, ShieldCheck, BookOpen,
-  ExternalLink, Download, Trash2, EyeOff, Volume2, Info, Clock,
+  ExternalLink, Download, Trash2, EyeOff, Volume2, Info, Clock, GraduationCap,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getRecommendations } from "@/lib/practiceData";
 import { generateReportPdf } from "@/lib/generateReportPdf";
+import { generateStudentPdf } from "@/lib/generateStudentPdf";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { SpeakerTranscript } from "@/components/SpeakerTranscript";
@@ -368,6 +369,26 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
               date: new Date(exam.created_at).toLocaleDateString(),
             })} className="gap-2">
               <Download className="h-4 w-4" /> PDF
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => generateStudentPdf({
+                title: exam.title,
+                candidateName: anonymize ? "Student" : (exam.candidate_name || "Student"),
+                levelCode: exam.level_code,
+                language: langLabel[exam.language] || exam.language,
+                overallBand: exam.overall_band,
+                overallScore: exam.overall_score,
+                criteria,
+                strengths,
+                areasForImprovement: improvements,
+                date: new Date(exam.created_at).toLocaleDateString(),
+                practice: recommendations.map((r) => ({ title: r.title, url: r.url })),
+              })}
+              className="gap-2"
+            >
+              <GraduationCap className="h-4 w-4" /> Student PDF
             </Button>
             <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-2">
               <Printer className="h-4 w-4" /> Print
