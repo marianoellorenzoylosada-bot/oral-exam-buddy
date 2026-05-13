@@ -2,9 +2,8 @@ import { useScribe, CommitStrategy } from "@elevenlabs/react";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Mic, MicOff, Loader2 } from "lucide-react";
+import { MicOff, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
 
 interface LiveTranscriptProps {
   isRecording: boolean;
@@ -13,15 +12,15 @@ interface LiveTranscriptProps {
 
 export function LiveTranscript({ isRecording, onTranscriptUpdate }: LiveTranscriptProps) {
   const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [fullTranscript, setFullTranscript] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { toast } = useToast();
+  const triedRef = useRef(false);
 
   const scribe = useScribe({
     modelId: "scribe_v2_realtime",
     commitStrategy: CommitStrategy.VAD,
     onPartialTranscript: () => {
-      // auto-scroll on partial updates
       scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
     },
     onCommittedTranscript: (data) => {
@@ -35,6 +34,7 @@ export function LiveTranscript({ isRecording, onTranscriptUpdate }: LiveTranscri
 
   const startTranscription = useCallback(async () => {
     setConnecting(true);
+    setError(null);
     try {
       const { data, error } = await supabase.functions.invoke("elevenlabs-scribe-token");
       if (error) throw error;
@@ -43,29 +43,27 @@ export function LiveTranscript({ isRecording, onTranscriptUpdate }: LiveTranscri
 
       await scribe.connect({
         token: data.token,
-        microphone: {
-          echoCancellation: true,
-          noiseSuppression: true,
-        },
+        microphone: { echoCancellation: true, noiseSuppression: true },
       });
     } catch (err: any) {
       console.error("Transcription start failed:", err);
-      toast({
-        title: "Transcription unavailable",
-        description: err.message || "Could not start live transcription.",
-        variant: "destructive",
-      });
+      setError(err?.message || "Could not start live transcription.");
     } finally {
       setConnecting(false);
     }
-  }, [scribe, toast]);
+  }, [scribe]);
 
-  // Auto-disconnect when recording stops
+  // Auto-connect when recording starts; auto-disconnect when it stops
   useEffect(() => {
-    if (!isRecording && scribe.isConnected) {
-      scribe.disconnect();
+    if (isRecording && !scribe.isConnected && !connecting && !triedRef.current) {
+      triedRef.current = true;
+      void startTranscription();
     }
-  }, [isRecording, scribe]);
+    if (!isRecording) {
+      triedRef.current = false;
+      if (scribe.isConnected) scribe.disconnect();
+    }
+  }, [isRecording, scribe, connecting, startTranscription]);
 
   const committedTexts = scribe.committedTranscripts?.map((t) => t.text) ?? [];
   const displayText = [...committedTexts, scribe.partialTranscript].filter(Boolean).join(" ");
@@ -81,31 +79,33 @@ export function LiveTranscript({ isRecording, onTranscriptUpdate }: LiveTranscri
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-foreground opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-primary-foreground" />
               </span>
-              Live
+              Listening
+            </Badge>
+          )}
+          {connecting && (
+            <Badge variant="outline" className="gap-1 text-xs">
+              <Loader2 className="h-3 w-3 animate-spin" /> Connecting…
             </Badge>
           )}
         </div>
-        {isRecording && !scribe.isConnected && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="gap-1.5"
-            onClick={startTranscription}
-            disabled={connecting}
-          >
-            {connecting ? (
-              <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Connecting…</>
-            ) : (
-              <><Mic className="h-3.5 w-3.5" /> Enable Transcription</>
-            )}
-          </Button>
-        )}
         {scribe.isConnected && (
           <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => scribe.disconnect()}>
             <MicOff className="h-3.5 w-3.5" /> Stop
           </Button>
         )}
+        {error && (
+          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { triedRef.current = false; void startTranscription(); }}>
+            <RefreshCw className="h-3.5 w-3.5" /> Retry
+          </Button>
+        )}
       </div>
+
+      {error && (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
+          <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+          <span>Live transcription unavailable: {error}. The recording will still be transcribed automatically when you submit.</span>
+        </div>
+      )}
 
       <div
         ref={scrollRef}
@@ -122,14 +122,18 @@ export function LiveTranscript({ isRecording, onTranscriptUpdate }: LiveTranscri
           <p className="text-sm text-muted-foreground italic">
             {scribe.isConnected
               ? "Listening… speak to see the transcript appear here."
-              : "Enable transcription to see a live feed of the conversation."}
+              : connecting
+              ? "Connecting to the transcription service…"
+              : isRecording
+              ? "Waiting for live transcription to start…"
+              : "Live transcription will start automatically when you press record."}
           </p>
         )}
       </div>
 
       {fullTranscript && (
         <p className="text-xs text-muted-foreground">
-          {fullTranscript.split(/\s+/).length} words transcribed
+          {fullTranscript.split(/\s+/).length} words transcribed live
         </p>
       )}
     </div>
