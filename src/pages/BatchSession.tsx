@@ -104,7 +104,7 @@ export default function BatchSessionPage() {
 
   // Shared exam context
   const [level, setLevel] = useState<string>("B2");
-  const [language, setLanguage] = useState(() => localStorage.getItem("oralassess-lang") ?? "en");
+  const language = "en";
   const [institution, setInstitution] = useState(() => localStorage.getItem("oralassess-institution") ?? "");
   const [group, setGroup] = useState("");
   const [groupId, setGroupId] = useState<string | null>(null);
@@ -232,15 +232,6 @@ export default function BatchSessionPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Language</Label>
-                <Select value={language} onValueChange={setLanguage} disabled={contextLocked}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {LANGUAGES.map(l => <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
                 <Label htmlFor="batch-institution">Institution</Label>
                 <Input id="batch-institution" value={institution} onChange={(e) => setInstitution(e.target.value)} disabled={contextLocked} placeholder="e.g. Cambridge Academy" />
               </div>
@@ -262,7 +253,6 @@ export default function BatchSessionPage() {
                       if (info.institution) setInstitution(info.institution);
                       if (info.name) setGroup(info.name);
                       if (info.level_code) setLevel(info.level_code);
-                      if (info.language) setLanguage(info.language);
                     }
                   }}
                 />

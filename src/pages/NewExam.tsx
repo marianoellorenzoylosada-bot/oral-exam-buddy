@@ -265,17 +265,6 @@ export default function NewExamPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Language</Label>
-                  <Select value={exam.language} onValueChange={(v) => update({ language: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {LANGUAGES.map((l) => (
-                        <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
                   <Label htmlFor="institution">Institution</Label>
                   <Input id="institution" placeholder="e.g. Cambridge Academy" value={exam.institution} onChange={(e) => update({ institution: e.target.value })} />
                 </div>
