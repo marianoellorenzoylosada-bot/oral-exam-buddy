@@ -94,6 +94,8 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      <TeamAdmin />
+
       <div className="flex justify-end">
         <Button size="lg" className="gap-2" onClick={handleSave}>
           <Save className="h-4 w-4" /> Save Settings
