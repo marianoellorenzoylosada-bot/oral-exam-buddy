@@ -130,6 +130,23 @@ export function LiveTranscript({ isRecording, onTranscriptUpdate }: LiveTranscri
         </div>
       )}
 
+      {dropped && !error && (
+        <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
+          <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+          <span className="flex-1">
+            Live captions paused — keep recording. The full audio is still being captured and will be transcribed at the end.
+          </span>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 gap-1 px-2 text-xs text-amber-700 hover:text-amber-800 dark:text-amber-400"
+            onClick={() => { reconnectAttemptedRef.current = false; void startTranscription(); }}
+          >
+            <RefreshCw className="h-3 w-3" /> Retry captions
+          </Button>
+        </div>
+      )}
+
       <div
         ref={scrollRef}
         className="rounded-lg border bg-muted/20 p-4 min-h-[120px] max-h-[240px] overflow-y-auto"
