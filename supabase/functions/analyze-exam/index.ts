@@ -116,6 +116,20 @@ serve(async (req) => {
     const candidateList = names.map((n: string, i: number) => `Candidate ${String.fromCharCode(65 + i)} (${n || "unnamed"})`).join(", ");
     const rubricBlock = buildRubricBlock(level);
 
+    // Per-level Speaking parts (mirrors src/lib/examPhases.ts).
+    const PARTS_BY_LEVEL: Record<string, string[]> = {
+      A2: ["Part 1 — Interview", "Part 2 — Collaborative"],
+      B1: ["Part 1 — Interview", "Part 2 — Long turn", "Part 3 — Collaborative", "Part 4 — Discussion"],
+      B2: ["Part 1 — Interview", "Part 2 — Long turn", "Part 3 — Collaborative", "Part 4 — Discussion"],
+      C1: ["Part 1 — Interview", "Part 2 — Long turn", "Part 3 — Collaborative", "Part 4 — Discussion"],
+      C2: ["Part 1 — Interview", "Part 2 — Long turn", "Part 3 — Collaborative", "Part 4 — Discussion"],
+    };
+    const partsList = PARTS_BY_LEVEL[level] ?? PARTS_BY_LEVEL.B2;
+    const partsBlock = partsList.map((p) => `  - ${p}`).join("\n");
+    const partFeedbackExample = partsList
+      .map((p) => `        { "part": "${p.split(" — ")[0]}", "title": "${p.split(" — ")[1] ?? ""}", "commentary": "...", "observations": ["..."], "criteriaTouched": ["Discourse Management"], "improvement": "..." }`)
+      .join(",\n");
+
     // Format examiner-supplied quick tags as time-stamped evidence the model
     // should weigh alongside the transcript.
     const tagBlock = (() => {
