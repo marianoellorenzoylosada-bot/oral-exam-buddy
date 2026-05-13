@@ -32,6 +32,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { SpeakerTranscript } from "@/components/SpeakerTranscript";
 import { QuotedAudio, type ScribeWord } from "@/components/QuotedAudio";
 import { computeWeightedSpeakingScore } from "@/lib/speakingScore";
+import { PartFeedbackSection } from "@/components/PartFeedbackSection";
 
 const langLabel: Record<string, string> = {
   en: "English", es: "Spanish", fr: "French", de: "German", pt: "Portuguese", it: "Italian",
