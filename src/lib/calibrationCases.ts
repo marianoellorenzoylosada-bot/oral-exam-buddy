@@ -12,9 +12,17 @@ export interface CalibrationCriterion {
   rationale: string;
 }
 
+export type SpeakingTaskType =
+  | "Interview"
+  | "Collaborative Task"
+  | "Long Turn"
+  | "Discussion"
+  | "Picture Comparison";
+
 export interface CalibrationCase {
   id: string;
   level: "A2" | "B1" | "B2" | "C1" | "C2";
+  taskType: SpeakingTaskType;
   title: string;
   description: string;
   transcript: string;
@@ -24,6 +32,7 @@ export interface CalibrationCase {
 export const CALIBRATION_CASES: CalibrationCase[] = [
   {
     id: "a2-shopping",
+    taskType: "Interview",
     level: "A2",
     title: "A2 — Talking about a recent shopping trip",
     description:
@@ -40,6 +49,7 @@ export const CALIBRATION_CASES: CalibrationCase[] = [
   },
   {
     id: "b1-holidays",
+    taskType: "Collaborative Task",
     level: "B1",
     title: "B1 — Comparing holidays at home and abroad",
     description:
@@ -56,6 +66,7 @@ export const CALIBRATION_CASES: CalibrationCase[] = [
   },
   {
     id: "b2-technology",
+    taskType: "Discussion",
     level: "B2",
     title: "B2 — Discussing the impact of technology on education",
     description:
@@ -72,6 +83,7 @@ export const CALIBRATION_CASES: CalibrationCase[] = [
   },
   {
     id: "c1-environment",
+    taskType: "Discussion",
     level: "C1",
     title: "C1 — Climate policy and individual responsibility",
     description:
@@ -88,6 +100,7 @@ export const CALIBRATION_CASES: CalibrationCase[] = [
   },
   {
     id: "c2-art",
+    taskType: "Discussion",
     level: "C2",
     title: "C2 — The role of art in society",
     description:
