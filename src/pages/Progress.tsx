@@ -164,6 +164,19 @@ export default function ProgressPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {groupNames.length > 0 && (
+            <Select value={selectedGroup} onValueChange={setSelectedGroup}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="All Groups" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All Groups</SelectItem>
+                {groupNames.map((name) => (
+                  <SelectItem key={name} value={name}>{name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           {candidateNames.length > 0 && (
             <Select value={selectedCandidate} onValueChange={setSelectedCandidate}>
               <SelectTrigger className="w-[200px]">
