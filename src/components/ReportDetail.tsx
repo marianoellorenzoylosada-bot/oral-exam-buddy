@@ -3,8 +3,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import {
   DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  Dialog, DialogFooter,
 } from "@/components/ui/dialog";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -13,8 +16,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
+  Accordion, AccordionContent, AccordionItem, AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
   Printer, CheckCircle2, AlertTriangle, ShieldCheck, BookOpen,
   ExternalLink, Download, Trash2, EyeOff, Volume2, Info, Clock, GraduationCap,
+  RefreshCw, History, Loader2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getRecommendations } from "@/lib/practiceData";
@@ -50,6 +57,8 @@ export type Exam = {
   audio_path?: string | null;
   audio_expires_at?: string | null;
   words_json?: any;
+  previous_analyses?: any;
+  regrade_count?: number | null;
 };
 
 interface Props {
