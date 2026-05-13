@@ -490,7 +490,10 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
             </AlertDialogContent>
           </AlertDialog>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap justify-end">
+            <Button variant="outline" size="sm" onClick={() => { setEditTranscript(exam.transcript ?? ""); setEditNotes(exam.examiner_notes ?? ""); setRegradeOpen(true); }} className="gap-2" disabled={viewing != null}>
+              <RefreshCw className="h-4 w-4" /> Re-analyze
+            </Button>
             <Button variant="outline" size="sm" onClick={() => generateReportPdf({
               title: exam.title,
               candidateName: anonymize ? "Anonymous" : (exam.candidate_name || ""),
@@ -498,8 +501,8 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
               group: anonymize ? "" : (exam.group || ""),
               levelCode: exam.level_code,
               language: exam.language,
-              overallBand: exam.overall_band,
-              overallScore: exam.overall_score,
+              overallBand: Number.isNaN(Number(displayedScore)) ? exam.overall_band : String(displayedBand),
+              overallScore: Number(displayedScore),
               criteria,
               strengths,
               areasForImprovement: improvements,
@@ -517,8 +520,8 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
                 candidateName: anonymize ? "Student" : (exam.candidate_name || "Student"),
                 levelCode: exam.level_code,
                 language: langLabel[exam.language] || exam.language,
-                overallBand: exam.overall_band,
-                overallScore: exam.overall_score,
+                overallBand: String(displayedBand),
+                overallScore: Number(displayedScore),
                 criteria,
                 strengths,
                 areasForImprovement: improvements,
@@ -535,6 +538,40 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Re-analyze dialog */}
+      <Dialog open={regradeOpen} onOpenChange={setRegradeOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <RefreshCw className="h-5 w-5 text-primary" /> Re-analyze Exam
+            </DialogTitle>
+            <DialogDescription>
+              Edit the transcript, add notes or extra observations, then run the AI again. The current scores will be saved to version history.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="rg-transcript" className="text-xs">Transcript</Label>
+              <Textarea id="rg-transcript" value={editTranscript} onChange={(e) => setEditTranscript(e.target.value)} className="min-h-[180px] font-mono text-xs" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="rg-notes" className="text-xs">Examiner notes</Label>
+              <Textarea id="rg-notes" value={editNotes} onChange={(e) => setEditNotes(e.target.value)} className="min-h-[60px] text-xs" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="rg-extra" className="text-xs">Additional observation (optional)</Label>
+              <Textarea id="rg-extra" value={extraObservation} onChange={(e) => setExtraObservation(e.target.value)} placeholder="e.g. Candidate was very nervous in the first minute and self-corrected several times" className="min-h-[50px] text-xs" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRegradeOpen(false)} disabled={regrading}>Cancel</Button>
+            <Button onClick={handleRegrade} disabled={regrading} className="gap-2">
+              {regrading ? <><Loader2 className="h-4 w-4 animate-spin" /> Re-analyzing…</> : <><RefreshCw className="h-4 w-4" /> Run analysis</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DialogContent>
   );
 }
