@@ -517,6 +517,16 @@ export default function NewExamPage() {
                   </div>
                 )}
 
+                {/* Per-candidate quick tags during the exam */}
+                {(recorder.state === "recording" || recorder.state === "paused" || quickTags.length > 0) && (
+                  <QuickTags
+                    elapsedSeconds={recorder.duration}
+                    active={recorder.state === "recording" || recorder.state === "paused"}
+                    candidateLetters={exam.candidateNames.map((_, i) => String.fromCharCode(65 + i))}
+                    onChange={setQuickTags}
+                  />
+                )}
+
                 {/* Context summary */}
                 <div className="w-full max-w-md rounded-lg border bg-muted/30 p-4 text-sm space-y-1">
                   <p><span className="font-medium">Level:</span> {selectedLevel?.label || "—"}</p>
