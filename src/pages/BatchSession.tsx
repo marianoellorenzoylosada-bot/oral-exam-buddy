@@ -247,8 +247,10 @@ export default function BatchSessionPage() {
     toast({ title: "Exam saved to queue", description: "Ready to record the next one." });
     recorder.reset();
     setCandidateNames(prev => prev.map(() => ""));
-    void clearActiveRecording();
     lastSnapshotAtRef.current = 0;
+    firstSnapshotDoneRef.current = false;
+    // Clear active snapshot last; let pending IDB writes settle first.
+    setTimeout(() => { void clearActiveRecording(); }, 50);
   }, [recorder, queue, candidateNames, toast]);
 
   const handleRecoverSave = useCallback(() => {
