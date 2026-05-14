@@ -263,7 +263,10 @@ export default function BatchSessionPage() {
     if (recovered.level) setLevel(recovered.level);
     if (recovered.institution) setInstitution(recovered.institution);
     if (recovered.group) setGroup(recovered.group);
-    setContextLocked(true);
+    if (recovered.candidateNames.length > 0) {
+      setCandidateNames(recovered.candidateNames.map(() => ""));
+    }
+    setContextLocked(recovered.contextLocked || true);
     setRecovered(null);
     void clearActiveRecording();
     toast({
