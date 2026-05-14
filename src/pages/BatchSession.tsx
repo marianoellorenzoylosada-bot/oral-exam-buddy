@@ -128,18 +128,20 @@ export default function BatchSessionPage() {
 
   // Throttle IndexedDB writes during active recording.
   const lastSnapshotAtRef = useRef(0);
+  const firstSnapshotDoneRef = useRef(false);
   // Latest context the recorder should snapshot with (kept in a ref so the
   // onChunk callback always sees fresh values without re-creating the recorder).
-  const snapshotCtxRef = useRef({ candidateNames, level, institution, group });
+  const snapshotCtxRef = useRef({ candidateNames, level, institution, group, contextLocked });
   useEffect(() => {
-    snapshotCtxRef.current = { candidateNames, level, institution, group };
-  }, [candidateNames, level, institution, group]);
+    snapshotCtxRef.current = { candidateNames, level, institution, group, contextLocked };
+  }, [candidateNames, level, institution, group, contextLocked]);
 
   const recorder = useAudioRecorder({
     onChunk: useCallback((blob: Blob, durationSeconds: number) => {
       const now = Date.now();
-      // Persist at most every 3 s (and always on the final stop snapshot).
-      if (now - lastSnapshotAtRef.current < 3000 && durationSeconds > 0) return;
+      // Always persist the very first chunk; throttle the rest to ~1.5 s.
+      if (firstSnapshotDoneRef.current && now - lastSnapshotAtRef.current < 1500) return;
+      firstSnapshotDoneRef.current = true;
       lastSnapshotAtRef.current = now;
       const ctx = snapshotCtxRef.current;
       void saveActiveRecording({
@@ -149,6 +151,7 @@ export default function BatchSessionPage() {
         level: ctx.level,
         institution: ctx.institution,
         group: ctx.group,
+        contextLocked: ctx.contextLocked,
       });
     }, []),
     onError: useCallback((reason: string) => {
@@ -160,20 +163,38 @@ export default function BatchSessionPage() {
     }, [toast]),
   });
 
-  // Load any unfinished recording from a previous session on mount.
+  // Recovery loader (initial + retry to defeat unmount→remount race).
+  const checkRecovery = useCallback(async () => {
+    const snap = await loadActiveRecording();
+    if (!snap) return;
+    if (snap.durationSeconds >= 5 && snap.audioBlob && snap.audioBlob.size > 0) {
+      setRecovered((prev) => prev ?? snap);
+    } else {
+      // Trivial snapshot — discard silently.
+      void clearActiveRecording();
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-    loadActiveRecording().then((snap) => {
-      if (cancelled) return;
-      if (snap && snap.durationSeconds >= 5 && snap.audioBlob && snap.audioBlob.size > 0) {
-        setRecovered(snap);
-      } else if (snap) {
-        // Trivial snapshot — discard silently.
-        void clearActiveRecording();
+    void checkRecovery();
+    // Retry once shortly after mount: the previous unmount's final
+    // saveActiveRecording write may still be in flight.
+    const retry = setTimeout(() => { if (!cancelled) void checkRecovery(); }, 800);
+    return () => { cancelled = true; clearTimeout(retry); };
+  }, [checkRecovery]);
+
+  // Re-check when the tab becomes visible again (mobile background → foreground
+  // can silently kill MediaRecorder without unmounting the page).
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "visible" && recorder.state === "idle" && !recovered) {
+        void checkRecovery();
       }
-    });
-    return () => { cancelled = true; };
-  }, []);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [checkRecovery, recorder.state, recovered]);
 
   // beforeunload guard while actively recording.
   useEffect(() => {
