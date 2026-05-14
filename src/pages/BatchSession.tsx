@@ -299,6 +299,31 @@ export default function BatchSessionPage() {
         </p>
       </div>
 
+      {recovered && (
+        <Alert className="border-amber-500/40 bg-amber-500/5">
+          <LifeBuoy className="h-4 w-4 text-amber-600" />
+          <AlertTitle>Unfinished recording recovered</AlertTitle>
+          <AlertDescription className="space-y-3">
+            <p className="text-sm">
+              We found an unfinished recording from your previous session
+              {" "}({formatTime(recovered.durationSeconds)}
+              {recovered.candidateNames.filter(Boolean).length > 0
+                ? ` · ${recovered.candidateNames.filter(Boolean).join(" & ")}`
+                : ""}).
+              You can save it to the queue or discard it.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" onClick={handleRecoverSave} className="gap-1">
+                <CheckCircle2 className="h-3.5 w-3.5" /> Save to queue
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleRecoverDiscard} className="gap-1">
+                <Trash2 className="h-3.5 w-3.5" /> Discard
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
         {/* ── Left column: shared context + recorder ── */}
         <div className="space-y-6">
