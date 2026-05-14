@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useMemo } from "react";
+import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,10 +7,12 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Mic, Square, Pause, Play, Upload, FileText, BookOpen, Trash2, Clock, Users,
   Loader2, Plus, X, CheckCircle2, AlertTriangle, ListChecks, PlayCircle, Sparkles, ChevronRight,
+  LifeBuoy,
 } from "lucide-react";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { useBatchQueue, type BatchItem } from "@/hooks/useBatchQueue";
@@ -21,6 +23,10 @@ import { DraftReport } from "@/components/DraftReport";
 import { GroupPicker } from "@/components/GroupPicker";
 import { CandidatePicker } from "@/components/CandidatePicker";
 import { SUPPORTED_LANGUAGES, getExamLevels, getExamLabel } from "@/lib/examLevels";
+import {
+  saveActiveRecording, loadActiveRecording, clearActiveRecording,
+  type ActiveRecordingSnapshot,
+} from "@/lib/batchQueueDb";
 
 const LANGUAGES = SUPPORTED_LANGUAGES;
 
