@@ -503,7 +503,7 @@ export default function BatchSessionPage() {
                       </>
                     )}
                     {recorder.state === "stopped" && (
-                      <Button variant="outline" onClick={recorder.reset}>Record again</Button>
+                      <Button variant="outline" onClick={() => { recorder.reset(); void clearActiveRecording(); lastSnapshotAtRef.current = 0; }}>Record again</Button>
                     )}
                   </div>
                   {recorder.audioUrl && (
