@@ -90,22 +90,31 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}) {
         releaseStream();
       };
 
+      const finalizeSnapshot = () => {
+        try {
+          if (chunksRef.current.length > 0) {
+            const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+            onChunkRef.current?.(blob, computeElapsed());
+          }
+        } catch { /* ignore */ }
+      };
+
       recorder.onerror = (event: Event) => {
         const err = (event as unknown as { error?: DOMException }).error;
         const reason = err?.message || "Recorder error";
         console.error("[useAudioRecorder] MediaRecorder error:", err);
+        finalizeSnapshot();
         onErrorRef.current?.(reason);
-        // Try to gracefully finalize.
         try { if (recorder.state !== "inactive") recorder.stop(); } catch { /* ignore */ }
         stopTimer();
         setState("stopped");
       };
 
-      // Audio track ended (mic taken by another app, OS revoked, hardware unplugged, etc.)
       stream.getAudioTracks().forEach((track) => {
         track.onended = () => {
           if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
             console.warn("[useAudioRecorder] Audio track ended unexpectedly");
+            finalizeSnapshot();
             onErrorRef.current?.("Microphone was disconnected.");
             try { mediaRecorderRef.current.stop(); } catch { /* ignore */ }
             stopTimer();
