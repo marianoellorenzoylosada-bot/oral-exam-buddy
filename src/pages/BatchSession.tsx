@@ -105,7 +105,6 @@ function StatusBadge({ status }: { status: BatchItem["status"] }) {
 
 export default function BatchSessionPage() {
   const { toast } = useToast();
-  const recorder = useAudioRecorder();
   const queue = useBatchQueue();
 
   // Shared exam context
@@ -123,6 +122,70 @@ export default function BatchSessionPage() {
   const [candidateNames, setCandidateNames] = useState<string[]>(["", ""]);
   const [contextLocked, setContextLocked] = useState(false);
   const [reviewItemId, setReviewItemId] = useState<string | null>(null);
+
+  // Recovery state
+  const [recovered, setRecovered] = useState<ActiveRecordingSnapshot | null>(null);
+
+  // Throttle IndexedDB writes during active recording.
+  const lastSnapshotAtRef = useRef(0);
+  // Latest context the recorder should snapshot with (kept in a ref so the
+  // onChunk callback always sees fresh values without re-creating the recorder).
+  const snapshotCtxRef = useRef({ candidateNames, level, institution, group });
+  useEffect(() => {
+    snapshotCtxRef.current = { candidateNames, level, institution, group };
+  }, [candidateNames, level, institution, group]);
+
+  const recorder = useAudioRecorder({
+    onChunk: useCallback((blob: Blob, durationSeconds: number) => {
+      const now = Date.now();
+      // Persist at most every 3 s (and always on the final stop snapshot).
+      if (now - lastSnapshotAtRef.current < 3000 && durationSeconds > 0) return;
+      lastSnapshotAtRef.current = now;
+      const ctx = snapshotCtxRef.current;
+      void saveActiveRecording({
+        audioBlob: blob,
+        durationSeconds,
+        candidateNames: [...ctx.candidateNames],
+        level: ctx.level,
+        institution: ctx.institution,
+        group: ctx.group,
+      });
+    }, []),
+    onError: useCallback((reason: string) => {
+      toast({
+        title: "Recording interrupted",
+        description: `${reason} Your audio so far has been preserved — check the recovery banner.`,
+        variant: "destructive",
+      });
+    }, [toast]),
+  });
+
+  // Load any unfinished recording from a previous session on mount.
+  useEffect(() => {
+    let cancelled = false;
+    loadActiveRecording().then((snap) => {
+      if (cancelled) return;
+      if (snap && snap.durationSeconds >= 5 && snap.audioBlob && snap.audioBlob.size > 0) {
+        setRecovered(snap);
+      } else if (snap) {
+        // Trivial snapshot — discard silently.
+        void clearActiveRecording();
+      }
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  // beforeunload guard while actively recording.
+  useEffect(() => {
+    if (recorder.state !== "recording" && recorder.state !== "paused") return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+      return "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [recorder.state]);
 
   const langLabel = useMemo(() => LANGUAGES.find(l => l.value === language)?.label ?? "English", [language]);
   const examLevels = useMemo(() => getExamLevels(language), [language]);
@@ -163,7 +226,34 @@ export default function BatchSessionPage() {
     toast({ title: "Exam saved to queue", description: "Ready to record the next one." });
     recorder.reset();
     setCandidateNames(prev => prev.map(() => ""));
+    void clearActiveRecording();
+    lastSnapshotAtRef.current = 0;
   }, [recorder, queue, candidateNames, toast]);
+
+  const handleRecoverSave = useCallback(() => {
+    if (!recovered) return;
+    queue.addItem({
+      candidateNames: [...recovered.candidateNames],
+      audioBlob: recovered.audioBlob,
+      durationSeconds: recovered.durationSeconds,
+    });
+    if (recovered.level) setLevel(recovered.level);
+    if (recovered.institution) setInstitution(recovered.institution);
+    if (recovered.group) setGroup(recovered.group);
+    setContextLocked(true);
+    setRecovered(null);
+    void clearActiveRecording();
+    toast({
+      title: "Recovered recording saved",
+      description: "The unfinished recording has been added to the queue.",
+    });
+  }, [recovered, queue, toast]);
+
+  const handleRecoverDiscard = useCallback(() => {
+    setRecovered(null);
+    void clearActiveRecording();
+  }, []);
+
 
   const handleAnalyzeAll = useCallback(() => {
     if (!level) {
