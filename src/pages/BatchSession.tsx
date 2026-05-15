@@ -167,7 +167,7 @@ export default function BatchSessionPage() {
   const checkRecovery = useCallback(async () => {
     const snap = await loadActiveRecording();
     if (!snap) return;
-    if (snap.durationSeconds >= 5 && snap.audioBlob && snap.audioBlob.size > 0) {
+    if (snap.durationSeconds >= 2 && snap.audioBlob && snap.audioBlob.size > 0) {
       setRecovered((prev) => prev ?? snap);
     } else {
       // Trivial snapshot — discard silently.
