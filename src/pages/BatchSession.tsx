@@ -380,7 +380,15 @@ export default function BatchSessionPage() {
     );
   }
 
-  const pendingCount = queue.items.filter(i => i.status === "recorded" || i.status === "queued" || i.status === "failed").length;
+  const pendingCount = queue.items.filter(i => {
+    if (i.status === "recorded" || i.status === "queued") return true;
+    if (i.status === "failed") {
+      const e = i.error ?? "";
+      const tooShort = /too short/i.test(e) || /not enough speech/i.test(e);
+      return !tooShort;
+    }
+    return false;
+  }).length;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
