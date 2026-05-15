@@ -162,6 +162,37 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}) {
     setState("stopped");
   }, [stopTimer]);
 
+  /**
+   * Inspects the underlying MediaRecorder + tracks. If the recorder has died
+   * silently (e.g. mobile screen-lock killed the audio pipeline) while React
+   * still thinks we're recording, finalize the latest snapshot, transition to
+   * "stopped", and notify via onError. No-op when the recorder is genuinely
+   * active or already idle.
+   */
+  const healthCheck = useCallback(() => {
+    const r = mediaRecorderRef.current;
+    const s = stateRef.current;
+    if (s !== "recording" && s !== "paused") return;
+    const tracks = streamRef.current?.getAudioTracks() ?? [];
+    const recorderDead = !r || r.state === "inactive";
+    const tracksDead = tracks.length === 0 || tracks.every((t) => t.readyState === "ended");
+    if (!recorderDead && !tracksDead) return;
+    console.warn("[useAudioRecorder] healthCheck: recorder is stale, finalizing");
+    try {
+      if (chunksRef.current.length > 0) {
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        setAudioBlob(blob);
+        setAudioUrl(URL.createObjectURL(blob));
+        onChunkRef.current?.(blob, computeElapsed());
+      }
+    } catch { /* ignore */ }
+    try { if (r && r.state !== "inactive") r.stop(); } catch { /* ignore */ }
+    releaseStream();
+    stopTimer();
+    setState("stopped");
+    onErrorRef.current?.("Recording stopped while screen was off.");
+  }, [computeElapsed, releaseStream, stopTimer]);
+
   const reset = useCallback(() => {
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioBlob(null);
@@ -194,5 +225,5 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { state, duration, audioBlob, audioUrl, start, pause, resume, stop, reset };
+  return { state, duration, audioBlob, audioUrl, start, pause, resume, stop, reset, healthCheck };
 }
