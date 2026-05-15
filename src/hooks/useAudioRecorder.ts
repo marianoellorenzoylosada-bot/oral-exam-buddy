@@ -8,7 +8,7 @@ export interface UseAudioRecorderOptions {
    * Receives a snapshot Blob built from all chunks so far + the elapsed seconds.
    * Used by callers to persist a partial recording to IndexedDB for crash recovery.
    */
-  onChunk?: (blob: Blob, durationSeconds: number) => void;
+  onChunk?: (blob: Blob, durationSeconds: number) => void | Promise<void>;
   /** Called when MediaRecorder errors or the audio track ends unexpectedly. */
   onError?: (reason: string) => void;
 }
