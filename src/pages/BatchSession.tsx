@@ -154,7 +154,7 @@ export default function BatchSessionPage() {
         group: ctx.group,
         contextLocked: ctx.contextLocked,
       });
-    }, []) as unknown as (blob: Blob, durationSeconds: number) => void,
+    }, []),
     onError: useCallback((reason: string) => {
       toast({
         title: "Recording interrupted",
