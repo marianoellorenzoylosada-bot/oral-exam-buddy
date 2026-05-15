@@ -8,7 +8,7 @@ export interface UseAudioRecorderOptions {
    * Receives a snapshot Blob built from all chunks so far + the elapsed seconds.
    * Used by callers to persist a partial recording to IndexedDB for crash recovery.
    */
-  onChunk?: (blob: Blob, durationSeconds: number) => void;
+  onChunk?: (blob: Blob, durationSeconds: number) => void | Promise<void>;
   /** Called when MediaRecorder errors or the audio track ends unexpectedly. */
   onError?: (reason: string) => void;
 }
@@ -169,7 +169,7 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}) {
    * "stopped", and notify via onError. No-op when the recorder is genuinely
    * active or already idle.
    */
-  const healthCheck = useCallback(() => {
+  const healthCheck = useCallback(async () => {
     const r = mediaRecorderRef.current;
     const s = stateRef.current;
     if (s !== "recording" && s !== "paused") return;
@@ -183,7 +183,8 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}) {
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         setAudioBlob(blob);
         setAudioUrl(URL.createObjectURL(blob));
-        onChunkRef.current?.(blob, computeElapsed());
+        // Await in case onChunk returns a Promise (e.g. IDB write).
+        await onChunkRef.current?.(blob, computeElapsed());
       }
     } catch { /* ignore */ }
     try { if (r && r.state !== "inactive") r.stop(); } catch { /* ignore */ }
@@ -192,6 +193,17 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}) {
     setState("stopped");
     onErrorRef.current?.("Recording stopped while screen was off.");
   }, [computeElapsed, releaseStream, stopTimer]);
+
+  /** Force-persist the current chunks via the onChunk callback (no state change). */
+  const snapshot = useCallback(async () => {
+    const s = stateRef.current;
+    if (s !== "recording" && s !== "paused") return;
+    if (chunksRef.current.length === 0) return;
+    try {
+      const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+      await onChunkRef.current?.(blob, computeElapsed());
+    } catch { /* ignore */ }
+  }, [computeElapsed]);
 
   const reset = useCallback(() => {
     if (audioUrl) URL.revokeObjectURL(audioUrl);
@@ -225,5 +237,5 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { state, duration, audioBlob, audioUrl, start, pause, resume, stop, reset, healthCheck };
+  return { state, duration, audioBlob, audioUrl, start, pause, resume, stop, reset, healthCheck, snapshot };
 }

@@ -144,7 +144,8 @@ export default function BatchSessionPage() {
       firstSnapshotDoneRef.current = true;
       lastSnapshotAtRef.current = now;
       const ctx = snapshotCtxRef.current;
-      void saveActiveRecording({
+      // Return the promise so awaiters (healthCheck) wait for the IDB write.
+      return saveActiveRecording({
         audioBlob: blob,
         durationSeconds,
         candidateNames: [...ctx.candidateNames],
@@ -167,7 +168,12 @@ export default function BatchSessionPage() {
   const checkRecovery = useCallback(async () => {
     const snap = await loadActiveRecording();
     if (!snap) return;
-    if (snap.durationSeconds >= 2 && snap.audioBlob && snap.audioBlob.size > 0) {
+    // Keep the snapshot if EITHER duration is meaningful OR the audio buffer
+    // is non-trivial. A real 3-minute recording always passes the size guard
+    // even when the duration field is briefly stale post-screen-lock.
+    const hasDuration = snap.durationSeconds >= 2;
+    const hasAudio = !!snap.audioBlob && snap.audioBlob.size >= 4096;
+    if (hasDuration || hasAudio) {
       setRecovered((prev) => prev ?? snap);
     } else {
       // Trivial snapshot — discard silently.
@@ -186,16 +192,30 @@ export default function BatchSessionPage() {
 
   // Re-check when the tab becomes visible again. On mobile, screen lock can
   // silently kill MediaRecorder without unmounting — run a recorder healthCheck
-  // first so React state reflects reality, then always re-run recovery.
+  // first (await so its final IDB write lands), then re-run recovery.
   useEffect(() => {
-    const onVis = () => {
+    const onVis = async () => {
       if (document.visibilityState !== "visible") return;
-      try { recorder.healthCheck(); } catch { /* ignore */ }
-      void checkRecovery();
+      try { await recorder.healthCheck(); } catch { /* ignore */ }
+      // Extra cushion in case the IDB tx is still flushing.
+      await new Promise((r) => setTimeout(r, 250));
+      await checkRecovery();
     };
-    document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
+    const handler = () => { void onVis(); };
+    document.addEventListener("visibilitychange", handler);
+    return () => document.removeEventListener("visibilitychange", handler);
   }, [checkRecovery, recorder]);
+
+  // When candidate names change while recording, immediately snapshot so the
+  // persisted active recording carries the latest names (no 1.5 s gap where a
+  // crash would yield "Unnamed candidates").
+  useEffect(() => {
+    if (recorder.state !== "recording" && recorder.state !== "paused") return;
+    // Bypass throttle for this manual snapshot.
+    lastSnapshotAtRef.current = 0;
+    void recorder.snapshot();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidateNames, recorder.state]);
 
   // Screen Wake Lock while recording, so the OS doesn't lock the screen and
   // suspend the audio capture pipeline mid-exam. Best-effort, feature-detected.
@@ -284,10 +304,25 @@ export default function BatchSessionPage() {
     setTimeout(() => { void clearActiveRecording(); }, 50);
   }, [recorder, queue, candidateNames, toast]);
 
+  // Inline name inputs shown in the recovery banner when the snapshot has no
+  // typed names yet. Lets the user label the recovered audio before saving so
+  // it doesn't end up as "Unnamed candidates" in the queue.
+  const [recoverNames, setRecoverNames] = useState<string[]>(["", ""]);
+  useEffect(() => {
+    if (recovered) {
+      const base = recovered.candidateNames.length >= 2 ? recovered.candidateNames : ["", ""];
+      setRecoverNames(base.map(n => n ?? ""));
+    }
+  }, [recovered]);
+  const recoverHasNames = recovered ? recovered.candidateNames.some(n => n && n.trim()) : false;
+
   const handleRecoverSave = useCallback(() => {
     if (!recovered) return;
+    const namesToUse = recoverHasNames
+      ? [...recovered.candidateNames]
+      : recoverNames.map(n => n.trim());
     queue.addItem({
-      candidateNames: [...recovered.candidateNames],
+      candidateNames: namesToUse,
       audioBlob: recovered.audioBlob,
       durationSeconds: recovered.durationSeconds,
     });
@@ -304,7 +339,7 @@ export default function BatchSessionPage() {
       title: "Recovered recording saved",
       description: "The unfinished recording has been added to the queue.",
     });
-  }, [recovered, queue, toast]);
+  }, [recovered, recoverHasNames, recoverNames, queue, toast]);
 
   const handleRecoverDiscard = useCallback(() => {
     setRecovered(null);
@@ -345,7 +380,15 @@ export default function BatchSessionPage() {
     );
   }
 
-  const pendingCount = queue.items.filter(i => i.status === "recorded" || i.status === "queued" || i.status === "failed").length;
+  const pendingCount = queue.items.filter(i => {
+    if (i.status === "recorded" || i.status === "queued") return true;
+    if (i.status === "failed") {
+      const e = i.error ?? "";
+      const tooShort = /too short/i.test(e) || /not enough speech/i.test(e);
+      return !tooShort;
+    }
+    return false;
+  }).length;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -369,6 +412,24 @@ export default function BatchSessionPage() {
                 : ""}).
               You can save it to the queue or discard it.
             </p>
+            {!recoverHasNames && (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {recoverNames.map((n, i) => (
+                  <div key={i} className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">
+                      Candidate {String.fromCharCode(65 + i)} (optional)
+                    </Label>
+                    <Input
+                      value={n}
+                      onChange={(e) =>
+                        setRecoverNames(prev => prev.map((v, idx) => (idx === i ? e.target.value : v)))
+                      }
+                      placeholder="Add a name before saving"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               <Button size="sm" onClick={handleRecoverSave} className="gap-1">
                 <CheckCircle2 className="h-3.5 w-3.5" /> Save to queue
@@ -603,6 +664,10 @@ export default function BatchSessionPage() {
               <ul className="space-y-2">
                 {queue.items.map((item, idx) => {
                   const names = item.candidateNames.filter(Boolean).join(" & ") || "Unnamed candidates";
+                  const errMsg = item.error ?? "";
+                  const isTooShort =
+                    item.status === "failed" &&
+                    (/too short/i.test(errMsg) || /not enough speech/i.test(errMsg));
                   return (
                     <li key={item.id} className="rounded-lg border bg-card p-3">
                       <div className="flex items-start justify-between gap-2">
@@ -612,17 +677,25 @@ export default function BatchSessionPage() {
                             {item.candidateNames.length} candidate{item.candidateNames.length > 1 ? "s" : ""} · {formatTime(item.durationSeconds)}
                           </p>
                           {item.error && (
-                            <p className="text-xs text-destructive mt-1">{item.error}</p>
+                            <p className={`text-xs mt-1 ${isTooShort ? "text-muted-foreground" : "text-destructive"}`}>
+                              {isTooShort ? "Too short to analyze." : item.error}
+                            </p>
                           )}
                         </div>
-                        <StatusBadge status={item.status} />
+                        {isTooShort ? (
+                          <Badge variant="outline" className="gap-1 border-muted-foreground/30 bg-muted text-muted-foreground">
+                            <AlertTriangle className="h-3 w-3" /> Too short
+                          </Badge>
+                        ) : (
+                          <StatusBadge status={item.status} />
+                        )}
                       </div>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {item.status === "done" ? (
                           <Button size="sm" variant="default" className="gap-1" onClick={() => setReviewItemId(item.id)}>
                             <PlayCircle className="h-3.5 w-3.5" /> Review report
                           </Button>
-                        ) : (
+                        ) : isTooShort ? null : (
                           <Button
                             size="sm"
                             variant="outline"

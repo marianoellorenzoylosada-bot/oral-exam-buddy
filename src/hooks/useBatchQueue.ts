@@ -116,8 +116,10 @@ export function useBatchQueue() {
       if (transcript.trim().split(/\s+/).filter(Boolean).length < 30) {
         throw new Error("Not enough speech detected in this recording.");
       }
-      // Step 2: AI scoring on transcript
-      const { data, error } = await supabase.functions.invoke("analyze-exam", {
+      // Step 2: AI scoring on transcript — with 120 s timeout so the item never
+      // hangs forever if the network drops or the function stalls.
+      const ANALYZE_TIMEOUT_MS = 120_000;
+      const invokePromise = supabase.functions.invoke("analyze-exam", {
         body: {
           level: ctx.level,
           language: ctx.language,
@@ -127,6 +129,10 @@ export function useBatchQueue() {
           transcript,
         },
       });
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Analysis timed out — tap Retry.")), ANALYZE_TIMEOUT_MS)
+      );
+      const { data, error } = await Promise.race([invokePromise, timeoutPromise]) as Awaited<typeof invokePromise>;
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
       const enriched = { ...(data as MultiCandidateResult), transcript };
@@ -138,6 +144,36 @@ export function useBatchQueue() {
       });
     }
   }, [updateItem]);
+
+  // Watchdog: same-session reclassification of items stuck in "analyzing" for
+  // more than 5 minutes (e.g. user navigated away mid-analyze). loadQueue()
+  // already handles this on fresh hydration; this covers in-session navigation.
+  useEffect(() => {
+    const STALE_MS = 5 * 60 * 1000;
+    const tick = () => {
+      const now = Date.now();
+      setItems(prev => {
+        let changed = false;
+        const next = prev.map(i => {
+          if (i.status === "analyzing" && now - i.recordedAt > STALE_MS) {
+            changed = true;
+            const updated: BatchItem = {
+              ...i,
+              status: "failed",
+              error: "Analysis interrupted — tap Retry.",
+            };
+            void db.saveItem(updated);
+            return updated;
+          }
+          return i;
+        });
+        return changed ? next : prev;
+      });
+    };
+    const id = setInterval(tick, 30_000);
+    tick();
+    return () => clearInterval(id);
+  }, []);
 
   const analyzeAll = useCallback(async (ctx: AnalyzeContext) => {
     setAnalyzingAll(true);
