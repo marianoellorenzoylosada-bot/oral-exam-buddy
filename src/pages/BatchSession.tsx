@@ -304,10 +304,25 @@ export default function BatchSessionPage() {
     setTimeout(() => { void clearActiveRecording(); }, 50);
   }, [recorder, queue, candidateNames, toast]);
 
+  // Inline name inputs shown in the recovery banner when the snapshot has no
+  // typed names yet. Lets the user label the recovered audio before saving so
+  // it doesn't end up as "Unnamed candidates" in the queue.
+  const [recoverNames, setRecoverNames] = useState<string[]>(["", ""]);
+  useEffect(() => {
+    if (recovered) {
+      const base = recovered.candidateNames.length >= 2 ? recovered.candidateNames : ["", ""];
+      setRecoverNames(base.map(n => n ?? ""));
+    }
+  }, [recovered]);
+  const recoverHasNames = recovered ? recovered.candidateNames.some(n => n && n.trim()) : false;
+
   const handleRecoverSave = useCallback(() => {
     if (!recovered) return;
+    const namesToUse = recoverHasNames
+      ? [...recovered.candidateNames]
+      : recoverNames.map(n => n.trim());
     queue.addItem({
-      candidateNames: [...recovered.candidateNames],
+      candidateNames: namesToUse,
       audioBlob: recovered.audioBlob,
       durationSeconds: recovered.durationSeconds,
     });
@@ -324,7 +339,7 @@ export default function BatchSessionPage() {
       title: "Recovered recording saved",
       description: "The unfinished recording has been added to the queue.",
     });
-  }, [recovered, queue, toast]);
+  }, [recovered, recoverHasNames, recoverNames, queue, toast]);
 
   const handleRecoverDiscard = useCallback(() => {
     setRecovered(null);
