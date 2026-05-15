@@ -184,17 +184,48 @@ export default function BatchSessionPage() {
     return () => { cancelled = true; clearTimeout(retry); };
   }, [checkRecovery]);
 
-  // Re-check when the tab becomes visible again (mobile background → foreground
-  // can silently kill MediaRecorder without unmounting the page).
+  // Re-check when the tab becomes visible again. On mobile, screen lock can
+  // silently kill MediaRecorder without unmounting — run a recorder healthCheck
+  // first so React state reflects reality, then always re-run recovery.
   useEffect(() => {
     const onVis = () => {
-      if (document.visibilityState === "visible" && recorder.state === "idle" && !recovered) {
-        void checkRecovery();
-      }
+      if (document.visibilityState !== "visible") return;
+      try { recorder.healthCheck(); } catch { /* ignore */ }
+      void checkRecovery();
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [checkRecovery, recorder.state, recovered]);
+  }, [checkRecovery, recorder]);
+
+  // Screen Wake Lock while recording, so the OS doesn't lock the screen and
+  // suspend the audio capture pipeline mid-exam. Best-effort, feature-detected.
+  useEffect(() => {
+    const isActive = recorder.state === "recording" || recorder.state === "paused";
+    if (!isActive) return;
+    type WakeLockSentinel = { release: () => Promise<void> };
+    let sentinel: WakeLockSentinel | null = null;
+    let released = false;
+    const wl = (navigator as unknown as { wakeLock?: { request: (t: "screen") => Promise<WakeLockSentinel> } }).wakeLock;
+    const acquire = async () => {
+      if (!wl || released) return;
+      try {
+        sentinel = await wl.request("screen");
+      } catch (err) {
+        console.debug("[BatchSession] wakeLock request failed:", err);
+      }
+    };
+    void acquire();
+    const onVis = () => {
+      if (document.visibilityState === "visible" && !sentinel) void acquire();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      released = true;
+      document.removeEventListener("visibilitychange", onVis);
+      void sentinel?.release().catch(() => {});
+      sentinel = null;
+    };
+  }, [recorder.state]);
 
   // beforeunload guard while actively recording.
   useEffect(() => {
