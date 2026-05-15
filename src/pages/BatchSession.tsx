@@ -404,6 +404,24 @@ export default function BatchSessionPage() {
                 : ""}).
               You can save it to the queue or discard it.
             </p>
+            {!recoverHasNames && (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {recoverNames.map((n, i) => (
+                  <div key={i} className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">
+                      Candidate {String.fromCharCode(65 + i)} (optional)
+                    </Label>
+                    <Input
+                      value={n}
+                      onChange={(e) =>
+                        setRecoverNames(prev => prev.map((v, idx) => (idx === i ? e.target.value : v)))
+                      }
+                      placeholder="Add a name before saving"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               <Button size="sm" onClick={handleRecoverSave} className="gap-1">
                 <CheckCircle2 className="h-3.5 w-3.5" /> Save to queue
