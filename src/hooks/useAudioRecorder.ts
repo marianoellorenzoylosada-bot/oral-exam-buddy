@@ -225,5 +225,5 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { state, duration, audioBlob, audioUrl, start, pause, resume, stop, reset };
+  return { state, duration, audioBlob, audioUrl, start, pause, resume, stop, reset, healthCheck };
 }
