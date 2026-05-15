@@ -1,74 +1,63 @@
+## Diagnosis: why recovery failed when the screen turned off
 
-## Root cause analysis
+I re-read `BatchSession.tsx`, `useAudioRecorder.ts`, and `batchQueueDb.ts`. The previous hardening covered unmount/remount, reload, and tab-switch — but **screen-off on mobile is a different lifecycle event**, and three things go wrong together.
 
-Re-reading `useAudioRecorder`, `BatchSession`, and `batchQueueDb`, the recovery pipeline has several independent weaknesses that together explain "recording disappeared, no banner":
+### Root cause hypothesis
 
-1. **3 s snapshot throttle is too aggressive at the start.**
-   `if (now - lastSnapshotAtRef.current < 3000 && durationSeconds > 0) return;`
-   In practice the FIRST chunk does persist (because `last = 0`), but the next ~3 chunks are skipped. If the recorder dies in the first few seconds (mic revoked, autoplay/visibility kill on mobile), we only have a 1 s blob — under the `>= 5 s` recovery threshold — so `loadActiveRecording` discards it and clears IndexedDB silently.
+1. **Mobile browsers suspend MediaRecorder when the screen locks.** On iOS Safari and most Android Chrome builds, locking the screen pauses JS timers and freezes (or kills) the audio capture pipeline. The page is **not** unmounted, so React state is preserved — but `MediaRecorder.ondataavailable` stops firing, so no further snapshots reach IndexedDB. Whatever was already saved (last 1.5 s throttle window) is the most you have.
 
-2. **`Record again` and `handleSaveExam` immediately call `clearActiveRecording()` while the next pair is being prepared.** The very first snapshot of Pair 3 races with that delete. If the delete transaction commits *after* the first 1 s snapshot, Pair 3's initial state is wiped. The next snapshot only lands ~3 s later — wide enough window for the failure to occur in between.
+2. **The `visibilitychange` recovery re-check is gated by `recorder.state === "idle"`.** When the screen wakes, `recorder.state` in React is still `"recording"` (no error event fired in time), so `checkRecovery()` is skipped. The banner therefore never appears even when there *is* a usable snapshot in IndexedDB.
 
-3. **Unmount → remount race.** When BatchSession unmounts mid-recording, `useAudioRecorder`'s cleanup calls `recorder.stop()`. The final `ondataavailable` + `onstop` fire asynchronously and *then* call `saveActiveRecording`. The new BatchSession mount runs `loadActiveRecording` immediately — often *before* the final write commits. We only check once, so if the read loses the race, the banner never appears even though earlier 3‑s snapshots should still be in the store.
+3. **No screen-wake lock.** Nothing keeps the display on during recording, so the OS is free to lock the screen mid-exam — exactly the failure path the pilot hit.
 
-4. **`contextLocked` is not in the snapshot.** Even when recovery does find the blob, the remounted page lands on the unlocked context form (the recording card is gated by `contextLocked`), confusing the user. Recovery should restore the locked context.
+4. **Stale-recorder not detected on resume.** When the page becomes visible again, we never inspect the underlying `MediaRecorder.state` or audio-track `readyState`. If the track died during the lock, the UI still shows "recording 03:12" but no audio is being captured anymore.
 
-5. **iOS Safari Blob‑in‑IndexedDB is unreliable.** Some Safari builds drop the binary content of a stored `Blob` after a tab reload (the record persists but `blob.size` is 0). That explains why the banner can stay hidden even when the store technically has a row: the `audioBlob.size > 0` guard fails.
+5. **Snapshot may be discarded as "trivial".** `checkRecovery` requires `durationSeconds >= 5`. If the screen locked within the first ~5 s of a pair, the only persisted snapshot has `durationSeconds < 5` and is silently cleared. Threshold is fine for typing-test noise but too aggressive for real exam starts.
 
-6. **No breadcrumbs.** There are zero logs around save/load/clear or MediaRecorder lifecycle, so we cannot tell from a real device which of (1)–(5) hit.
+(Feedback-by-area, transcript continuity, mic-test, and live-part indicator are out of scope for this diagnosis as you requested — they will be addressed separately.)
 
-## Smallest safe fix
+### Files involved
 
-Frontend only. No backend, scoring, transcription, auth, RLS, or schema changes.
+- `src/pages/BatchSession.tsx` — visibility handler, recovery gate, wake-lock lifecycle.
+- `src/hooks/useAudioRecorder.ts` — expose underlying `MediaRecorder` health + a `healthCheck()` helper that finalizes a snapshot if the track has died.
+- `src/lib/batchQueueDb.ts` — no schema change; only the load-threshold consumer changes.
 
-### A. `src/lib/batchQueueDb.ts` — make persistence iOS‑safe and observable
+No backend, scoring, transcript, PDF, RLS, or auth changes.
 
-- Change `ActiveRecordingSnapshot.audioBlob: Blob` to be stored as an `ArrayBuffer` + `mimeType` internally; expose a reconstructed `Blob` on load. (Bump to `DB_VERSION = 3`, add an upgrade path that wipes the old `active` row — safe, it was crash recovery only.)
-- Add `contextLocked: boolean` to the snapshot shape.
-- Add `console.debug` lines on every save/load/clear (size, duration, updatedAt) so we can verify on a real phone.
+### Smallest safe fix
 
-### B. `src/hooks/useAudioRecorder.ts` — guarantee an early, reliable first snapshot
+**A. Acquire a Screen Wake Lock while recording (`BatchSession.tsx`)**
+- On `recorder.state === "recording" | "paused"`: `navigator.wakeLock?.request("screen")`.
+- Release on stop/reset/unmount and on `visibilitychange === "hidden"`; re-acquire on `"visible"` if still recording.
+- Feature-detect; silent no-op on unsupported browsers (older iOS). This alone prevents the most common failure path.
 
-- Add a `force` parameter path so the first `ondataavailable` after `start()` always notifies the listener with `durationSeconds = 0` (so callers can bypass throttles).
-- Call `onChunkRef.current` from `onstop` *before* `releaseStream()` (already done), and additionally from `recorder.onerror` and `track.onended` so we never lose the last buffer.
-- Keep the unmount cleanup as is, but log lifecycle events (`[recorder] start/stop/error/track-ended/unmount`).
+**B. Detect a stale recorder on resume (`useAudioRecorder.ts` + `BatchSession.tsx`)**
+- Add a `healthCheck()` function on the hook: inspects `mediaRecorderRef.current.state` and each audio track's `readyState`. If the recorder is `"inactive"` *or* every track is `"ended"` while React state is still `"recording"`/`"paused"`, finalize the current chunks (call `onChunk` with the latest blob), set state to `"stopped"`, and fire `onError("Recording stopped while screen was off.")`.
+- Call `healthCheck()` from the existing `visibilitychange` listener whenever the tab becomes visible.
 
-### C. `src/pages/BatchSession.tsx` — fix throttle race, persist context lock, retry recovery read
+**C. Always re-check recovery on visibility (`BatchSession.tsx`)**
+- Remove the `recorder.state === "idle"` gate. After `healthCheck()` runs, the recorder state will reflect reality, and `checkRecovery()` should run unconditionally so the banner can surface a snapshot saved before the lock.
 
-- Reduce snapshot throttle from 3000 ms to **1500 ms**, and remove the `durationSeconds > 0` guard so the very first chunk *always* writes (currently it does, but make it explicit and add the `force` path from B).
-- In `handleSaveExam` and the "Record again" button, do **not** call `clearActiveRecording()` until the queue write has resolved (it's already sync in state, but await the IDB write in `useBatchQueue.persistItem` first; simplest: `await db.saveItem(newItem)` before clearing).  → Achieved by exposing an async `addItem` from `useBatchQueue` (only the local hook signature changes — no callers outside Batch flow).
-- Persist `contextLocked` in every snapshot and restore it (along with candidate names) in `handleRecoverSave` *and* in a new auto‑restore path: if a snapshot is loaded and the current recorder is idle, restore context state immediately so the user lands back on the recorder view, not the context form.
-- After the initial `loadActiveRecording`, schedule one **retry 800 ms later** to defeat the unmount→remount race. If the second read returns a valid snapshot and `recovered` is still null, set it.
-- Add a `visibilitychange` listener: when the tab becomes visible again and the recorder is `idle`, re-run `loadActiveRecording`. This catches mobile background→foreground transitions that don't unmount but do silently stop the recorder.
-- Add `console.debug` for: snapshot save (size, dur), snapshot load result, clear calls, and recorder state transitions.
+**D. Lower the recovery threshold from 5 s → 2 s (`BatchSession.tsx`)**
+- A real exam intro is already worth recovering. The throwaway-noise case is still filtered by `audioBlob.size > 0`.
 
-### D. Out of scope (explicit)
+**E. Keep persistence cadence honest while screen is off**
+- We can't run timers when locked, but we can guarantee one extra `saveActiveRecording` call from inside the `onerror` / `track.onended` paths (already in place) and from the new `healthCheck()` finalize path. No new background workers.
 
-- No changes to `analyze-exam`, `transcribe-audio`, `useBatchQueue.analyzeOne`, `DraftReport`, PDFs, scoring, calibration, auth, RLS, storage.
-- No DB version bump on the `queue` store, only on the IndexedDB schema (a separate IndexedDB).
+### Risks
 
-## Files to change
+Low. Wake Lock API is best-effort and feature-detected. `healthCheck()` only runs on visibility transitions and never mutates the recorder when it is genuinely active. Threshold change is a UX preference, not a data change.
 
-1. `src/lib/batchQueueDb.ts` — ArrayBuffer storage, `contextLocked`, version bump, debug logs.
-2. `src/hooks/useAudioRecorder.ts` — first‑chunk force notify, onerror/onended final snapshot, lifecycle logs.
-3. `src/pages/BatchSession.tsx` — throttle reduction, await IDB before clear, persist + restore `contextLocked`, retry read at 800 ms, `visibilitychange` re‑check, debug logs.
+### Mobile test procedure (screen-off scenario)
 
-No other files touched.
-
-## How to verify (mobile, third‑pair interruption)
-
-1. Open Batch Session on phone, lock context.
-2. **Pair 1:** record ~60 s, Stop, Save & next. Verify queue shows Pair 1.
-3. **Pair 2:** type names, record ~60 s, Stop, Save & next. Verify queue shows Pair 2.
-4. **Pair 3:** type names, Start Recording. After ~10 s, force an interruption that mimics the real bug: switch to another app for 30 s, then return. Repeat with: hard reload, browser back‑swipe, then forward.
-5. Expected after each interruption:
-   - Recording card disappears (page returned to root) **but** the amber "Unfinished recording recovered" banner appears within 1 s.
-   - Banner shows duration ≥ 10 s and the Pair 3 candidate names.
-   - Clicking **Save to queue** adds Pair 3 (with its partial audio) to the queue alongside Pairs 1 and 2.
-   - Console (remote inspect) shows `[batchQueueDb] save … size>0` lines every ~1.5 s during the recording, a `[batchQueueDb] load … size>0` line on remount, and exactly one `[batchQueueDb] clear` after Save to queue.
-6. Repeat one run where you tap **Discard**: banner disappears, queue still has Pairs 1 & 2, IndexedDB `active` row is empty.
-7. Edge: record Pair 3 for only 3 s, then reload. Banner should NOT appear (below 5 s threshold) and store should be cleared.
-
-## Risk
-
-Low. All changes are local to the Batch Session recovery surface. The DB version bump on `oralassess-batch` only resets the throwaway `active` row; the `queue` store keeps its data. Retrying `loadActiveRecording` once is idempotent. The `visibilitychange` handler only fires when the recorder is idle. ArrayBuffer storage is universally supported in IndexedDB.
+1. Open Batch Session on a phone, lock context (level + group + names).
+2. **Pair 1**: record 60 s, Stop → Save & next. Confirm queue shows it.
+3. **Pair 2**: type names, Start Recording. After ~20 s, **press the power button to lock the screen** for ~30 s, then unlock.
+   - Expected: screen stayed on during recording (Wake Lock). If it did lock anyway:
+     - On unlock, an "Recording stopped while screen was off" toast appears.
+     - The amber **"Unfinished recording recovered"** banner appears within 1 s, showing ≥20 s and the Pair 2 names.
+     - **Save to queue** adds Pair 2 to the queue with its partial audio.
+4. Repeat the screen-lock test on Pair 3 (record 5 s before locking) — banner must still appear (threshold lowered to 2 s).
+5. Repeat Pair 4 with a phone-call interruption — same expected behavior.
+6. Pair 5 normal record → Stop → Save. Confirm 5 items in the queue and that all five can be analyzed and exported.
+7. Remote-inspect the device console: confirm `[batchQueueDb] save … size>0` lines stop when the screen is off and resume after unlock, plus exactly one `[batchQueueDb] load … size>0` post-unlock and one `[batchQueueDb] clear` after Save to queue.
