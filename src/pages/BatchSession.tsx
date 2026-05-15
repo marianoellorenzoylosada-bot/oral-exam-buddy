@@ -656,6 +656,10 @@ export default function BatchSessionPage() {
               <ul className="space-y-2">
                 {queue.items.map((item, idx) => {
                   const names = item.candidateNames.filter(Boolean).join(" & ") || "Unnamed candidates";
+                  const errMsg = item.error ?? "";
+                  const isTooShort =
+                    item.status === "failed" &&
+                    (/too short/i.test(errMsg) || /not enough speech/i.test(errMsg));
                   return (
                     <li key={item.id} className="rounded-lg border bg-card p-3">
                       <div className="flex items-start justify-between gap-2">
@@ -665,17 +669,25 @@ export default function BatchSessionPage() {
                             {item.candidateNames.length} candidate{item.candidateNames.length > 1 ? "s" : ""} · {formatTime(item.durationSeconds)}
                           </p>
                           {item.error && (
-                            <p className="text-xs text-destructive mt-1">{item.error}</p>
+                            <p className={`text-xs mt-1 ${isTooShort ? "text-muted-foreground" : "text-destructive"}`}>
+                              {isTooShort ? "Too short to analyze." : item.error}
+                            </p>
                           )}
                         </div>
-                        <StatusBadge status={item.status} />
+                        {isTooShort ? (
+                          <Badge variant="outline" className="gap-1 border-muted-foreground/30 bg-muted text-muted-foreground">
+                            <AlertTriangle className="h-3 w-3" /> Too short
+                          </Badge>
+                        ) : (
+                          <StatusBadge status={item.status} />
+                        )}
                       </div>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {item.status === "done" ? (
                           <Button size="sm" variant="default" className="gap-1" onClick={() => setReviewItemId(item.id)}>
                             <PlayCircle className="h-3.5 w-3.5" /> Review report
                           </Button>
-                        ) : (
+                        ) : isTooShort ? null : (
                           <Button
                             size="sm"
                             variant="outline"
