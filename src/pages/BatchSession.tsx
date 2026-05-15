@@ -144,7 +144,8 @@ export default function BatchSessionPage() {
       firstSnapshotDoneRef.current = true;
       lastSnapshotAtRef.current = now;
       const ctx = snapshotCtxRef.current;
-      void saveActiveRecording({
+      // Return the promise so awaiters (healthCheck) wait for the IDB write.
+      return saveActiveRecording({
         audioBlob: blob,
         durationSeconds,
         candidateNames: [...ctx.candidateNames],
@@ -153,7 +154,7 @@ export default function BatchSessionPage() {
         group: ctx.group,
         contextLocked: ctx.contextLocked,
       });
-    }, []),
+    }, []) as unknown as (blob: Blob, durationSeconds: number) => void,
     onError: useCallback((reason: string) => {
       toast({
         title: "Recording interrupted",
@@ -167,7 +168,12 @@ export default function BatchSessionPage() {
   const checkRecovery = useCallback(async () => {
     const snap = await loadActiveRecording();
     if (!snap) return;
-    if (snap.durationSeconds >= 2 && snap.audioBlob && snap.audioBlob.size > 0) {
+    // Keep the snapshot if EITHER duration is meaningful OR the audio buffer
+    // is non-trivial. A real 3-minute recording always passes the size guard
+    // even when the duration field is briefly stale post-screen-lock.
+    const hasDuration = snap.durationSeconds >= 2;
+    const hasAudio = !!snap.audioBlob && snap.audioBlob.size >= 4096;
+    if (hasDuration || hasAudio) {
       setRecovered((prev) => prev ?? snap);
     } else {
       // Trivial snapshot — discard silently.
@@ -186,16 +192,30 @@ export default function BatchSessionPage() {
 
   // Re-check when the tab becomes visible again. On mobile, screen lock can
   // silently kill MediaRecorder without unmounting — run a recorder healthCheck
-  // first so React state reflects reality, then always re-run recovery.
+  // first (await so its final IDB write lands), then re-run recovery.
   useEffect(() => {
-    const onVis = () => {
+    const onVis = async () => {
       if (document.visibilityState !== "visible") return;
-      try { recorder.healthCheck(); } catch { /* ignore */ }
-      void checkRecovery();
+      try { await recorder.healthCheck(); } catch { /* ignore */ }
+      // Extra cushion in case the IDB tx is still flushing.
+      await new Promise((r) => setTimeout(r, 250));
+      await checkRecovery();
     };
-    document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
+    const handler = () => { void onVis(); };
+    document.addEventListener("visibilitychange", handler);
+    return () => document.removeEventListener("visibilitychange", handler);
   }, [checkRecovery, recorder]);
+
+  // When candidate names change while recording, immediately snapshot so the
+  // persisted active recording carries the latest names (no 1.5 s gap where a
+  // crash would yield "Unnamed candidates").
+  useEffect(() => {
+    if (recorder.state !== "recording" && recorder.state !== "paused") return;
+    // Bypass throttle for this manual snapshot.
+    lastSnapshotAtRef.current = 0;
+    void recorder.snapshot();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidateNames, recorder.state]);
 
   // Screen Wake Lock while recording, so the OS doesn't lock the screen and
   // suspend the audio capture pipeline mid-exam. Best-effort, feature-detected.
