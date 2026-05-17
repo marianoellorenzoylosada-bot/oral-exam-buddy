@@ -79,6 +79,7 @@ export type Database = {
           phase_marks: Json | null
           previous_analyses: Json
           regrade_count: number
+          speaker_map: Json | null
           status: string
           strengths: Json
           title: string
@@ -105,6 +106,7 @@ export type Database = {
           phase_marks?: Json | null
           previous_analyses?: Json
           regrade_count?: number
+          speaker_map?: Json | null
           status?: string
           strengths?: Json
           title: string
@@ -131,6 +133,7 @@ export type Database = {
           phase_marks?: Json | null
           previous_analyses?: Json
           regrade_count?: number
+          speaker_map?: Json | null
           status?: string
           strengths?: Json
           title?: string
