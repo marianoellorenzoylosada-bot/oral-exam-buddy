@@ -26,6 +26,8 @@ interface SpeakerTranscriptProps {
   maxHeight?: string;
   /** Optional Scribe word timeline used to derive per-utterance timestamps. */
   words?: ScribeWordLite[];
+  /** If provided, each utterance becomes clickable and seeks the audio. */
+  onSeek?: (start: number, end: number) => void;
 }
 
 interface TranscriptLine {
