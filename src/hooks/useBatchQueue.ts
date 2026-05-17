@@ -4,6 +4,7 @@ import type { MultiCandidateResult } from "@/components/DraftReport";
 import * as db from "@/lib/batchQueueDb";
 import { checkAudioSize, checkAudioDuration, checkContextSize } from "@/lib/uploadGuards";
 import { transcribeBlob, type ScribeWord } from "@/lib/transcribe";
+import { labelTranscriptFromWords, hasClearSpeakerLabels } from "@/lib/labelTranscript";
 
 export type BatchItemStatus =
   | "recorded"
@@ -135,7 +136,15 @@ export function useBatchQueue() {
       const { data, error } = await Promise.race([invokePromise, timeoutPromise]) as Awaited<typeof invokePromise>;
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
-      const enriched = { ...(data as MultiCandidateResult), transcript };
+      // Prefer the AI-labelled transcript when it already contains clear
+      // speaker labels; otherwise rebuild labels from Scribe word-level
+      // diarization; otherwise fall back to the raw verbatim transcript.
+      const aiTranscript = (data as any)?.transcript as string | undefined;
+      const displayTranscript =
+        aiTranscript && hasClearSpeakerLabels(aiTranscript)
+          ? aiTranscript
+          : labelTranscriptFromWords(transcript, words);
+      const enriched = { ...(data as MultiCandidateResult), transcript: displayTranscript };
       updateItem(item.id, { status: "done", result: enriched, scribeWords: words });
     } catch (err: any) {
       updateItem(item.id, {
