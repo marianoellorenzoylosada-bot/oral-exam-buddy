@@ -2,18 +2,20 @@ import type { ScribeWord } from "@/lib/transcribe";
 
 /**
  * Best-effort client-side speaker labelling from ElevenLabs Scribe word-level
- * diarization. Used only when the upstream transcript has no labels.
+ * diarization. Used when the upstream transcript has no labels.
  *
- * Heuristic mapping (deliberately conservative):
+ * Heuristic mapping (revised — Phase B):
  *  - Group consecutive words by `speaker` id into utterances.
  *  - If <2 distinct speakers OR no usable speaker ids → return original text.
- *  - The speaker with the smallest share of total speaking time is treated as
- *    the Examiner ONLY when their share is clearly smaller than the others
- *    (≤35% of total). Otherwise every utterance is labelled "Speaker unclear".
+ *  - Identify the Examiner as the speaker with the smallest speaking-time
+ *    share PROVIDED that share is at least moderately smaller than the largest
+ *    candidate share (ratio ≤ 0.75). This produces an Examiner in typical
+ *    2- or 3-candidate exams where the teacher speaks less than each student.
  *  - Remaining speakers, in order of first appearance, become Candidate A/B/C.
- *
- * Anything ambiguous falls back to "Speaker unclear" so we never confidently
- * mislabel an examiner or a candidate.
+ *  - If we cannot confidently pick an Examiner, candidates are still labelled
+ *    A/B/C by first appearance and the most-talkative speaker is tagged
+ *    "Speaker unclear" so the transcript is ALWAYS rendered as a script,
+ *    never as a flat paragraph.
  */
 export function labelTranscriptFromWords(
   text: string,
@@ -48,24 +50,29 @@ export function labelTranscriptFromWords(
   const distinct = Array.from(totals.keys());
   if (distinct.length < 2) return text;
 
-  // Identify Examiner conservatively: smallest share, clearly less than others.
-  const totalTime = Array.from(totals.values()).reduce((a, b) => a + b, 0);
-  const sorted = [...totals.entries()].sort((a, b) => a[1] - b[1]); // asc
+  // Sort asc by speaking time. Smallest share is the Examiner candidate.
+  const sorted = [...totals.entries()].sort((a, b) => a[1] - b[1]);
   const [minSpeaker, minTime] = sorted[0];
-  const minShare = totalTime > 0 ? minTime / totalTime : 1;
-
-  const examinerId = minShare <= 0.35 ? minSpeaker : null;
+  const [, maxTime] = sorted[sorted.length - 1];
+  const ratio = maxTime > 0 ? minTime / maxTime : 1;
+  // Examiner heuristic: clearly less talkative than the busiest speaker.
+  const examinerId = ratio <= 0.75 ? minSpeaker : null;
+  // When we can't pick an Examiner, tag the busiest speaker as "unclear"
+  // so we never silently mislabel a candidate as Examiner.
+  const unclearId = examinerId ? null : sorted[sorted.length - 1][0];
 
   // Order remaining speakers by first appearance for A/B/C assignment.
   const candidateOrder: string[] = [];
   for (const u of utterances) {
     if (u.speaker === examinerId) continue;
+    if (u.speaker === unclearId) continue;
     if (!candidateOrder.includes(u.speaker)) candidateOrder.push(u.speaker);
   }
   const candidateLetters = ["A", "B", "C"];
 
   const labelFor = (sp: string): string => {
     if (examinerId && sp === examinerId) return "Examiner";
+    if (unclearId && sp === unclearId) return "Speaker unclear";
     const idx = candidateOrder.indexOf(sp);
     if (idx >= 0 && idx < candidateLetters.length) return `Candidate ${candidateLetters[idx]}`;
     return "Speaker unclear";
