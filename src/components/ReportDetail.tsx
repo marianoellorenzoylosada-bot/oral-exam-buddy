@@ -63,6 +63,7 @@ export type Exam = {
   words_json?: any;
   previous_analyses?: any;
   regrade_count?: number | null;
+  speaker_map?: any;
 };
 
 interface Props {
