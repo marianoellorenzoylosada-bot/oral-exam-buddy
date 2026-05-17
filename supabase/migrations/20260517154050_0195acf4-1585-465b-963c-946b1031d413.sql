@@ -1,0 +1,1 @@
+ALTER TABLE public.exams ADD COLUMN IF NOT EXISTS speaker_map jsonb;
