@@ -30,6 +30,8 @@ import { generateStudentPdf } from "@/lib/generateStudentPdf";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { SpeakerTranscript } from "@/components/SpeakerTranscript";
+import { SpeakerMappingPanel } from "@/components/SpeakerMappingPanel";
+import { type SpeakerMap } from "@/lib/applySpeakerMap";
 import { QuotedAudio, type ScribeWord } from "@/components/QuotedAudio";
 import { computeWeightedSpeakingScore } from "@/lib/speakingScore";
 
