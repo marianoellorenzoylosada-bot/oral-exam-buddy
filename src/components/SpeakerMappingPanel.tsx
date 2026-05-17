@@ -67,7 +67,7 @@ export function SpeakerMappingPanel({
     try {
       const { error } = await supabase
         .from("exams")
-        .update({ speaker_map: map as any, transcript: newTranscript })
+        .update({ speaker_map: map, transcript: newTranscript } as any)
         .eq("id", examId);
       if (error) throw error;
       toast({
