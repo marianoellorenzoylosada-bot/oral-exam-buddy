@@ -346,17 +346,22 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
         {/* Audio playback */}
         {audioUrl && !audioGone && (
           <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <h3 className="font-display font-semibold text-sm flex items-center gap-1.5">
                 <Volume2 className="h-4 w-4 text-primary" /> Exam Recording
               </h3>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 {expiryNotice != null && (
                   <Badge variant="outline" className="gap-1 text-xs">
                     <Clock className="h-3 w-3" />
                     {expiryNotice === 0 ? "Expires today" : `${expiryNotice} day${expiryNotice === 1 ? "" : "s"} left`}
                   </Badge>
                 )}
+                <Button asChild size="sm" variant="ghost" className="gap-1 text-muted-foreground hover:text-foreground">
+                  <a href={audioUrl} download={`${exam.title || exam.id}.wav`}>
+                    <Download className="h-3.5 w-3.5" /> Download
+                  </a>
+                </Button>
                 <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive gap-1" onClick={handleDeleteAudio} disabled={deletingAudio}>
                   <Trash2 className="h-3.5 w-3.5" /> {deletingAudio ? "Deleting…" : "Delete audio"}
                 </Button>
@@ -367,10 +372,30 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
             </audio>
             {words.length > 0 && (
               <p className="text-[11px] text-muted-foreground">
-                Tip: click any quoted phrase below to hear it.
+                Tip: click any quoted phrase below — or any utterance timestamp — to hear it.
               </p>
             )}
           </div>
+        )}
+
+        {/* Audio unavailable / expired state */}
+        {!audioUrl && (audioGone || audioUnavailable) && (
+          <div className="rounded-lg border border-dashed bg-muted/20 p-3 text-xs text-muted-foreground flex items-center gap-2">
+            <Volume2 className="h-4 w-4 shrink-0" />
+            {audioGone
+              ? "Audio was deleted for this report. Speaker mapping and click-to-play are unavailable."
+              : "Audio is no longer available (expired or removed from storage). Re-analysis from audio is not possible."}
+          </div>
+        )}
+
+        {/* Teacher Evidence Review — Speaker mapping */}
+        {words.length > 0 && (
+          <SpeakerMappingPanel
+            examId={exam.id}
+            words={words}
+            initialMap={(exam.speaker_map ?? null) as SpeakerMap | null}
+            onSeek={audioUrl && !audioGone ? seekAudio : undefined}
+          />
         )}
 
         {/* Criteria */}
