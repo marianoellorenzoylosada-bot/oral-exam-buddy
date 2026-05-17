@@ -95,6 +95,8 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
 
   const previousAnalyses: any[] = Array.isArray(exam.previous_analyses) ? exam.previous_analyses : [];
 
+  const [audioUnavailable, setAudioUnavailable] = useState(false);
+
   useEffect(() => {
     const path = exam.audio_path ?? `${exam.id}.wav`;
     supabase.storage
@@ -102,6 +104,7 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
       .createSignedUrl(path, 3600)
       .then(({ data, error }) => {
         if (!error && data?.signedUrl) setAudioUrl(data.signedUrl);
+        else setAudioUnavailable(true);
       });
   }, [exam.id, exam.audio_path]);
 
