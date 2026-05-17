@@ -145,7 +145,7 @@ function firstTimestamp(text: string, words: ScribeWordLite[], cursor: { i: numb
   return null;
 }
 
-export function SpeakerTranscript({ transcript, hidden, maxHeight = "20rem", words }: SpeakerTranscriptProps) {
+export function SpeakerTranscript({ transcript, hidden, maxHeight = "20rem", words, onSeek }: SpeakerTranscriptProps) {
   const lines = useMemo(() => parseTranscript(transcript), [transcript]);
 
   const timestamps = useMemo(() => {
@@ -177,6 +177,7 @@ export function SpeakerTranscript({ transcript, hidden, maxHeight = "20rem", wor
         {lines.map((line, i) => {
           const style = STYLES[line.label];
           const ts = timestamps[i] ?? null;
+          const canPlay = onSeek && ts !== null;
           return (
             <li
               key={i}
@@ -201,9 +202,20 @@ export function SpeakerTranscript({ transcript, hidden, maxHeight = "20rem", wor
                   </span>
                 </div>
                 {ts !== null && (
-                  <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
-                    {formatTs(ts)}
-                  </span>
+                  canPlay ? (
+                    <button
+                      type="button"
+                      onClick={() => onSeek!(ts, ts + 6)}
+                      className="font-mono text-[11px] text-muted-foreground tabular-nums hover:text-primary inline-flex items-center gap-1"
+                      title={`Play from ${formatTs(ts)}`}
+                    >
+                      ▶ {formatTs(ts)}
+                    </button>
+                  ) : (
+                    <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
+                      {formatTs(ts)}
+                    </span>
+                  )
                 )}
               </div>
               <p className="mt-1 pl-4 text-sm leading-relaxed whitespace-pre-wrap text-foreground">
@@ -216,3 +228,4 @@ export function SpeakerTranscript({ transcript, hidden, maxHeight = "20rem", wor
     </ScrollArea>
   );
 }
+
