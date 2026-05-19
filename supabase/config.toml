@@ -1,4 +1,13 @@
 project_id = "eutzbtcyfhocmwzgiovo"
 
 [functions.analyze-exam]
+verify_jwt = true
+
+[functions.transcribe-audio]
+verify_jwt = true
+
+[functions.elevenlabs-scribe-token]
+verify_jwt = true
+
+[functions.purge-expired-audio]
 verify_jwt = false
