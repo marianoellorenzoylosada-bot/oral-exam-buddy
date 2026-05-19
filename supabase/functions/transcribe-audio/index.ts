@@ -39,7 +39,11 @@ function base64ToBytes(b64: string): Uint8Array {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const unauth = await requireUser(req);
+  if (unauth) return unauth;
+
   try {
+
     const apiKey = Deno.env.get("ELEVENLABS_API_KEY");
     if (!apiKey) throw new Error("ELEVENLABS_API_KEY is not configured");
 
