@@ -105,8 +105,12 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const unauth = await requireUser(req);
+  if (unauth) return unauth;
+
   try {
     const { level, language, candidateNames, bookletText, rubricText, transcript, examinerTags } = await req.json();
+
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
