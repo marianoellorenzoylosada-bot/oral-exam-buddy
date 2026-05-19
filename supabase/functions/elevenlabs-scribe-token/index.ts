@@ -34,7 +34,11 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const unauth = await requireUser(req);
+  if (unauth) return unauth;
+
   try {
+
     const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
     if (!ELEVENLABS_API_KEY) {
       throw new Error("ELEVENLABS_API_KEY is not configured");
