@@ -1,63 +1,91 @@
-## Diagnosis: why recovery failed when the screen turned off
+## Goal
 
-I re-read `BatchSession.tsx`, `useAudioRecorder.ts`, and `batchQueueDb.ts`. The previous hardening covered unmount/remount, reload, and tab-switch — but **screen-off on mobile is a different lifecycle event**, and three things go wrong together.
+Close the two critical findings without breaking the app:
+1. Require an authenticated Supabase user JWT on every edge function that spends money (Lovable AI, ElevenLabs).
+2. Make `purge-expired-audio` non-callable by anonymous or normal users; keep it usable by an internal scheduler.
 
-### Root cause hypothesis
+## Function-by-function audit
 
-1. **Mobile browsers suspend MediaRecorder when the screen locks.** On iOS Safari and most Android Chrome builds, locking the screen pauses JS timers and freezes (or kills) the audio capture pipeline. The page is **not** unmounted, so React state is preserved — but `MediaRecorder.ondataavailable` stops firing, so no further snapshots reach IndexedDB. Whatever was already saved (last 1.5 s throttle window) is the most you have.
+| Function | Paid? | Privileged? | Today | Risk |
+|---|---|---|---|---|
+| `analyze-exam` | Yes (Lovable AI Gateway, `LOVABLE_API_KEY`) | No | `verify_jwt = false` in `supabase/config.toml`, no in-code check | Anyone can drain AI credits |
+| `transcribe-audio` | Yes (ElevenLabs STT) | No | Default (no JWT verify), no in-code check | Anyone can drain ElevenLabs credits |
+| `elevenlabs-scribe-token` | Yes (mints realtime Scribe token) | No | Default, no in-code check | Anyone can mint live transcription tokens |
+| `purge-expired-audio` | No | Yes (service-role; deletes storage + nulls DB rows) | Default, no auth, no shared secret | Anyone can trigger admin maintenance |
 
-2. **The `visibilitychange` recovery re-check is gated by `recorder.state === "idle"`.** When the screen wakes, `recorder.state` in React is still `"recording"` (no error event fired in time), so `checkRecovery()` is skipped. The banner therefore never appears even when there *is* a usable snapshot in IndexedDB.
+Client invocation today (`src/lib/transcribe.ts`, `useBatchQueue`, `NewExam`, `MicCheck`, etc.) uses `supabase.functions.invoke(...)`, which automatically attaches the logged-in user's JWT as the `Authorization: Bearer` header. So once we enforce auth in the functions, legitimate authenticated callers continue to work with **no client changes**.
 
-3. **No screen-wake lock.** Nothing keeps the display on during recording, so the OS is free to lock the screen mid-exam — exactly the failure path the pilot hit.
+## Smallest safe fix
 
-4. **Stale-recorder not detected on resume.** When the page becomes visible again, we never inspect the underlying `MediaRecorder.state` or audio-track `readyState`. If the track died during the lock, the UI still shows "recording 03:12" but no audio is being captured anymore.
+### A. Paid functions — require authenticated user (in-code check)
 
-5. **Snapshot may be discarded as "trivial".** `checkRecovery` requires `durationSeconds >= 5`. If the screen locked within the first ~5 s of a pair, the only persisted snapshot has `durationSeconds < 5` and is silently cleared. Threshold is fine for typing-test noise but too aggressive for real exam starts.
+For `analyze-exam`, `transcribe-audio`, `elevenlabs-scribe-token`, add at the very top of `serve()` (after the OPTIONS handler):
 
-(Feedback-by-area, transcript continuity, mic-test, and live-part indicator are out of scope for this diagnosis as you requested — they will be addressed separately.)
+```ts
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
-### Files involved
+const authHeader = req.headers.get("Authorization") ?? "";
+if (!authHeader.startsWith("Bearer ")) {
+  return new Response(JSON.stringify({ error: "Unauthorized" }), {
+    status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+const supabase = createClient(
+  Deno.env.get("SUPABASE_URL")!,
+  Deno.env.get("SUPABASE_ANON_KEY")!,
+  { global: { headers: { Authorization: authHeader } } },
+);
+const { data, error: authErr } = await supabase.auth.getClaims(
+  authHeader.replace("Bearer ", "")
+);
+if (authErr || !data?.claims?.sub) {
+  return new Response(JSON.stringify({ error: "Unauthorized" }), {
+    status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+```
 
-- `src/pages/BatchSession.tsx` — visibility handler, recovery gate, wake-lock lifecycle.
-- `src/hooks/useAudioRecorder.ts` — expose underlying `MediaRecorder` health + a `healthCheck()` helper that finalizes a snapshot if the track has died.
-- `src/lib/batchQueueDb.ts` — no schema change; only the load-threshold consumer changes.
+Keep `verify_jwt = false` in `supabase/config.toml` (per project convention with the signing-keys system) and validate in code. No changes to scoring, transcripts, audio storage, or calibration.
 
-No backend, scoring, transcript, PDF, RLS, or auth changes.
+### B. `purge-expired-audio` — restrict to internal scheduler
 
-### Smallest safe fix
+Add a shared-secret header check at the top of the handler:
 
-**A. Acquire a Screen Wake Lock while recording (`BatchSession.tsx`)**
-- On `recorder.state === "recording" | "paused"`: `navigator.wakeLock?.request("screen")`.
-- Release on stop/reset/unmount and on `visibilitychange === "hidden"`; re-acquire on `"visible"` if still recording.
-- Feature-detect; silent no-op on unsupported browsers (older iOS). This alone prevents the most common failure path.
+```ts
+const provided = req.headers.get("x-cron-secret");
+const expected = Deno.env.get("PURGE_CRON_SECRET");
+if (!expected || provided !== expected) {
+  return new Response(JSON.stringify({ error: "Forbidden" }), {
+    status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+```
 
-**B. Detect a stale recorder on resume (`useAudioRecorder.ts` + `BatchSession.tsx`)**
-- Add a `healthCheck()` function on the hook: inspects `mediaRecorderRef.current.state` and each audio track's `readyState`. If the recorder is `"inactive"` *or* every track is `"ended"` while React state is still `"recording"`/`"paused"`, finalize the current chunks (call `onChunk` with the latest blob), set state to `"stopped"`, and fire `onError("Recording stopped while screen was off.")`.
-- Call `healthCheck()` from the existing `visibilitychange` listener whenever the tab becomes visible.
+- Add `PURGE_CRON_SECRET` via the secrets tool (request from user).
+- If a `pg_cron` job exists for this function, update it to send `x-cron-secret`. If no schedule exists yet, leave scheduling out of scope (function simply becomes unreachable from the public internet, which is the goal).
+- Service-role key remains server-only.
 
-**C. Always re-check recovery on visibility (`BatchSession.tsx`)**
-- Remove the `recorder.state === "idle"` gate. After `healthCheck()` runs, the recorder state will reflect reality, and `checkRecovery()` should run unconditionally so the banner can surface a snapshot saved before the lock.
+## Files to change
 
-**D. Lower the recovery threshold from 5 s → 2 s (`BatchSession.tsx`)**
-- A real exam intro is already worth recovering. The throwaway-noise case is still filtered by `audioBlob.size > 0`.
+- `supabase/functions/analyze-exam/index.ts` — add auth gate
+- `supabase/functions/transcribe-audio/index.ts` — add auth gate
+- `supabase/functions/elevenlabs-scribe-token/index.ts` — add auth gate
+- `supabase/functions/purge-expired-audio/index.ts` — add cron-secret gate
+- Add secret: `PURGE_CRON_SECRET`
 
-**E. Keep persistence cadence honest while screen is off**
-- We can't run timers when locked, but we can guarantee one extra `saveActiveRecording` call from inside the `onerror` / `track.onended` paths (already in place) and from the new `healthCheck()` finalize path. No new background workers.
+No `config.toml` change. No client code change. No DB/RLS/storage change.
 
-### Risks
+## Test plan
 
-Low. Wake Lock API is best-effort and feature-detected. `healthCheck()` only runs on visibility transitions and never mutates the recorder when it is genuinely active. Threshold change is a UX preference, not a data change.
+After deploy:
 
-### Mobile test procedure (screen-off scenario)
+1. **Anonymous blocked on paid functions** — `curl -X POST https://<project>.functions.supabase.co/transcribe-audio -d '{}'` → 401. Same for `analyze-exam`, `elevenlabs-scribe-token`.
+2. **Authenticated user still works** — Log in to preview, record a Batch Session exam, run Analyze → succeeds end-to-end (transcribe + analyze). Mic check (`elevenlabs-scribe-token`) still issues a token.
+3. **Purge blocked publicly** — `curl https://<project>.functions.supabase.co/purge-expired-audio` → 403. Same when logged in as a normal user via `supabase.functions.invoke` (no secret header).
+4. **Purge works with secret** — `curl -H "x-cron-secret: $PURGE_CRON_SECRET" ...` → 200 with `{deleted, scanned}`. Confirms scheduler path remains functional.
 
-1. Open Batch Session on a phone, lock context (level + group + names).
-2. **Pair 1**: record 60 s, Stop → Save & next. Confirm queue shows it.
-3. **Pair 2**: type names, Start Recording. After ~20 s, **press the power button to lock the screen** for ~30 s, then unlock.
-   - Expected: screen stayed on during recording (Wake Lock). If it did lock anyway:
-     - On unlock, an "Recording stopped while screen was off" toast appears.
-     - The amber **"Unfinished recording recovered"** banner appears within 1 s, showing ≥20 s and the Pair 2 names.
-     - **Save to queue** adds Pair 2 to the queue with its partial audio.
-4. Repeat the screen-lock test on Pair 3 (record 5 s before locking) — banner must still appear (threshold lowered to 2 s).
-5. Repeat Pair 4 with a phone-call interruption — same expected behavior.
-6. Pair 5 normal record → Stop → Save. Confirm 5 items in the queue and that all five can be analyzed and exported.
-7. Remote-inspect the device console: confirm `[batchQueueDb] save … size>0` lines stop when the screen is off and resume after unlock, plus exactly one `[batchQueueDb] load … size>0` post-unlock and one `[batchQueueDb] clear` after Save to queue.
+## Risks / notes
+
+- `supabase.functions.invoke()` already attaches the user JWT for logged-in sessions, so no client edits are required. Any code path that calls these functions while the user is *not* logged in would now fail — none exist today (all callers sit behind `useAuth`).
+- `getClaims()` is the supported in-code validator under the signing-keys system already used elsewhere in the project.
+- The cron-secret approach for purge avoids exposing the service role key and works with any scheduler (pg_cron, external).
