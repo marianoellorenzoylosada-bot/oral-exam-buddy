@@ -147,11 +147,12 @@ export function useBatchQueue() {
           ? aiTranscript
           : labelTranscriptFromWords(transcript, words);
       const enriched = { ...(data as MultiCandidateResult), transcript: displayTranscript };
-      updateItem(item.id, { status: "done", result: enriched, scribeWords: words });
+      updateItem(item.id, { status: "done", result: enriched, scribeWords: words, stageLabel: undefined });
     } catch (err: any) {
       updateItem(item.id, {
         status: "failed",
         error: err?.message ?? "Analysis failed",
+        stageLabel: undefined,
       });
     }
   }, [updateItem]);
