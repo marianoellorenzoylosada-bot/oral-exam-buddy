@@ -28,7 +28,6 @@ async function requireUser(req: Request): Promise<Response | null> {
   return null;
 }
 
-
 function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);
@@ -43,26 +42,42 @@ serve(async (req) => {
   if (unauth) return unauth;
 
   try {
-
     const apiKey = Deno.env.get("ELEVENLABS_API_KEY");
     if (!apiKey) throw new Error("ELEVENLABS_API_KEY is not configured");
 
-    const { audioBase64, mimeType } = await req.json();
-    if (!audioBase64 || typeof audioBase64 !== "string") {
-      return new Response(JSON.stringify({ error: "audioBase64 is required" }), {
+    const body = await req.json();
+    const { audioPath, audioBase64, mimeType } = body ?? {};
+
+    let blob: Blob;
+
+    if (audioPath && typeof audioPath === "string") {
+      // Preferred path: client uploaded to Storage, we fetch with service role.
+      const admin = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      );
+      const { data, error } = await admin.storage.from("exam-audio").download(audioPath);
+      if (error || !data) {
+        return new Response(JSON.stringify({ error: `Could not read uploaded audio: ${error?.message ?? "not found"}` }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      blob = new Blob([await data.arrayBuffer()], { type: mimeType || data.type || "audio/webm" });
+    } else if (audioBase64 && typeof audioBase64 === "string") {
+      // Back-compat: legacy base64 JSON path.
+      const MAX = 30 * 1024 * 1024;
+      if (audioBase64.length > MAX) {
+        return new Response(JSON.stringify({
+          error: `Audio too large (${(audioBase64.length / (1024 * 1024)).toFixed(1)} MB encoded). Please record shorter exams.`,
+        }), { status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      const bytes = base64ToBytes(audioBase64);
+      blob = new Blob([bytes], { type: mimeType || "audio/webm" });
+    } else {
+      return new Response(JSON.stringify({ error: "audioPath or audioBase64 is required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    const MAX = 30 * 1024 * 1024;
-    if (audioBase64.length > MAX) {
-      return new Response(JSON.stringify({
-        error: `Audio too large (${(audioBase64.length / (1024 * 1024)).toFixed(1)} MB encoded). Please record shorter exams.`,
-      }), { status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    const bytes = base64ToBytes(audioBase64);
-    const blob = new Blob([bytes], { type: mimeType || "audio/webm" });
 
     const form = new FormData();
     form.append("file", blob, "exam.webm");
@@ -86,7 +101,6 @@ serve(async (req) => {
     }
 
     const result = await resp.json();
-    // Normalize: extract transcript, word timeline, speaker labels
     const transcript: string = result.text ?? "";
     const words = Array.isArray(result.words) ? result.words.map((w: any) => ({
       text: w.text ?? w.word ?? "",
