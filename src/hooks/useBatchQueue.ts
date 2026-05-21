@@ -112,11 +112,16 @@ export function useBatchQueue() {
       return;
     }
 
-    updateItem(item.id, { status: "analyzing", error: undefined });
+    updateItem(item.id, { status: "analyzing", error: undefined, stageLabel: "Starting…" });
     try {
       // Step 1: Scribe transcription (always — gives us speaker diarization + word timing)
-      const { transcript, words } = await transcribeBlob(item.audioBlob);
+      const { transcript, words } = await transcribeBlob(item.audioBlob, (stage) =>
+        updateItem(item.id, { stageLabel: stage })
+      );
       if (transcript.trim().split(/\s+/).filter(Boolean).length < 30) {
+        throw new Error("Not enough speech detected in this recording.");
+      }
+      updateItem(item.id, { stageLabel: "Scoring with AI…" });
         throw new Error("Not enough speech detected in this recording.");
       }
       // Step 2: AI scoring on transcript — with 120 s timeout so the item never
