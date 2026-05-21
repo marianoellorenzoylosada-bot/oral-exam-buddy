@@ -119,23 +119,20 @@ export function useBatchQueue() {
       }
       // Step 2: AI scoring on transcript — with 120 s timeout so the item never
       // hangs forever if the network drops or the function stalls.
-      const ANALYZE_TIMEOUT_MS = 120_000;
-      const invokePromise = supabase.functions.invoke("analyze-exam", {
-        body: {
-          level: ctx.level,
-          language: ctx.language,
-          candidateNames: item.candidateNames,
-          bookletText: ctx.bookletText,
-          rubricText: ctx.rubricText,
-          transcript,
+      const data = await callEdgeFunction<MultiCandidateResult & { transcript?: string; error?: string }>(
+        "analyze-exam",
+        {
+          body: {
+            level: ctx.level,
+            language: ctx.language,
+            candidateNames: item.candidateNames,
+            bookletText: ctx.bookletText,
+            rubricText: ctx.rubricText,
+            transcript,
+          },
+          timeoutMs: 120_000,
         },
-      });
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Analysis timed out — tap Retry.")), ANALYZE_TIMEOUT_MS)
       );
-      const { data, error } = await Promise.race([invokePromise, timeoutPromise]) as Awaited<typeof invokePromise>;
-      if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
       // Prefer the AI-labelled transcript when it already contains clear
       // speaker labels; otherwise rebuild labels from Scribe word-level
       // diarization; otherwise fall back to the raw verbatim transcript.

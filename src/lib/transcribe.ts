@@ -12,7 +12,7 @@ export async function blobToBase64(blob: Blob): Promise<string> {
   return btoa(binary);
 }
 
-import { supabase } from "@/integrations/supabase/client";
+import { callEdgeFunction } from "@/lib/edgeClient";
 
 export interface ScribeWord {
   text: string;
@@ -28,13 +28,12 @@ export interface ScribeWord {
  */
 export async function transcribeBlob(blob: Blob): Promise<{ transcript: string; words: ScribeWord[] }> {
   const audioBase64 = await blobToBase64(blob);
-  const { data, error } = await supabase.functions.invoke("transcribe-audio", {
-    body: { audioBase64, mimeType: blob.type || "audio/webm" },
-  });
-  if (error) throw error;
-  if ((data as any)?.error) throw new Error((data as any).error);
+  const data = await callEdgeFunction<{ transcript?: string; words?: ScribeWord[] }>(
+    "transcribe-audio",
+    { body: { audioBase64, mimeType: blob.type || "audio/webm" } },
+  );
   return {
-    transcript: (data as any)?.transcript ?? "",
-    words: (data as any)?.words ?? [],
+    transcript: data?.transcript ?? "",
+    words: data?.words ?? [],
   };
 }
