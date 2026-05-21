@@ -24,6 +24,7 @@ export interface BatchItem {
   result?: MultiCandidateResult;
   scribeWords?: ScribeWord[];
   error?: string;
+  stageLabel?: string;
 }
 
 interface AnalyzeContext {
