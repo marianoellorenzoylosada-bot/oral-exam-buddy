@@ -24,6 +24,7 @@ export interface BatchItem {
   result?: MultiCandidateResult;
   scribeWords?: ScribeWord[];
   error?: string;
+  stageLabel?: string;
 }
 
 interface AnalyzeContext {
@@ -111,13 +112,16 @@ export function useBatchQueue() {
       return;
     }
 
-    updateItem(item.id, { status: "analyzing", error: undefined });
+    updateItem(item.id, { status: "analyzing", error: undefined, stageLabel: "Starting…" });
     try {
       // Step 1: Scribe transcription (always — gives us speaker diarization + word timing)
-      const { transcript, words } = await transcribeBlob(item.audioBlob);
+      const { transcript, words } = await transcribeBlob(item.audioBlob, (stage) =>
+        updateItem(item.id, { stageLabel: stage })
+      );
       if (transcript.trim().split(/\s+/).filter(Boolean).length < 30) {
         throw new Error("Not enough speech detected in this recording.");
       }
+      updateItem(item.id, { stageLabel: "Scoring with AI…" });
       // Step 2: AI scoring on transcript — with 120 s timeout so the item never
       // hangs forever if the network drops or the function stalls.
       const data = await callEdgeFunction<MultiCandidateResult & { transcript?: string; error?: string }>(
@@ -143,11 +147,12 @@ export function useBatchQueue() {
           ? aiTranscript
           : labelTranscriptFromWords(transcript, words);
       const enriched = { ...(data as MultiCandidateResult), transcript: displayTranscript };
-      updateItem(item.id, { status: "done", result: enriched, scribeWords: words });
+      updateItem(item.id, { status: "done", result: enriched, scribeWords: words, stageLabel: undefined });
     } catch (err: any) {
       updateItem(item.id, {
         status: "failed",
         error: err?.message ?? "Analysis failed",
+        stageLabel: undefined,
       });
     }
   }, [updateItem]);
