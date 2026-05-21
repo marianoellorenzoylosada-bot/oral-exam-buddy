@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { callEdgeFunction } from "@/lib/edgeClient";
 import type { MultiCandidateResult } from "@/components/DraftReport";
 import * as db from "@/lib/batchQueueDb";
 import { checkAudioSize, checkAudioDuration, checkContextSize } from "@/lib/uploadGuards";
