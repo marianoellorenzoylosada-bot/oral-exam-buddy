@@ -122,8 +122,6 @@ export function useBatchQueue() {
         throw new Error("Not enough speech detected in this recording.");
       }
       updateItem(item.id, { stageLabel: "Scoring with AI…" });
-        throw new Error("Not enough speech detected in this recording.");
-      }
       // Step 2: AI scoring on transcript — with 120 s timeout so the item never
       // hangs forever if the network drops or the function stalls.
       const data = await callEdgeFunction<MultiCandidateResult & { transcript?: string; error?: string }>(
