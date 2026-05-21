@@ -1,90 +1,69 @@
-
 ## Diagnosis
 
-### Verified facts (just tested via curl + logs)
+**Symptom:** Mobile shows `Network error reaching transcribe-audio: Failed to fetch`. The error is thrown from `edgeClient.ts` inside the `catch` around `fetch()`, before any HTTP status. The function logs are empty for that request → the request never reached the edge function.
 
-- `OPTIONS` preflight on `analyze-exam` → **200** with correct CORS headers. Preflight is **not** the problem.
-- `POST` without `Authorization` → **401** `UNAUTHORIZED_NO_AUTH_HEADER` from the **gateway** (before the function runs).
-- `POST` with only `apikey` (anon) and no Bearer → **401** same code. The gateway requires a Bearer JWT now that `verify_jwt = true`.
-- User session is valid (refresh token call at 20:19:10 returned a fresh access_token; subsequent REST calls to `/exams` and `/user_roles` succeed with that JWT).
-- No `/functions/v1/...` request appears in the captured network log — meaning the failing call most likely never produced a server-side response the client could surface, OR it happened outside the capture window.
-- `transcribe-audio` recent logs only show `shutdown` events — no invocation records since the new pilot started, suggesting the request is failing client-side before reaching the function, OR the function cold-started and the client gave up first.
+**Root cause classification:** payload size + mobile network instability (not CORS, not auth, not URL).
 
-### Which function is failing
+- `transcribe.ts` base64-encodes the WebM blob and sends it inside a JSON body to `transcribe-audio`.
+- A typical 8–10 min Opus/WebM recording from `MediaRecorder` is roughly 4–8 MB binary → **5.5–11 MB base64 JSON**.
+- The previous `supabase.functions.invoke()` used the same payload shape, but the SDK transport had implicit retries/keep-alive behaviour. The new explicit `fetch()` in `edgeClient.ts` is a single shot — on mobile (cellular, radio sleep, NAT timeouts, TLS resets while the body is still uploading) a multi-MB JSON POST routinely fails with `TypeError: Failed to fetch` before any server response.
+- CORS is fine (the same headers and origin were working from desktop). The URL is correct (built from `VITE_SUPABASE_URL`). Auth is fine (JWT is fresh; we'd see a 401, not a network failure).
+- Desktop succeeds for the same item because wired/WiFi connections tolerate the large body upload.
 
-`useBatchQueue.analyzeOne` calls them in this order:
+**Side issue:** even when the upload succeeds, the edge function decodes base64 → bytes → `Blob` → re-uploads as multipart to ElevenLabs. That doubles peak memory and adds latency. Going through Storage avoids both.
 
-1. `transcribeBlob()` → `supabase.functions.invoke("transcribe-audio", { body: { audioBase64, mimeType } })`
-2. `supabase.functions.invoke("analyze-exam", …)`
+## Smallest safe fix
 
-Step 1 sends a large base64 audio payload (a 5-minute webm ≈ 5–15 MB raw → ~7–20 MB base64 → ~7–20 MB JSON body). `analyze-exam` is only reached if step 1 succeeds. The user's "Failed to send a request to the edge function" is the supabase-js `FunctionsFetchError`, which is thrown when **`fetch` itself rejects** — not on HTTP 4xx/5xx (those become `FunctionsHttpError` with a readable body).
+Upload the audio blob to the existing **private `exam-audio` Storage bucket** from the client, then call `transcribe-audio` with `{ audioPath }` instead of `{ audioBase64 }`. The edge function downloads the object with the service-role key and forwards it to ElevenLabs exactly as today.
 
-The most likely culprits, in order:
+Why this is the smallest fix:
+- Storage uploads use a dedicated, resumable-friendly endpoint that handles large bodies far more reliably on mobile than a JSON POST to a function.
+- No change to scoring, feedback, reports/PDFs, speaker mapping, calibration, billing.
+- No change to `analyze-exam`, `purge-expired-audio`, or `elevenlabs-scribe-token`.
+- Keeps `verify_jwt = true` on `transcribe-audio`; RLS on the bucket already restricts user access; the function uses service-role only to read the just-uploaded object.
 
-1. **`transcribe-audio` is the failing function** (step 1 of the chain).
-2. The error is a `fetch` failure, most plausibly:
-   - **Race between `supabase.functions.invoke` and session state.** `invoke()` reads the session synchronously at call time; if a token refresh is in flight or the SDK hasn't attached the user JWT for that call, the gateway rejects with 401. The current generic catch (`if (error) throw error`) presents this as "Failed to send a request to the edge function" instead of the real `Unauthorized`.
-   - **Large JSON body** (5–20 MB) occasionally trips `fetch` on flaky mobile networks, surfacing as a `TypeError: Failed to fetch` — again funneled into the same generic message.
-3. Single-pair Live exam (`NewExam` + `MicCheck` → `elevenlabs-scribe-token`) uses the **same `invoke()` pattern** but with a **tiny body** (no audio payload, just a token request), so it usually succeeds — which matches the user's report that recording works and only the Batch analyze step fails.
+### Changes
 
-### Why the previous security change made it visible
+1. **`src/lib/transcribe.ts`** — replace `transcribeBlob`:
+   - Compute encoded size, log it (`console.info("[transcribe] uploading", sizeMb, "MB")`).
+   - Generate a path `${userId}/${crypto.randomUUID()}.webm`.
+   - `supabase.storage.from("exam-audio").upload(path, blob, { contentType: blob.type || "audio/webm", upsert: false })`. On failure, surface a clear message (`Audio upload failed: <msg> — check your connection and retry.`).
+   - `callEdgeFunction("transcribe-audio", { body: { audioPath: path, mimeType: blob.type }, timeoutMs: 180_000 })`.
+   - In a `finally`, best-effort delete the object: `supabase.storage.from("exam-audio").remove([path])` (ignore errors; `purge-expired-audio` is the safety net).
 
-Before `verify_jwt = true`, the gateway forwarded unauthenticated POSTs to the function, and the in-code `requireUser()` returned a structured JSON 401. supabase-js would expose that as `FunctionsHttpError` with a readable `Unauthorized` message. **Now** the gateway rejects with a plain HTTP 401 (no JSON body via `invoke` normalization in some SDK versions), and the SDK is more likely to surface a generic fetch failure for edge cases. The auth gate itself is correct; we just lost the visible error message.
+2. **`supabase/functions/transcribe-audio/index.ts`** — accept either shape, prefer `audioPath`:
+   - If `audioPath` present: create a service-role client, `storage.from("exam-audio").download(audioPath)` → get a `Blob`, forward to ElevenLabs unchanged.
+   - If only `audioBase64` present: keep the existing branch (back-compat for any in-flight queued items).
+   - Keep CORS, `verify_jwt`, `requireUser`, all headers, response shape, and the ElevenLabs call **unchanged**.
 
-## Root cause
+3. **Storage RLS** — `exam-audio` already exists as private. Confirm there are policies allowing an authenticated user to `INSERT` and `DELETE` objects under their own `userId/*` prefix. If missing, add minimal policies (no other table or policy touched):
+   - `INSERT` where `bucket_id = 'exam-audio' AND auth.uid()::text = (storage.foldername(name))[1]`
+   - `DELETE` same predicate
+   - `SELECT` same predicate (so the user can verify their upload; the function reads with service role and doesn't need this)
+   No change to the existing `purge-expired-audio` policy/job.
 
-A combination of:
+4. **Better client error message** — in `transcribe.ts`, wrap the existing fetch path so if `callEdgeFunction` throws `Network error …`, the surfaced message includes the encoded size and a hint: `"Network error uploading audio (X.X MB). Check your mobile connection and tap Retry."`. Pure cosmetic; no behaviour change.
 
-- **Generic error swallowing** in client code (`if (error) throw error` with no body inspection) hides the real gateway/function response.
-- **`supabase.functions.invoke` is fragile for large bodies and during token refresh** — it doesn't expose the underlying status/body when fetch fails, and it doesn't let us force-refresh the session before the call.
+### Explicitly NOT changed
 
-## Smallest safe fix (no scoring/report/PDF changes)
+- No edits to `analyze-exam`, `elevenlabs-scribe-token`, `purge-expired-audio`, `supabase/config.toml`, scoring (`speakingScore`, `cambridgeRubrics`), feedback (`partFeedback`), report PDFs (`generateReportPdf`, `generateStudentPdf`, `generateProgressPdf`), speaker mapping (`applySpeakerMap`, `SpeakerMappingPanel`), calibration, or billing.
 
-### 1. Replace `invoke()` with a thin `callEdgeFunction()` helper used by Batch Session paths
+## Storage / cost impact
 
-New file `src/lib/edgeClient.ts`:
+- **Storage:** transient. Files are deleted client-side immediately after transcription returns, and `purge-expired-audio` already cleans orphans. Worst case during a 200-pair pilot day: ~200 × ~6 MB ≈ 1.2 GB peak that lives for seconds to minutes. Well under the Lovable Cloud free tier.
+- **Bandwidth:** unchanged in total (audio still has to leave the device), but split into one Storage PUT + one tiny JSON function call instead of one huge JSON POST. Net mobile reliability is much higher.
+- **Function cost:** lower — request body shrinks from MBs to ~200 bytes; CPU spent on `atob`/`Uint8Array` decode is gone.
+- **Latency:** comparable on desktop, **better on mobile** (no giant JSON parse before the function can start).
 
-- Calls `supabase.auth.getSession()` (and `refreshSession()` if `expires_at` is within 60 s) so the Bearer JWT is always fresh.
-- Uses `fetch()` directly against `${VITE_SUPABASE_URL}/functions/v1/<name>` with `Authorization: Bearer <token>` and `apikey: <anon>`.
-- On non-2xx, reads the response body (JSON or text) and throws an `Error` with the real message + status code.
-- On network failure, throws `Error("Network error reaching <name>: <reason>")`.
+## Mobile test procedure (8–10 minute recording)
 
-### 2. Use the helper in the two Batch Session call sites only
+1. On a mobile device over cellular (not WiFi), open Batch Session → record one pair for 8–10 minutes → Stop → Save to queue.
+2. Confirm the item shows status `recorded` and an encoded-size hint is logged in the console (e.g. `[transcribe] uploading 6.4 MB`).
+3. Tap **Analyze**.
+   - Expected: status becomes `analyzing`, the Storage PUT completes (visible in Network as a `PUT …/storage/v1/object/exam-audio/…`), then a `POST …/functions/v1/transcribe-audio` returns 200 within ~30–90 s, then `analyze-exam` runs, item ends as `done` with a transcript.
+4. Lock the screen for 10 s during the upload, unlock — the in-flight PUT should still complete (Storage tolerates this far better than the old JSON POST).
+5. Toggle airplane mode briefly to force a failure — error should now read `Audio upload failed: … — check your connection and retry.` and **Retry** must succeed without re-recording.
+6. Repeat on desktop — should remain green end-to-end.
+7. Confirm in Storage that the uploaded object is gone within ~1 minute of `done` (client cleanup) or by the next purge run.
 
-- `src/lib/transcribe.ts` → `transcribeBlob()`
-- `src/hooks/useBatchQueue.ts` → `analyze-exam` invocation
-
-Leave `NewExam`, `MicCheck`, `ReportDetail`, and `LiveTranscript` on `supabase.functions.invoke` for now (they work and are out of scope for this fix).
-
-### 3. Surface the real error in the Batch list
-
-`useBatchQueue.analyzeOne`'s catch already writes `err.message` into `item.error`. With the helper above, that field will now contain things like `"transcribe-audio failed (413): Audio too large (24.1 MB encoded). Please record shorter exams."` or `"Unauthorized — please sign in again."` instead of "Failed to send a request to the edge function".
-
-### What we will NOT change
-
-- No edge function code changes.
-- No `supabase/config.toml` changes — `verify_jwt = true` stays for the three paid functions; `purge-expired-audio` stays `false`.
-- No scoring, feedback, reports, PDF, speaker mapping, or billing code.
-- No auth flow changes; anonymous callers continue to get 401 at the gateway.
-
-## Test plan
-
-1. **Smoke (still blocked anonymously):** `curl -X POST .../functions/v1/transcribe-audio` → expect 401.
-2. **Live exam still works:** open `/new-exam`, run MicCheck, record a short exam, finish → confirm transcript + analysis appear (proves `elevenlabs-scribe-token`, `transcribe-audio`, `analyze-exam` still callable for authed users).
-3. **Batch Session, 1 pair:**
-   1. Sign in, open `/batch-session`, fill level/language/booklet/rubric.
-   2. Record one ~60 s pair with 2 candidates, stop.
-   3. Tap **Analyze**. Expect: status moves `queued` → `analyzing` → `done` with a populated report.
-4. **Failure surfacing:**
-   1. In DevTools, temporarily block `*/functions/v1/transcribe-audio` (Network → Block request URL).
-   2. Tap Analyze. Expect item status `failed` with a specific message like `"Network error reaching transcribe-audio: …"` — **not** the generic "Failed to send a request to the edge function".
-   3. Unblock, tap Retry → success.
-5. **Expired-session path:** open DevTools console, run `await supabase.auth.signOut()`, then tap Retry → expect `failed` with `"Unauthorized — please sign in again."`.
-6. **Edge function logs:** after step 3, `transcribe-audio` and `analyze-exam` logs should show one successful invocation each, with no 401s.
-
-## Technical notes
-
-- The helper uses `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` from env (already present, no new secrets).
-- Body remains JSON-stringified `{ audioBase64, mimeType }` for `transcribe-audio` — same wire format the function already accepts.
-- 120 s timeout for `analyze-exam` is preserved via `AbortController` so the existing watchdog behavior is unchanged.
-- `getSession()` followed by a conditional `refreshSession()` adds ≤ 1 round-trip only when the token is near expiry; otherwise zero overhead.
+After approval I'll implement steps 1–4 above and rerun the security scan.
