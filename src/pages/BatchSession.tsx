@@ -676,6 +676,11 @@ export default function BatchSessionPage() {
                           <p className="text-xs text-muted-foreground">
                             {item.candidateNames.length} candidate{item.candidateNames.length > 1 ? "s" : ""} · {formatTime(item.durationSeconds)}
                           </p>
+                          {item.status === "analyzing" && item.stageLabel && (
+                            <p className="text-xs mt-1 text-amber-700 dark:text-amber-400">
+                              {item.stageLabel}
+                            </p>
+                          )}
                           {item.error && (
                             <p className={`text-xs mt-1 ${isTooShort ? "text-muted-foreground" : "text-destructive"}`}>
                               {isTooShort ? "Too short to analyze." : item.error}
