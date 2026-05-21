@@ -19,8 +19,9 @@ async function requireUser(req: Request): Promise<Response | null> {
     Deno.env.get("SUPABASE_ANON_KEY")!,
     { global: { headers: { Authorization: authHeader } } },
   );
-  const { data, error } = await supabase.auth.getClaims(authHeader.replace("Bearer ", ""));
-  if (error || !data?.claims?.sub) {
+  const jwt = authHeader.replace("Bearer ", "");
+  const { data, error } = await supabase.auth.getUser(jwt);
+  if (error || !data?.user?.id) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
