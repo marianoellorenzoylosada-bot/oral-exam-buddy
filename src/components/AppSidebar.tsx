@@ -27,14 +27,15 @@ import {
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
+import { flags } from "@/lib/featureFlags";
 
 const mainNav = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "New Exam", url: "/new-exam", icon: Plus },
   { title: "Batch Session", url: "/batch-session", icon: Layers },
   { title: "Class Roster", url: "/roster", icon: Users },
-  { title: "Question Bank", url: "/question-bank", icon: BookOpen },
-  { title: "Calibration", url: "/calibration", icon: Scale },
+  ...(flags.showQuestionBank ? [{ title: "Question Bank", url: "/question-bank", icon: BookOpen }] : []),
+  ...(flags.showCalibration ? [{ title: "Calibration", url: "/calibration", icon: Scale }] : []),
 ];
 
 const reviewNav = [
