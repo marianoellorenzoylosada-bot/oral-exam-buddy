@@ -1,6 +1,9 @@
+import { flags } from "./featureFlags";
+
 // Exam-name labels per CEFR level. App is currently English-only;
 // helpers retain a `language` parameter for forward compatibility and to
 // avoid touching call sites, but only the English mapping is used.
+
 
 export type CefrLevel = "A2" | "B1" | "B2" | "C1" | "C2";
 
@@ -8,7 +11,10 @@ export const SUPPORTED_LANGUAGES = [
   { value: "en", label: "English" },
 ] as const;
 
-const LEVELS: CefrLevel[] = ["A2", "B1", "B2", "C1", "C2"];
+const LEVELS: CefrLevel[] = flags.onlyPetFce
+  ? ["B1", "B2"]
+  : ["A2", "B1", "B2", "C1", "C2"];
+
 
 const EXAM_NAMES: Record<CefrLevel, string> = {
   A2: "A2 Key (KET)",
