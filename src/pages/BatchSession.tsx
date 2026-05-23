@@ -27,6 +27,7 @@ import {
   saveActiveRecording, loadActiveRecording, clearActiveRecording,
   type ActiveRecordingSnapshot,
 } from "@/lib/batchQueueDb";
+import { PhaseTimer } from "@/components/PhaseTimer";
 
 const LANGUAGES = SUPPORTED_LANGUAGES;
 
