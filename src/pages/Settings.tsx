@@ -6,6 +6,7 @@ import { Save, Cloud, CheckCircle2, User, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import { TeamAdmin } from "@/components/TeamAdmin";
+import { flags } from "@/lib/featureFlags";
 
 export default function SettingsPage() {
   const { toast } = useToast();
@@ -94,7 +95,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      <TeamAdmin />
+      {flags.showTeamAdmin && <TeamAdmin />}
 
       <div className="flex justify-end">
         <Button size="lg" className="gap-2" onClick={handleSave}>
