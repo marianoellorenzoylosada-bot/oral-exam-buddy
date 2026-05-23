@@ -82,6 +82,8 @@ export function PhaseTimer({ level, elapsedSeconds, isRecording, onMarksChange }
   const target = phases[currentPhase]?.targetSeconds ?? 1;
   const overrun = inPhase > target;
 
+  const totalRemaining = Math.max(0, total - elapsedSeconds);
+
   return (
     <Card className="w-full max-w-md p-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -89,8 +91,11 @@ export function PhaseTimer({ level, elapsedSeconds, isRecording, onMarksChange }
           <Clock className="h-4 w-4 text-muted-foreground" />
           <span className="font-display text-sm font-semibold">Exam phase timer</span>
         </div>
-        <Badge variant="outline" className="text-xs">Target {fmt(total)}</Badge>
+        <Badge variant="outline" className="text-xs tabular-nums">
+          {fmt(elapsedSeconds)} elapsed · {fmt(totalRemaining)} left
+        </Badge>
       </div>
+
 
       {/* Segmented bar */}
       <div className="flex h-3 w-full overflow-hidden rounded-full border bg-muted">
