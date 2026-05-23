@@ -630,6 +630,17 @@ export default function BatchSessionPage() {
                   )}
                 </div>
 
+                {/* Phase timer */}
+                {(recorder.state === "recording" || recorder.state === "paused") && level && (
+                  <div className="flex justify-center">
+                    <PhaseTimer
+                      level={level}
+                      elapsedSeconds={recorder.duration}
+                      isRecording={recorder.state === "recording"}
+                    />
+                  </div>
+                )}
+
                 <div className="flex justify-end">
                   <Button
                     disabled={recorder.state !== "stopped"}
