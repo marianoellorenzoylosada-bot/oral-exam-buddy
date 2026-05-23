@@ -95,7 +95,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      <TeamAdmin />
+      {flags.showTeamAdmin && <TeamAdmin />}
 
       <div className="flex justify-end">
         <Button size="lg" className="gap-2" onClick={handleSave}>
