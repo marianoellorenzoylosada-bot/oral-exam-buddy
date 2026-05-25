@@ -7,7 +7,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-async function requireUser(req: Request): Promise<Response | null> {
+async function requireUser(req: Request): Promise<{ userId: string } | Response> {
   const authHeader = req.headers.get("Authorization") ?? "";
   if (!authHeader.startsWith("Bearer ")) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -26,7 +26,7 @@ async function requireUser(req: Request): Promise<Response | null> {
       status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-  return null;
+  return { userId: data.user.id };
 }
 
 function base64ToBytes(b64: string): Uint8Array {
@@ -39,8 +39,9 @@ function base64ToBytes(b64: string): Uint8Array {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  const unauth = await requireUser(req);
-  if (unauth) return unauth;
+  const auth = await requireUser(req);
+  if (auth instanceof Response) return auth;
+  const { userId } = auth;
 
   try {
     const apiKey = Deno.env.get("ELEVENLABS_API_KEY");
@@ -52,6 +53,12 @@ serve(async (req) => {
     let blob: Blob;
 
     if (audioPath && typeof audioPath === "string") {
+      // Enforce ownership: path must live under the caller's user-id folder.
+      if (!audioPath.startsWith(`${userId}/`) || audioPath.includes("..")) {
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       // Preferred path: client uploaded to Storage, we fetch with service role.
       const admin = createClient(
         Deno.env.get("SUPABASE_URL")!,
