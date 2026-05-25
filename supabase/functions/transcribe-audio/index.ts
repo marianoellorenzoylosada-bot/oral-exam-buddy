@@ -7,7 +7,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-async function requireUser(req: Request): Promise<Response | null> {
+async function requireUser(req: Request): Promise<{ userId: string } | Response> {
   const authHeader = req.headers.get("Authorization") ?? "";
   if (!authHeader.startsWith("Bearer ")) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -26,7 +26,7 @@ async function requireUser(req: Request): Promise<Response | null> {
       status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-  return null;
+  return { userId: data.user.id };
 }
 
 function base64ToBytes(b64: string): Uint8Array {
