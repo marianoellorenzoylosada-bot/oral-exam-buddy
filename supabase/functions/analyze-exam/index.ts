@@ -180,6 +180,7 @@ serve(async (req) => {
     const names = candidateNames || ["Candidate A", "Candidate B"];
     const candidateList = names.map((n: string, i: number) => `Candidate ${String.fromCharCode(65 + i)} (${n || "unnamed"})`).join(", ");
     const rubricBlock = buildRubricBlock(level);
+    const libraryBlock = await fetchLibraryBlock(userId, level);
 
     // Per-level Speaking parts (mirrors src/lib/examPhases.ts).
     const PARTS_BY_LEVEL: Record<string, string[]> = {
@@ -221,6 +222,7 @@ EXAM CONTEXT:
 - Speakers: Examiner (teacher), ${candidateList}
 
 ${rubricBlock}
+${libraryBlock}
 ${bookletText ? `\nADDITIONAL REFERENCE — EXAM BOOKLET / SAMPLE PAPER:\n${bookletText}` : ""}
 ${rubricText ? `\nADDITIONAL REFERENCE — UPLOADED HANDBOOK / RUBRIC (use as primary source if provided):\n${rubricText}` : ""}
 ${tagBlock}
