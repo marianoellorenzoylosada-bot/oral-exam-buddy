@@ -7,7 +7,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-async function requireUser(req: Request): Promise<Response | null> {
+async function requireUser(req: Request): Promise<Response | { userId: string }> {
   const authHeader = req.headers.get("Authorization") ?? "";
   if (!authHeader.startsWith("Bearer ")) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -26,7 +26,43 @@ async function requireUser(req: Request): Promise<Response | null> {
       status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-  return null;
+  return { userId: data.claims.sub as string };
+}
+
+async function fetchLibraryBlock(userId: string, level: string): Promise<string> {
+  try {
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const { data, error } = await admin
+      .from("cambridge_reference_material")
+      .select("kind, title, content")
+      .eq("user_id", userId)
+      .eq("level_code", level)
+      .order("created_at", { ascending: true });
+    if (error || !data || data.length === 0) return "";
+    const KIND_LABEL: Record<string, string> = {
+      sample_transcript: "SAMPLE TRANSCRIPT",
+      examiner_comments: "OFFICIAL EXAMINER COMMENTS",
+      handbook_extract: "OFFICIAL HANDBOOK EXTRACT",
+    };
+    // Cap total size at 25k chars to leave room for booklet/rubric/transcript.
+    const MAX = 25_000;
+    let used = 0;
+    const sections: string[] = [];
+    for (const row of data) {
+      const label = KIND_LABEL[row.kind] ?? row.kind.toUpperCase();
+      const piece = `\n--- ${label} — ${row.title} ---\n${row.content}`;
+      if (used + piece.length > MAX) break;
+      sections.push(piece);
+      used += piece.length;
+    }
+    if (sections.length === 0) return "";
+    return `\nCAMBRIDGE REFERENCE LIBRARY (official material previously uploaded by the examiner for this level — use as authoritative reference alongside the descriptors above):${sections.join("")}`;
+  } catch {
+    return "";
+  }
 }
 
 
