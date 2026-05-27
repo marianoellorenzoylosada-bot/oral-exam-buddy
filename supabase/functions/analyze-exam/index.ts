@@ -141,8 +141,9 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const unauth = await requireUser(req);
-  if (unauth) return unauth;
+  const auth = await requireUser(req);
+  if (auth instanceof Response) return auth;
+  const { userId } = auth;
 
   try {
     const { level, language, candidateNames, bookletText, rubricText, transcript, examinerTags } = await req.json();
