@@ -7,7 +7,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-async function requireUser(req: Request): Promise<Response | null> {
+async function requireUser(req: Request): Promise<Response | { userId: string }> {
   const authHeader = req.headers.get("Authorization") ?? "";
   if (!authHeader.startsWith("Bearer ")) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -26,7 +26,43 @@ async function requireUser(req: Request): Promise<Response | null> {
       status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-  return null;
+  return { userId: data.claims.sub as string };
+}
+
+async function fetchLibraryBlock(userId: string, level: string): Promise<string> {
+  try {
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const { data, error } = await admin
+      .from("cambridge_reference_material")
+      .select("kind, title, content")
+      .eq("user_id", userId)
+      .eq("level_code", level)
+      .order("created_at", { ascending: true });
+    if (error || !data || data.length === 0) return "";
+    const KIND_LABEL: Record<string, string> = {
+      sample_transcript: "SAMPLE TRANSCRIPT",
+      examiner_comments: "OFFICIAL EXAMINER COMMENTS",
+      handbook_extract: "OFFICIAL HANDBOOK EXTRACT",
+    };
+    // Cap total size at 25k chars to leave room for booklet/rubric/transcript.
+    const MAX = 25_000;
+    let used = 0;
+    const sections: string[] = [];
+    for (const row of data) {
+      const label = KIND_LABEL[row.kind] ?? row.kind.toUpperCase();
+      const piece = `\n--- ${label} — ${row.title} ---\n${row.content}`;
+      if (used + piece.length > MAX) break;
+      sections.push(piece);
+      used += piece.length;
+    }
+    if (sections.length === 0) return "";
+    return `\nCAMBRIDGE REFERENCE LIBRARY (official material previously uploaded by the examiner for this level — use as authoritative reference alongside the descriptors above):${sections.join("")}`;
+  } catch {
+    return "";
+  }
 }
 
 
@@ -105,8 +141,9 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const unauth = await requireUser(req);
-  if (unauth) return unauth;
+  const auth = await requireUser(req);
+  if (auth instanceof Response) return auth;
+  const { userId } = auth;
 
   try {
     const { level, language, candidateNames, bookletText, rubricText, transcript, examinerTags } = await req.json();
@@ -143,6 +180,7 @@ serve(async (req) => {
     const names = candidateNames || ["Candidate A", "Candidate B"];
     const candidateList = names.map((n: string, i: number) => `Candidate ${String.fromCharCode(65 + i)} (${n || "unnamed"})`).join(", ");
     const rubricBlock = buildRubricBlock(level);
+    const libraryBlock = await fetchLibraryBlock(userId, level);
 
     // Per-level Speaking parts (mirrors src/lib/examPhases.ts).
     const PARTS_BY_LEVEL: Record<string, string[]> = {
@@ -184,6 +222,7 @@ EXAM CONTEXT:
 - Speakers: Examiner (teacher), ${candidateList}
 
 ${rubricBlock}
+${libraryBlock}
 ${bookletText ? `\nADDITIONAL REFERENCE — EXAM BOOKLET / SAMPLE PAPER:\n${bookletText}` : ""}
 ${rubricText ? `\nADDITIONAL REFERENCE — UPLOADED HANDBOOK / RUBRIC (use as primary source if provided):\n${rubricText}` : ""}
 ${tagBlock}

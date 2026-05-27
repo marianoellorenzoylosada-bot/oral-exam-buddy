@@ -59,6 +59,42 @@ export type Database = {
         }
         Relationships: []
       }
+      cambridge_reference_material: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          kind: string
+          level_code: string
+          source_url: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content?: string
+          created_at?: string
+          id?: string
+          kind: string
+          level_code: string
+          source_url?: string
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          level_code?: string
+          source_url?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       exams: {
         Row: {
           areas_for_improvement: Json
