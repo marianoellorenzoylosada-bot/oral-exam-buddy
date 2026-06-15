@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Mic, Square, Pause, Play, Upload, FileText, BookOpen, Trash2, Clock, Users, ExternalLink, Info, Loader2, AlertCircle, Plus, X, WifiOff } from "lucide-react";
+import { Mic, Square, Pause, Play, Upload, FileText, BookOpen, Trash2, Clock, Users, ExternalLink, Info, Loader2, AlertCircle, Plus, X, WifiOff, ShieldCheck } from "lucide-react";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { useExamStore } from "@/hooks/useExamStore";
 
@@ -26,6 +26,7 @@ import { CandidatePicker } from "@/components/CandidatePicker";
 import { SUPPORTED_LANGUAGES, getExamLevels } from "@/lib/examLevels";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { saveDraft, loadDraft, clearDraft } from "@/lib/examDraftDb";
+import { applySpeakerMap, speakerStats, type SpeakerMap, type SpeakerRole } from "@/lib/applySpeakerMap";
 
 const LANGUAGES = SUPPORTED_LANGUAGES;
 
