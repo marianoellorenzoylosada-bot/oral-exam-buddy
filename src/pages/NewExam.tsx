@@ -413,6 +413,92 @@ export default function NewExamPage() {
     }
   }, [online, pendingAnalysis, analyzing, handleSubmitForAnalysis, toast]);
 
+  // Pre-AI speaker review screen
+  if (reviewStage === "awaiting") {
+    const stats = speakerStats(pendingWords);
+    const ROLES: SpeakerRole[] = ["Examiner", "Candidate A", "Candidate B", "Candidate C", "Speaker unclear"];
+    const fmtTs = (s: number) => {
+      const m = Math.floor(s / 60), r = Math.floor(s % 60);
+      return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+    };
+    return (
+      <div className="mx-auto max-w-3xl space-y-6">
+        <div>
+          <h1 className="font-display text-3xl font-bold tracking-tight flex items-center gap-2">
+            <ShieldCheck className="h-7 w-7 text-primary" /> Confirm speakers
+          </h1>
+          <p className="mt-1 text-muted-foreground">
+            Verify who is who before the AI scores. This prevents the wrong candidate being graded if diarization is off.
+          </p>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-display text-base">Detected voices ({stats.length})</CardTitle>
+            <CardDescription>Assign each diarized voice to a role. Defaults are heuristic — please review.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <ul className="space-y-2">
+              {stats.map((s) => (
+                <li key={s.id} className="rounded-md border bg-muted/20 p-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Badge variant="outline" className="font-mono text-[10px]">{s.id}</Badge>
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {fmtTs(s.totalSeconds)} · {(s.share * 100).toFixed(0)}% · first at {fmtTs(s.firstStart)}
+                      </span>
+                    </div>
+                    <Select
+                      value={speakerMap[s.id] ?? "Speaker unclear"}
+                      onValueChange={(v) => setSpeakerMap((m) => ({ ...m, [s.id]: v as SpeakerRole }))}
+                    >
+                      <SelectTrigger className="h-8 w-[180px] text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ROLES.map((r) => (
+                          <SelectItem key={r} value={r} className="text-xs">{r}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {s.sampleText && (
+                    <p className="mt-2 line-clamp-2 text-xs text-muted-foreground italic">"{s.sampleText}…"</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+
+            {recorder.audioUrl && (
+              <div className="pt-2">
+                <p className="text-xs text-muted-foreground mb-1">Listen back to verify:</p>
+                <audio controls src={recorder.audioUrl} className="w-full" />
+              </div>
+            )}
+
+            <div className="flex flex-wrap justify-between gap-2 pt-2">
+              <Button
+                variant="ghost"
+                onClick={skipReviewAndScore}
+                disabled={analyzing}
+                title="Score with the original (unconfirmed) transcript"
+              >
+                Skip review
+              </Button>
+              <Button onClick={confirmReviewAndScore} disabled={analyzing} className="gap-2">
+                {analyzing ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> Scoring…</>
+                ) : (
+                  <>Confirm & score →</>
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   // Show draft report if available
   if (report) {
     return (
