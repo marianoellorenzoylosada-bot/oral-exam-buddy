@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Mic, Square, Pause, Play, Upload, FileText, BookOpen, Trash2, Clock, Users, ExternalLink, Info, Loader2, AlertCircle, Plus, X, WifiOff } from "lucide-react";
+import { Mic, Square, Pause, Play, Upload, FileText, BookOpen, Trash2, Clock, Users, ExternalLink, Info, Loader2, AlertCircle, Plus, X, WifiOff, ShieldCheck } from "lucide-react";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { useExamStore } from "@/hooks/useExamStore";
 
@@ -26,6 +26,7 @@ import { CandidatePicker } from "@/components/CandidatePicker";
 import { SUPPORTED_LANGUAGES, getExamLevels } from "@/lib/examLevels";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { saveDraft, loadDraft, clearDraft } from "@/lib/examDraftDb";
+import { applySpeakerMap, speakerStats, type SpeakerMap, type SpeakerRole } from "@/lib/applySpeakerMap";
 
 const LANGUAGES = SUPPORTED_LANGUAGES;
 
@@ -122,6 +123,11 @@ export default function NewExamPage() {
   const [phaseMarks, setPhaseMarks] = useState<PhaseMark[]>([]);
   const [quickTags, setQuickTags] = useState<QuickTag[]>([]);
   const [groupId, setGroupId] = useState<string | null>(null);
+  // Pre-AI speaker review
+  const [reviewStage, setReviewStage] = useState<"idle" | "awaiting">("idle");
+  const [pendingTranscript, setPendingTranscript] = useState<string>("");
+  const [pendingWords, setPendingWords] = useState<ScribeWord[]>([]);
+  const [speakerMap, setSpeakerMap] = useState<SpeakerMap>({});
   // Offline support: blob restored from a previous session
   const [restoredBlob, setRestoredBlob] = useState<Blob | null>(null);
   const [restoredDuration, setRestoredDuration] = useState<number>(0);
@@ -162,6 +168,68 @@ export default function NewExamPage() {
     }
   };
 
+
+  // Run AI scoring against a (possibly speaker-corrected) transcript.
+  const runScoring = useCallback(async (
+    blob: Blob,
+    dur: number,
+    transcriptText: string,
+    words: ScribeWord[],
+  ) => {
+    setAnalyzing(true);
+    setAnalyzingStep("scoring");
+    try {
+      const { data, error } = await supabase.functions.invoke("analyze-exam", {
+        body: {
+          level: exam.title,
+          language: selectedLang?.label ?? "English",
+          candidateNames: exam.candidateNames,
+          bookletText: exam.bookletText,
+          rubricText: exam.rubricText,
+          transcript: transcriptText,
+          examinerTags: quickTags,
+        },
+      });
+
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
+
+      const aiTranscript = (data as any)?.transcript as string | undefined;
+      // If the examiner already corrected speakers, prefer that transcript verbatim.
+      const displayTranscript = transcriptText.includes(":")
+        ? transcriptText
+        : aiTranscript && hasClearSpeakerLabels(aiTranscript)
+          ? aiTranscript
+          : labelTranscriptFromWords(transcriptText, words);
+      const enriched = { ...(data as MultiCandidateResult), transcript: displayTranscript };
+      setReport(enriched);
+      setReviewStage("idle");
+      setPendingAnalysis(false);
+      clearDraft().catch(() => undefined);
+    } catch (err: any) {
+      console.error("Scoring error:", err);
+      setPendingAnalysis(true);
+      try {
+        await saveDraft({
+          pendingAnalysis: true,
+          title: exam.title, language: exam.language, institution: exam.institution,
+          group: exam.group, candidateNames: exam.candidateNames,
+          bookletText: exam.bookletText, rubricText: exam.rubricText,
+          audioBlob: blob, duration: dur,
+          liveTranscript, scribeWords: words, phaseMarks, quickTags,
+        });
+      } catch { /* ignore */ }
+      toast({
+        title: "Analysis failed",
+        description: err.message || "Could not score the exam. Your recording is saved — you can retry submission.",
+        variant: "destructive",
+      });
+    } finally {
+      setAnalyzing(false);
+      setAnalyzingStep("");
+    }
+  }, [exam, selectedLang, quickTags, liveTranscript, phaseMarks, toast]);
+
   const handleSubmitForAnalysis = useCallback(async () => {
     const blob = recorder.audioBlob ?? restoredBlob;
     const dur = recorder.audioBlob ? recorder.duration : restoredDuration;
@@ -188,7 +256,7 @@ export default function NewExamPage() {
       return;
     }
 
-    // Pre-flight guards: catch oversized recordings/context before the upload starts.
+    // Pre-flight guards
     const sizeCheck = checkAudioSize(blob);
     if (!sizeCheck.ok) {
       toast({ title: "Recording too large", description: sizeCheck.reason, variant: "destructive" });
@@ -208,8 +276,6 @@ export default function NewExamPage() {
     setAnalyzing(true);
     try {
       // Step 1: ALWAYS re-transcribe the full uploaded audio for final scoring.
-      // The live transcript is an examiner aid only — it can stop silently mid-exam
-      // (mobile WebSocket throttling, session caps), so we never trust it for scoring.
       setAnalyzingStep("transcribing");
       const out = await transcribeBlob(blob);
       const transcriptText = out.transcript;
@@ -219,38 +285,27 @@ export default function NewExamPage() {
         throw new Error("Not enough speech detected. Please record again with the candidates speaking clearly.");
       }
 
-      setAnalyzingStep("scoring");
-      const { data, error } = await supabase.functions.invoke("analyze-exam", {
-        body: {
-          level: exam.title,
-          language: selectedLang?.label ?? "English",
-          candidateNames: exam.candidateNames,
-          bookletText: exam.bookletText,
-          rubricText: exam.rubricText,
-          transcript: transcriptText,
-          examinerTags: quickTags,
-        },
-      });
+      // Step 2: If we have diarized speakers, open the Pre-AI review step.
+      const stats = speakerStats(out.words);
+      if (stats.length >= 2) {
+        // Pre-fill a heuristic map: longest-speaking voice = Examiner, then A, B, C.
+        const byShare = [...stats].sort((a, b) => b.totalSeconds - a.totalSeconds);
+        const roles: SpeakerRole[] = ["Examiner", "Candidate A", "Candidate B", "Candidate C"];
+        const suggested: SpeakerMap = {};
+        byShare.forEach((s, i) => { suggested[s.id] = roles[i] ?? "Speaker unclear"; });
+        setPendingTranscript(transcriptText);
+        setPendingWords(out.words);
+        setSpeakerMap(suggested);
+        setReviewStage("awaiting");
+        setAnalyzing(false);
+        setAnalyzingStep("");
+        return;
+      }
 
-      if (error) throw error;
-      if (data.error) throw new Error(data.error);
-
-      // Prefer the AI-labelled transcript if it already contains clear speaker
-      // labels; otherwise best-effort label the verbatim transcript from
-      // Scribe's word-level diarization. Falls back to raw text on low confidence.
-      const aiTranscript = (data as any)?.transcript as string | undefined;
-      const displayTranscript = aiTranscript && hasClearSpeakerLabels(aiTranscript)
-        ? aiTranscript
-        : labelTranscriptFromWords(transcriptText, out.words);
-      const enriched = { ...(data as MultiCandidateResult), transcript: displayTranscript };
-      setReport(enriched);
-      setPendingAnalysis(false);
-      // Successful analysis — clear persisted draft.
-      clearDraft().catch(() => undefined);
+      // No diarization → fall through to scoring directly (legacy path).
+      await runScoring(blob, dur, transcriptText, out.words);
     } catch (err: any) {
-      console.error("Analysis error:", err);
-      // Persist a pending-analysis marker so the audio + context survive a reload
-      // and can be re-submitted manually or auto-retried when back online.
+      console.error("Transcription error:", err);
       setPendingAnalysis(true);
       try {
         await saveDraft({
@@ -267,11 +322,26 @@ export default function NewExamPage() {
         description: err.message || "Could not process the exam. Your recording is saved — you can retry submission.",
         variant: "destructive",
       });
-    } finally {
       setAnalyzing(false);
       setAnalyzingStep("");
     }
-  }, [recorder.audioBlob, recorder.duration, restoredBlob, restoredDuration, exam, selectedLang, toast, liveTranscript, scribeWords, quickTags, phaseMarks]);
+  }, [recorder.audioBlob, recorder.duration, restoredBlob, restoredDuration, exam, toast, liveTranscript, scribeWords, quickTags, phaseMarks, runScoring]);
+
+  const confirmReviewAndScore = useCallback(async () => {
+    const blob = recorder.audioBlob ?? restoredBlob;
+    const dur = recorder.audioBlob ? recorder.duration : restoredDuration;
+    if (!blob || !pendingTranscript) return;
+    const corrected = applySpeakerMap(pendingWords, speakerMap);
+    await runScoring(blob, dur, corrected || pendingTranscript, pendingWords);
+  }, [recorder.audioBlob, recorder.duration, restoredBlob, restoredDuration, pendingTranscript, pendingWords, speakerMap, runScoring]);
+
+  const skipReviewAndScore = useCallback(async () => {
+    const blob = recorder.audioBlob ?? restoredBlob;
+    const dur = recorder.audioBlob ? recorder.duration : restoredDuration;
+    if (!blob || !pendingTranscript) return;
+    await runScoring(blob, dur, pendingTranscript, pendingWords);
+  }, [recorder.audioBlob, recorder.duration, restoredBlob, restoredDuration, pendingTranscript, pendingWords, runScoring]);
+
 
   const handleReset = useCallback(() => {
     reset();
@@ -281,6 +351,10 @@ export default function NewExamPage() {
     setRestoredBlob(null);
     setRestoredDuration(0);
     setPendingAnalysis(false);
+    setReviewStage("idle");
+    setPendingTranscript("");
+    setPendingWords([]);
+    setSpeakerMap({});
     clearDraft().catch(() => undefined);
     setActiveTab("setup");
   }, [reset, recorder]);
@@ -338,6 +412,92 @@ export default function NewExamPage() {
       handleSubmitForAnalysis();
     }
   }, [online, pendingAnalysis, analyzing, handleSubmitForAnalysis, toast]);
+
+  // Pre-AI speaker review screen
+  if (reviewStage === "awaiting") {
+    const stats = speakerStats(pendingWords);
+    const ROLES: SpeakerRole[] = ["Examiner", "Candidate A", "Candidate B", "Candidate C", "Speaker unclear"];
+    const fmtTs = (s: number) => {
+      const m = Math.floor(s / 60), r = Math.floor(s % 60);
+      return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+    };
+    return (
+      <div className="mx-auto max-w-3xl space-y-6">
+        <div>
+          <h1 className="font-display text-3xl font-bold tracking-tight flex items-center gap-2">
+            <ShieldCheck className="h-7 w-7 text-primary" /> Confirm speakers
+          </h1>
+          <p className="mt-1 text-muted-foreground">
+            Verify who is who before the AI scores. This prevents the wrong candidate being graded if diarization is off.
+          </p>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-display text-base">Detected voices ({stats.length})</CardTitle>
+            <CardDescription>Assign each diarized voice to a role. Defaults are heuristic — please review.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <ul className="space-y-2">
+              {stats.map((s) => (
+                <li key={s.id} className="rounded-md border bg-muted/20 p-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Badge variant="outline" className="font-mono text-[10px]">{s.id}</Badge>
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {fmtTs(s.totalSeconds)} · {(s.share * 100).toFixed(0)}% · first at {fmtTs(s.firstStart)}
+                      </span>
+                    </div>
+                    <Select
+                      value={speakerMap[s.id] ?? "Speaker unclear"}
+                      onValueChange={(v) => setSpeakerMap((m) => ({ ...m, [s.id]: v as SpeakerRole }))}
+                    >
+                      <SelectTrigger className="h-8 w-[180px] text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ROLES.map((r) => (
+                          <SelectItem key={r} value={r} className="text-xs">{r}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {s.sampleText && (
+                    <p className="mt-2 line-clamp-2 text-xs text-muted-foreground italic">"{s.sampleText}…"</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+
+            {recorder.audioUrl && (
+              <div className="pt-2">
+                <p className="text-xs text-muted-foreground mb-1">Listen back to verify:</p>
+                <audio controls src={recorder.audioUrl} className="w-full" />
+              </div>
+            )}
+
+            <div className="flex flex-wrap justify-between gap-2 pt-2">
+              <Button
+                variant="ghost"
+                onClick={skipReviewAndScore}
+                disabled={analyzing}
+                title="Score with the original (unconfirmed) transcript"
+              >
+                Skip review
+              </Button>
+              <Button onClick={confirmReviewAndScore} disabled={analyzing} className="gap-2">
+                {analyzing ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> Scoring…</>
+                ) : (
+                  <>Confirm & score →</>
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   // Show draft report if available
   if (report) {
