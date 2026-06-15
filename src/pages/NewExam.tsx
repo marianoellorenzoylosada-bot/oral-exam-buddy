@@ -351,6 +351,10 @@ export default function NewExamPage() {
     setRestoredBlob(null);
     setRestoredDuration(0);
     setPendingAnalysis(false);
+    setReviewStage("idle");
+    setPendingTranscript("");
+    setPendingWords([]);
+    setSpeakerMap({});
     clearDraft().catch(() => undefined);
     setActiveTab("setup");
   }, [reset, recorder]);
