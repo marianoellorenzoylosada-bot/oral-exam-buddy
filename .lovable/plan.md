@@ -1,80 +1,68 @@
-## Root cause (confirmed from logs)
 
-Every recent `transcribe-audio` invocation crashes at line 27 with:
+# Pre-AI Speaker Review (Item #1)
 
+## Goal
+Stop sending an unverified transcript to the AI in the live single-exam flow. After Scribe transcribes the recording, the examiner must confirm who is who; the AI then scores the corrected transcript on the first pass — eliminating the "AI scored the wrong candidate" risk and the credit cost of re-grading.
+
+## Scope (what changes)
+- `src/pages/NewExam.tsx` (live mock wizard) only.
+- No changes to: BatchSession, ReportDetail, edge functions, scoring logic, rubrics, RLS, storage, exams schema, PDF, Progress, or any other view.
+- The existing `SpeakerMappingPanel` component is reused as-is (read-only of its behavior); we only call it earlier in the flow.
+
+## New flow in `NewExam.tsx`
+```text
+Record audio
+   │
+   ▼
+Submit  ──► transcribe (Scribe, with word-level diarization)
+   │
+   ▼
+NEW STEP: "Confirm speakers" review panel
+   • Shows SpeakerMappingPanel populated from out.words
+   • Pre-filled with the heuristic suggested map
+   • Examiner verifies / corrects roles
+   • Two buttons:
+       – "Confirm & score"  (primary)
+       – "Skip review" (secondary, with a small warning tooltip)
+   │
+   ▼
+analyze-exam  ──► report rendered (unchanged)
 ```
-TypeError: supabase.auth.getClaims is not a function
-    at requireUser (transcribe-audio/index.ts:27:47)
-```
 
-The Supabase JS client (`@supabase/supabase-js@2.45.0`) does **not** expose `supabase.auth.getClaims()`. The auth gate throws an uncaught `TypeError` before any response headers are flushed, so the Edge Runtime tears down the connection. On the client this surfaces as `fetch` rejecting with `TypeError: Failed to fetch`, which `transcribe.ts` then rewrites to **"Network error contacting transcription service (audio X MB uploaded OK)"** — a misleading message, because the upload genuinely did succeed and the function genuinely was reached; it just exploded before replying.
+## Implementation details
+1. **State additions** (local to `NewExam.tsx`):
+   - `reviewStage: "idle" | "awaiting" | "confirmed"`.
+   - `pendingTranscript: string | null`, `pendingWords: ScribeWord[]`.
+   - `speakerMap: SpeakerMap | null`.
 
-This is why:
-- Storage upload works (different code path).
-- ElevenLabs is never called (we never get past line 27).
-- Duration / quota / timeout are red herrings — the function dies in <50 ms.
-- It started after the security/auth refactor that introduced `getClaims`.
+2. **Split `handleSubmitForAnalysis`** into two functions:
+   - `runTranscription()` — runs the existing pre-flight guards + Scribe transcription, then sets `pendingTranscript/pendingWords` and `reviewStage = "awaiting"`. Does **not** call `analyze-exam`.
+   - `runScoring(finalTranscript: string, map: SpeakerMap | null)` — the existing `analyze-exam` invoke + draft cleanup + report set. Called from the review step.
 
-## Smallest safe fix
+3. **Review UI** rendered between the Record tab and the Report:
+   - Reuse `SpeakerMappingPanel` in an embedded mode: instead of writing to Supabase, pass an `onConfirm(transcript, map)` callback. Since the panel currently writes to `exams`, we add a thin local wrapper inside `NewExam.tsx` that:
+     - Calls `applySpeakerMap(words, map)` directly to build the corrected transcript.
+     - Calls `runScoring(correctedTranscript, map)`.
+   - "Skip review" → `runScoring(pendingTranscript, null)` with original behavior preserved.
 
-Replace the broken claims call in `supabase/functions/transcribe-audio/index.ts` with the supported `auth.getUser(jwt)` API, which validates the JWT against Supabase Auth and returns the user. Same security guarantee, real function on the installed SDK version.
+4. **Persistence of the chosen map**: after `analyze-exam` succeeds and the exam row is inserted, write `speaker_map` to the new exam row using the existing column (already supported by `SpeakerMappingPanel`'s update path). No schema change.
 
-```ts
-// before
-const { data, error } = await supabase.auth.getClaims(authHeader.replace("Bearer ", ""));
-if (error || !data?.claims?.sub) { return 401 }
+5. **Offline / failure paths**:
+   - If user is offline at submit time → unchanged (draft saved, no transcription).
+   - If transcription fails → unchanged toast, no review shown.
+   - If scoring fails after review → existing draft-saving path runs; on retry we go straight from the saved transcript back through the review step.
 
-// after
-const jwt = authHeader.replace("Bearer ", "");
-const { data, error } = await supabase.auth.getUser(jwt);
-if (error || !data?.user?.id) { return 401 }
-```
+## What stays the same
+- BatchSession queue: unchanged — batch mode is unattended by design.
+- ReportDetail's post-hoc `SpeakerMappingPanel` + Re-analyze: still works for older reports and corrections.
+- analyze-exam edge function: untouched.
+- All scoring, weights, rubrics, storage, RLS, PDFs.
 
-Nothing else in the function needs to change. CORS, Storage download path, ElevenLabs call, response shape, `verify_jwt`, and RLS are untouched.
+## Risks & mitigations
+- **Examiner friction**: one extra confirm click per mock. Mitigated by good pre-filled defaults and a "Skip review" escape hatch.
+- **Regression in offline retry**: covered by routing the resumed draft through the same `runTranscription → review → runScoring` pipeline.
 
-### Secondary polish (optional, same edit pass)
-
-To stop hiding real backend errors behind "Network error…" in the future, tighten `src/lib/transcribe.ts` so that only true `TypeError: Failed to fetch` (network) is reported as a connection issue; HTTP errors from the function should pass through with their real message (which `edgeClient.ts` already produces, e.g. `transcribe-audio failed (502): Transcription failed: 429`). Today the catch-all rewrites *any* "Network error…" prefix, which is what masked this bug.
-
-## Answers to the diagnostic questions
-
-1. **Did POST reach the function?** Yes — logs show `booted` + immediate `TypeError` per invocation.
-2. **Where does it fail?** Auth gate, before Storage download / FormData / ElevenLabs.
-3. **Client timeout too short?** No — 180 s is fine; failure is <1 s.
-4. **Edge Function timeout?** Not the cause now; for true 14–15 min audio the ElevenLabs call typically returns in 30–90 s, well within the 150 s wall clock. We can revisit only if real timeouts appear after the fix.
-5. **ElevenLabs quota?** Not reached — function dies before calling them.
-6. **Free-plan credits?** N/A right now; user confirms credits remain.
-7. **Storage-first slower?** No — adds one signed download inside the function (~1–3 s for 12 MB), negligible vs. ElevenLabs latency.
-8. **Errors swallowed?** Yes, partially — the `Network error` rewrite in `transcribe.ts` hides real HTTP errors. Will tighten so HTTP 4xx/5xx pass through verbatim.
-9. **Stage UI?** Will add 3 stage labels to the Batch item status while analyzing: `Uploading audio…` → `Contacting transcription service…` → `Transcribing… (this can take 1–2 min for 15 min audio)` → `Scoring…`. Implemented via a small `onStage` callback wired from `useBatchQueue.analyzeOne` into a new `stageLabel` field on `BatchItem`.
-
-## Files to change
-
-1. `supabase/functions/transcribe-audio/index.ts` — swap `getClaims` → `getUser`. (~4 lines)
-2. `src/lib/transcribe.ts` — narrow the "Network error" rewrite to only `TypeError: Failed to fetch`; let HTTP errors through with their real text. Accept optional `onStage` callback.
-3. `src/hooks/useBatchQueue.ts` — add `stageLabel?: string` to `BatchItem`; pass `onStage` into `transcribeBlob`; clear on done/failed.
-4. `src/pages/BatchSession.tsx` (display only) — render `item.stageLabel` under "Analyzing…".
-
-No changes to: `analyze-exam`, `elevenlabs-scribe-token`, `purge-expired-audio`, `config.toml`, scoring, feedback, reports/PDFs, speaker mapping, calibration, billing, auth setup, RLS, or storage policies.
-
-## Test plan (14–15 min FCE recording)
-
-1. **Smoke test — short clip first (30 s)** on desktop:
-   - Record 30 s in Batch Session → Analyze.
-   - Expect: stage label cycles Uploading → Contacting → Transcribing → Scoring → `done`.
-   - Verify `transcribe-audio` logs show `booted`, no `TypeError`, ElevenLabs `200`, and a response body returned.
-
-2. **Mobile happy path — full FCE length (14–15 min)** on cellular:
-   - Record 14–15 min → tap Analyze.
-   - Watch the Batch item label progress through all four stages.
-   - Expected timing: upload 20–60 s on cellular, ElevenLabs transcription 45–90 s, scoring 15–40 s.
-   - Verify Storage object appears then is deleted within ~1 min of completion.
-   - Verify final report renders with transcript + scores.
-
-3. **Negative path — force ElevenLabs error** (temporarily revoke `ELEVENLABS_API_KEY` in a side test, or wait for a 429):
-   - Expect UI shows `transcribe-audio failed (502): Transcription failed: 401` (or 429), **not** the misleading "Network error" string.
-   - Tap Retry → succeeds once the underlying cause is resolved.
-
-4. **Regression** — analyze a previously-completed Batch item to confirm no scoring/report/PDF drift.
-
-5. **Security scan** — re-run after deploy; should remain clean (only the pre-existing low-severity Postgres linter warnings).
+## Out of scope (kept for later phases)
+- Pre-AI review for BatchSession.
+- Forcing review (removing "Skip review").
+- Storing the pre-review transcript for audit.
