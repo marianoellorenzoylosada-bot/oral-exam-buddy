@@ -168,14 +168,6 @@ export default function NewExamPage() {
     }
   };
 
-  const handleSubmitForAnalysis = useCallback(async () => {
-    const blob = recorder.audioBlob ?? restoredBlob;
-    const dur = recorder.audioBlob ? recorder.duration : restoredDuration;
-    if (!blob) return;
-    if (!exam.title) {
-      toast({ title: "Missing exam level", description: "Please select a CEFR level in the Setup tab.", variant: "destructive" });
-      return;
-    }
 
   // Run AI scoring against a (possibly speaker-corrected) transcript.
   const runScoring = useCallback(async (
