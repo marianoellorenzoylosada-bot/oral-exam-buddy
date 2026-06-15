@@ -123,6 +123,11 @@ export default function NewExamPage() {
   const [phaseMarks, setPhaseMarks] = useState<PhaseMark[]>([]);
   const [quickTags, setQuickTags] = useState<QuickTag[]>([]);
   const [groupId, setGroupId] = useState<string | null>(null);
+  // Pre-AI speaker review
+  const [reviewStage, setReviewStage] = useState<"idle" | "awaiting">("idle");
+  const [pendingTranscript, setPendingTranscript] = useState<string>("");
+  const [pendingWords, setPendingWords] = useState<ScribeWord[]>([]);
+  const [speakerMap, setSpeakerMap] = useState<SpeakerMap>({});
   // Offline support: blob restored from a previous session
   const [restoredBlob, setRestoredBlob] = useState<Blob | null>(null);
   const [restoredDuration, setRestoredDuration] = useState<number>(0);
