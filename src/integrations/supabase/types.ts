@@ -63,35 +63,38 @@ export type Database = {
         Row: {
           content: string
           created_at: string
+          created_by: string | null
           id: string
           kind: string
           level_code: string
           source_url: string
           title: string
           updated_at: string
-          user_id: string
+          user_id: string | null
         }
         Insert: {
           content?: string
           created_at?: string
+          created_by?: string | null
           id?: string
           kind: string
           level_code: string
           source_url?: string
           title: string
           updated_at?: string
-          user_id: string
+          user_id?: string | null
         }
         Update: {
           content?: string
           created_at?: string
+          created_by?: string | null
           id?: string
           kind?: string
           level_code?: string
           source_url?: string
           title?: string
           updated_at?: string
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -104,6 +107,7 @@ export type Database = {
           candidates: number | null
           created_at: string
           criteria: Json
+          exam_context: Json
           examiner_notes: string | null
           group: string | null
           id: string
@@ -131,6 +135,7 @@ export type Database = {
           candidates?: number | null
           created_at?: string
           criteria?: Json
+          exam_context?: Json
           examiner_notes?: string | null
           group?: string | null
           id?: string
@@ -158,6 +163,7 @@ export type Database = {
           candidates?: number | null
           created_at?: string
           criteria?: Json
+          exam_context?: Json
           examiner_notes?: string | null
           group?: string | null
           id?: string
