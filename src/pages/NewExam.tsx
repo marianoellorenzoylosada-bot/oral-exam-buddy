@@ -36,11 +36,12 @@ function formatTime(seconds: number) {
   return `${m}:${s}`;
 }
 
-function FileDropZone({ label, icon: Icon, file, extractedText, onFile, onClear, accept }: {
+function FileDropZone({ label, icon: Icon, file, extractedText, onFile, onClear, accept, hint }: {
   label: string; icon: React.ElementType; file: File | null; extractedText?: string;
-  onFile: (f: File) => void; onClear: () => void; accept: string;
+  onFile: (f: File) => void; onClear: () => void; accept: string; hint?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   const [extracting, setExtracting] = useState(false);
 
   const handleFile = useCallback(async (f: File) => {
@@ -60,16 +61,22 @@ function FileDropZone({ label, icon: Icon, file, extractedText, onFile, onClear,
       className="relative flex flex-col items-center gap-3 rounded-lg border-2 border-dashed border-border p-6 text-center transition-colors hover:border-accent hover:bg-muted/30"
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
-      onClick={() => !file && inputRef.current?.click()}
-      role="button"
-      tabIndex={0}
+      role="group"
     >
       <input
         ref={inputRef}
         type="file"
         accept={accept}
         className="hidden"
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }}
+      />
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }}
       />
       {file ? (
         <>
@@ -82,7 +89,7 @@ function FileDropZone({ label, icon: Icon, file, extractedText, onFile, onClear,
           </div>
           {extractedText && (
             <Badge variant="secondary" className="gap-1">
-              <FileText className="h-3 w-3" /> Text extracted
+              <FileText className="h-3 w-3" /> Text extracted ({extractedText.length.toLocaleString()} chars)
             </Badge>
           )}
           {extracting && (
@@ -101,13 +108,22 @@ function FileDropZone({ label, icon: Icon, file, extractedText, onFile, onClear,
           </div>
           <div>
             <p className="font-medium text-sm">{label}</p>
-            <p className="text-xs text-muted-foreground">PDF, DOCX, or images · Drag & drop or click</p>
+            <p className="text-xs text-muted-foreground">{hint ?? "PDF, DOCX, TXT or photo · OCR is applied to images"}</p>
+          </div>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => inputRef.current?.click()}>
+              <Upload className="h-3.5 w-3.5 mr-1" /> Choose file
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => cameraRef.current?.click()} className="sm:hidden">
+              📷 Take photo
+            </Button>
           </div>
         </>
       )}
     </div>
   );
 }
+
 
 export default function NewExamPage() {
   const { exam, update, reset } = useExamStore();
