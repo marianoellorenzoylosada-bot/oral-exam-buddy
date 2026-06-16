@@ -3,6 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -148,7 +150,9 @@ export default function NewExamPage() {
   const [restoredBlob, setRestoredBlob] = useState<Blob | null>(null);
   const [restoredDuration, setRestoredDuration] = useState<number>(0);
   const [pendingAnalysis, setPendingAnalysis] = useState(false);
+  const [examNotes, setExamNotes] = useState("");
   const draftRestoredRef = useRef(false);
+
 
   const examLevels = getExamLevels(exam.language);
   const selectedLevel = examLevels.find(l => l.value === exam.title);
@@ -195,6 +199,18 @@ export default function NewExamPage() {
     setAnalyzing(true);
     setAnalyzingStep("scoring");
     try {
+      // Build typed Exam Context payload (Layer 1 in analyze-exam priority).
+      // The legacy bookletText / rubricText still flow through for backwards compatibility.
+      const examContext: Array<{ kind: string; title: string; text: string }> = [];
+      if (exam.bookletText?.trim()) {
+        examContext.push({ kind: "candidate_prompt", title: exam.bookletFile?.name ?? "Candidate prompt / booklet", text: exam.bookletText });
+      }
+      if (exam.rubricText?.trim()) {
+        examContext.push({ kind: "examiner_script", title: exam.rubricFile?.name ?? "Examiner script", text: exam.rubricText });
+      }
+      if (examNotes.trim()) {
+        examContext.push({ kind: "notes", title: "Mock-specific notes", text: examNotes.trim() });
+      }
       const { data, error } = await supabase.functions.invoke("analyze-exam", {
         body: {
           level: exam.title,
@@ -204,8 +220,10 @@ export default function NewExamPage() {
           rubricText: exam.rubricText,
           transcript: transcriptText,
           examinerTags: quickTags,
+          examContext,
         },
       });
+
 
       if (error) throw error;
       if (data.error) throw new Error(data.error);
