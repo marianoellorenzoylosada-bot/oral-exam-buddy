@@ -686,45 +686,61 @@ export default function NewExamPage() {
           <TabsContent value="context">
             <Card>
               <CardHeader>
-                <CardTitle className="font-display">Booklet & Rubric</CardTitle>
-                <CardDescription>Upload the exam booklet and rubric. Text is automatically extracted to give the AI full context.</CardDescription>
+                <CardTitle className="font-display">Exam Context</CardTitle>
+                <CardDescription>
+                  Upload only materials specific to <em>this</em> mock exam — candidate prompts, examiner script, Long Turn / Collaborative Task sheets, or photos of the task. Cambridge rubrics and reference samples are managed centrally; you don't need to upload them.
+                </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-6 sm:grid-cols-2">
                 <FileDropZone
-                  label="Exam Booklet"
+                  label="Candidate prompt / task sheet"
                   icon={BookOpen}
                   file={exam.bookletFile}
                   extractedText={exam.bookletText}
                   onFile={(f) => handleFileUpload(f, "booklet")}
                   onClear={() => update({ bookletFile: null, bookletText: "" })}
-                  accept=".pdf,.docx,image/*"
+                  accept=".pdf,.docx,.txt,image/*"
+                  hint="Long Turn / Collaborative Task material · PDF, DOCX, TXT, or photo (OCR)"
                 />
                 <FileDropZone
-                  label="Custom Rubric"
+                  label="Examiner script (optional)"
                   icon={FileText}
                   file={exam.rubricFile}
                   extractedText={exam.rubricText}
                   onFile={(f) => handleFileUpload(f, "rubric")}
                   onClear={() => update({ rubricFile: null, rubricText: "" })}
-                  accept=".pdf,.docx,image/*"
+                  accept=".pdf,.docx,.txt,image/*"
+                  hint="The interlocutor frame for this session · PDF, DOCX, TXT, or photo (OCR)"
                 />
+
+                <div className="sm:col-span-2 space-y-2">
+                  <Label htmlFor="examNotes">Mock-specific notes (optional)</Label>
+                  <Textarea
+                    id="examNotes"
+                    placeholder="Anything the AI should know about this session: visual task description, candidate background, equipment issues, time adjustments…"
+                    value={examNotes}
+                    onChange={(e) => setExamNotes(e.target.value)}
+                    rows={4}
+                  />
+                </div>
 
                 {(exam.bookletText || exam.rubricText) && (
                   <div className="sm:col-span-2 space-y-3">
                     {exam.bookletText && (
                       <details className="rounded-lg border bg-muted/30 p-3">
-                        <summary className="text-sm font-medium cursor-pointer">Preview: Booklet text ({exam.bookletText.length} chars)</summary>
+                        <summary className="text-sm font-medium cursor-pointer">Preview: Candidate prompt ({exam.bookletText.length} chars)</summary>
                         <p className="mt-2 text-xs text-muted-foreground whitespace-pre-wrap max-h-40 overflow-auto">{exam.bookletText.slice(0, 2000)}{exam.bookletText.length > 2000 ? "…" : ""}</p>
                       </details>
                     )}
                     {exam.rubricText && (
                       <details className="rounded-lg border bg-muted/30 p-3">
-                        <summary className="text-sm font-medium cursor-pointer">Preview: Rubric text ({exam.rubricText.length} chars)</summary>
+                        <summary className="text-sm font-medium cursor-pointer">Preview: Examiner script ({exam.rubricText.length} chars)</summary>
                         <p className="mt-2 text-xs text-muted-foreground whitespace-pre-wrap max-h-40 overflow-auto">{exam.rubricText.slice(0, 2000)}{exam.rubricText.length > 2000 ? "…" : ""}</p>
                       </details>
                     )}
                   </div>
                 )}
+
 
                 <div className="sm:col-span-2 flex justify-between">
                   <Button variant="outline" onClick={() => setActiveTab("setup")}>← Back</Button>
