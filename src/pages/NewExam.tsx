@@ -3,6 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -36,11 +38,12 @@ function formatTime(seconds: number) {
   return `${m}:${s}`;
 }
 
-function FileDropZone({ label, icon: Icon, file, extractedText, onFile, onClear, accept }: {
+function FileDropZone({ label, icon: Icon, file, extractedText, onFile, onClear, accept, hint }: {
   label: string; icon: React.ElementType; file: File | null; extractedText?: string;
-  onFile: (f: File) => void; onClear: () => void; accept: string;
+  onFile: (f: File) => void; onClear: () => void; accept: string; hint?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   const [extracting, setExtracting] = useState(false);
 
   const handleFile = useCallback(async (f: File) => {
@@ -60,16 +63,22 @@ function FileDropZone({ label, icon: Icon, file, extractedText, onFile, onClear,
       className="relative flex flex-col items-center gap-3 rounded-lg border-2 border-dashed border-border p-6 text-center transition-colors hover:border-accent hover:bg-muted/30"
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
-      onClick={() => !file && inputRef.current?.click()}
-      role="button"
-      tabIndex={0}
+      role="group"
     >
       <input
         ref={inputRef}
         type="file"
         accept={accept}
         className="hidden"
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }}
+      />
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }}
       />
       {file ? (
         <>
@@ -82,7 +91,7 @@ function FileDropZone({ label, icon: Icon, file, extractedText, onFile, onClear,
           </div>
           {extractedText && (
             <Badge variant="secondary" className="gap-1">
-              <FileText className="h-3 w-3" /> Text extracted
+              <FileText className="h-3 w-3" /> Text extracted ({extractedText.length.toLocaleString()} chars)
             </Badge>
           )}
           {extracting && (
@@ -101,13 +110,22 @@ function FileDropZone({ label, icon: Icon, file, extractedText, onFile, onClear,
           </div>
           <div>
             <p className="font-medium text-sm">{label}</p>
-            <p className="text-xs text-muted-foreground">PDF, DOCX, or images · Drag & drop or click</p>
+            <p className="text-xs text-muted-foreground">{hint ?? "PDF, DOCX, TXT or photo · OCR is applied to images"}</p>
+          </div>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => inputRef.current?.click()}>
+              <Upload className="h-3.5 w-3.5 mr-1" /> Choose file
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => cameraRef.current?.click()} className="sm:hidden">
+              📷 Take photo
+            </Button>
           </div>
         </>
       )}
     </div>
   );
 }
+
 
 export default function NewExamPage() {
   const { exam, update, reset } = useExamStore();
@@ -132,7 +150,9 @@ export default function NewExamPage() {
   const [restoredBlob, setRestoredBlob] = useState<Blob | null>(null);
   const [restoredDuration, setRestoredDuration] = useState<number>(0);
   const [pendingAnalysis, setPendingAnalysis] = useState(false);
+  const [examNotes, setExamNotes] = useState("");
   const draftRestoredRef = useRef(false);
+
 
   const examLevels = getExamLevels(exam.language);
   const selectedLevel = examLevels.find(l => l.value === exam.title);
@@ -179,6 +199,18 @@ export default function NewExamPage() {
     setAnalyzing(true);
     setAnalyzingStep("scoring");
     try {
+      // Build typed Exam Context payload (Layer 1 in analyze-exam priority).
+      // The legacy bookletText / rubricText still flow through for backwards compatibility.
+      const examContext: Array<{ kind: string; title: string; text: string }> = [];
+      if (exam.bookletText?.trim()) {
+        examContext.push({ kind: "candidate_prompt", title: exam.bookletFile?.name ?? "Candidate prompt / booklet", text: exam.bookletText });
+      }
+      if (exam.rubricText?.trim()) {
+        examContext.push({ kind: "examiner_script", title: exam.rubricFile?.name ?? "Examiner script", text: exam.rubricText });
+      }
+      if (examNotes.trim()) {
+        examContext.push({ kind: "notes", title: "Mock-specific notes", text: examNotes.trim() });
+      }
       const { data, error } = await supabase.functions.invoke("analyze-exam", {
         body: {
           level: exam.title,
@@ -188,8 +220,10 @@ export default function NewExamPage() {
           rubricText: exam.rubricText,
           transcript: transcriptText,
           examinerTags: quickTags,
+          examContext,
         },
       });
+
 
       if (error) throw error;
       if (data.error) throw new Error(data.error);
@@ -228,7 +262,7 @@ export default function NewExamPage() {
       setAnalyzing(false);
       setAnalyzingStep("");
     }
-  }, [exam, selectedLang, quickTags, liveTranscript, phaseMarks, toast]);
+  }, [exam, selectedLang, quickTags, liveTranscript, phaseMarks, toast, examNotes]);
 
   const handleSubmitForAnalysis = useCallback(async () => {
     const blob = recorder.audioBlob ?? restoredBlob;
@@ -652,45 +686,61 @@ export default function NewExamPage() {
           <TabsContent value="context">
             <Card>
               <CardHeader>
-                <CardTitle className="font-display">Booklet & Rubric</CardTitle>
-                <CardDescription>Upload the exam booklet and rubric. Text is automatically extracted to give the AI full context.</CardDescription>
+                <CardTitle className="font-display">Exam Context</CardTitle>
+                <CardDescription>
+                  Upload only materials specific to <em>this</em> mock exam — candidate prompts, examiner script, Long Turn / Collaborative Task sheets, or photos of the task. Cambridge rubrics and reference samples are managed centrally; you don't need to upload them.
+                </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-6 sm:grid-cols-2">
                 <FileDropZone
-                  label="Exam Booklet"
+                  label="Candidate prompt / task sheet"
                   icon={BookOpen}
                   file={exam.bookletFile}
                   extractedText={exam.bookletText}
                   onFile={(f) => handleFileUpload(f, "booklet")}
                   onClear={() => update({ bookletFile: null, bookletText: "" })}
-                  accept=".pdf,.docx,image/*"
+                  accept=".pdf,.docx,.txt,image/*"
+                  hint="Long Turn / Collaborative Task material · PDF, DOCX, TXT, or photo (OCR)"
                 />
                 <FileDropZone
-                  label="Custom Rubric"
+                  label="Examiner script (optional)"
                   icon={FileText}
                   file={exam.rubricFile}
                   extractedText={exam.rubricText}
                   onFile={(f) => handleFileUpload(f, "rubric")}
                   onClear={() => update({ rubricFile: null, rubricText: "" })}
-                  accept=".pdf,.docx,image/*"
+                  accept=".pdf,.docx,.txt,image/*"
+                  hint="The interlocutor frame for this session · PDF, DOCX, TXT, or photo (OCR)"
                 />
+
+                <div className="sm:col-span-2 space-y-2">
+                  <Label htmlFor="examNotes">Mock-specific notes (optional)</Label>
+                  <Textarea
+                    id="examNotes"
+                    placeholder="Anything the AI should know about this session: visual task description, candidate background, equipment issues, time adjustments…"
+                    value={examNotes}
+                    onChange={(e) => setExamNotes(e.target.value)}
+                    rows={4}
+                  />
+                </div>
 
                 {(exam.bookletText || exam.rubricText) && (
                   <div className="sm:col-span-2 space-y-3">
                     {exam.bookletText && (
                       <details className="rounded-lg border bg-muted/30 p-3">
-                        <summary className="text-sm font-medium cursor-pointer">Preview: Booklet text ({exam.bookletText.length} chars)</summary>
+                        <summary className="text-sm font-medium cursor-pointer">Preview: Candidate prompt ({exam.bookletText.length} chars)</summary>
                         <p className="mt-2 text-xs text-muted-foreground whitespace-pre-wrap max-h-40 overflow-auto">{exam.bookletText.slice(0, 2000)}{exam.bookletText.length > 2000 ? "…" : ""}</p>
                       </details>
                     )}
                     {exam.rubricText && (
                       <details className="rounded-lg border bg-muted/30 p-3">
-                        <summary className="text-sm font-medium cursor-pointer">Preview: Rubric text ({exam.rubricText.length} chars)</summary>
+                        <summary className="text-sm font-medium cursor-pointer">Preview: Examiner script ({exam.rubricText.length} chars)</summary>
                         <p className="mt-2 text-xs text-muted-foreground whitespace-pre-wrap max-h-40 overflow-auto">{exam.rubricText.slice(0, 2000)}{exam.rubricText.length > 2000 ? "…" : ""}</p>
                       </details>
                     )}
                   </div>
                 )}
+
 
                 <div className="sm:col-span-2 flex justify-between">
                   <Button variant="outline" onClick={() => setActiveTab("setup")}>← Back</Button>

@@ -27,7 +27,7 @@ import type { PartFeedback } from "@/lib/partFeedback";
 export interface AssessmentResult {
   overallBand: string;
   overallScore: number;
-  criteria: { name: string; score: number; maxScore: number; feedback: string; confidence?: number }[];
+  criteria: { name: string; score: number; maxScore: number; feedback: string; confidence?: number; needsTeacherReview?: boolean }[];
   strengths: string[];
   areasForImprovement: string[];
   /** Optional, presentation-only — not persisted. */
@@ -487,15 +487,21 @@ export function DraftReport({ result, level, levelCode, language, institution, g
             return (
               <div key={i}>
                 <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium text-sm">{c.name}</span>
                     <ConfidenceBadge confidence={c.confidence} />
+                    {c.needsTeacherReview && (
+                      <Badge variant="outline" className="text-xs gap-1 border-amber-500/40 text-amber-700 dark:text-amber-400">
+                        Teacher review recommended
+                      </Badge>
+                    )}
                     {wasOverridden && !isOfficial && (
                       <Badge variant="outline" className="text-xs gap-1 border-blue-500/30 text-blue-600">
                         <PenLine className="h-3 w-3" /> Modified (was {originalScores[i]})
                       </Badge>
                     )}
                   </div>
+
                   {isOfficial ? (
                     <span className={`font-display text-2xl font-bold ${(c.score / c.maxScore) * 100 >= 80 ? "text-emerald-600" : (c.score / c.maxScore) * 100 >= 50 ? "text-amber-600" : "text-destructive"}`}>
                       {c.score}/{c.maxScore}

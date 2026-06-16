@@ -4,18 +4,28 @@ import mammoth from "mammoth";
 // Use the bundled worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
-export async function extractTextFromFile(file: File): Promise<string> {
-  const ext = file.name.split(".").pop()?.toLowerCase();
+const IMAGE_RE = /\.(png|jpe?g|webp|bmp|gif|heic|heif)$/i;
 
-  if (ext === "pdf") {
+export async function extractTextFromFile(file: File): Promise<string> {
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  const mime = file.type ?? "";
+
+  if (ext === "pdf" || mime === "application/pdf") {
     return extractPdfText(file);
   }
 
-  if (ext === "docx") {
+  if (ext === "docx" || mime.includes("officedocument.wordprocessingml")) {
     return extractDocxText(file);
   }
 
-  // For images or unsupported, return a placeholder
+  if (ext === "txt" || mime.startsWith("text/")) {
+    return await file.text();
+  }
+
+  if (IMAGE_RE.test(file.name) || mime.startsWith("image/")) {
+    return extractImageText(file);
+  }
+
   return `[Uploaded file: ${file.name} — text extraction not supported for this format]`;
 }
 
@@ -40,4 +50,20 @@ async function extractDocxText(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
   const result = await mammoth.extractRawText({ arrayBuffer });
   return result.value;
+}
+
+// Lazy-load Tesseract.js (~2MB worker) only when an image is processed.
+async function extractImageText(file: File): Promise<string> {
+  try {
+    const { recognize } = await import("tesseract.js");
+    const { data } = await recognize(file, "eng");
+    const text = (data?.text ?? "").trim();
+    if (!text) {
+      return `[Image attached: ${file.name} — no readable text detected via OCR]`;
+    }
+    return text;
+  } catch (err) {
+    console.warn("OCR failed:", err);
+    return `[Image attached: ${file.name} — OCR unavailable]`;
+  }
 }
