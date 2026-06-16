@@ -453,6 +453,37 @@ Include one entry in the "candidates" array for EACH candidate (${names.length} 
         cand.criteria = Array.isArray(cand.criteria) ? cand.criteria : [];
         cand.strengths = Array.isArray(cand.strengths) ? cand.strengths : [];
         cand.areasForImprovement = Array.isArray(cand.areasForImprovement) ? cand.areasForImprovement : [];
+
+        // Pronunciation safety net: automatic pronunciation analysis is unreliable.
+        // Guarantee the criterion exists, with a sensible default and a teacher-review flag
+        // whenever the AI was missing, vague, or low-confidence. The teacher can edit freely;
+        // this never blocks report validation.
+        const PRON = "Pronunciation";
+        const pronIdx = cand.criteria.findIndex((cr: any) => cr?.name === PRON);
+        const needsReview = (cr: any) =>
+          !cr ||
+          typeof cr.score !== "number" ||
+          typeof cr.confidence === "number" && cr.confidence < 60 ||
+          typeof cr.feedback !== "string" ||
+          cr.feedback.trim().length < 12;
+        if (pronIdx === -1) {
+          cand.criteria.push({
+            name: PRON, score: 3, maxScore: 5, confidence: 0, feedback: "",
+            needsTeacherReview: true,
+          });
+        } else if (needsReview(cand.criteria[pronIdx])) {
+          const existing = cand.criteria[pronIdx] || {};
+          cand.criteria[pronIdx] = {
+            ...existing,
+            name: PRON,
+            maxScore: typeof existing.maxScore === "number" ? existing.maxScore : 5,
+            score: typeof existing.score === "number" ? existing.score : 3,
+            feedback: typeof existing.feedback === "string" ? existing.feedback : "",
+            confidence: typeof existing.confidence === "number" ? existing.confidence : 0,
+            needsTeacherReview: true,
+          };
+        }
+
         if (Array.isArray(cand.partFeedback)) {
           cand.partFeedback = cand.partFeedback.filter((p: any) => {
             if (!p || typeof p !== "object") return false;
