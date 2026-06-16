@@ -261,23 +261,36 @@ EXAM CONTEXT:
 - Language being assessed: ${language}
 - Speakers: Examiner (teacher), ${candidateList}
 
+══════════════════════════════════════════════════════════════
+LAYER 1 — AUTHORITATIVE REFERENCE (guides how to interpret evidence; never replaces it)
+══════════════════════════════════════════════════════════════
 ${rubricBlock}
 ${libraryBlock}
+${examContextBlock}
 ${bookletText ? `\nADDITIONAL REFERENCE — EXAM BOOKLET / SAMPLE PAPER:\n${bookletText}` : ""}
-${rubricText ? `\nADDITIONAL REFERENCE — UPLOADED HANDBOOK / RUBRIC (use as primary source if provided):\n${rubricText}` : ""}
+${rubricText ? `\nADDITIONAL REFERENCE — UPLOADED HANDBOOK / RUBRIC:\n${rubricText}` : ""}
 ${tagBlock}
 
-EXAM TRANSCRIPT (verbatim, with speaker labels — this is your ONLY source of evidence):
+══════════════════════════════════════════════════════════════
+LAYER 2 — CANDIDATE EVIDENCE (the PRIMARY source of every score)
+══════════════════════════════════════════════════════════════
+EXAM TRANSCRIPT (verbatim, with speaker labels — this is the ONLY source of evidence about what the candidate actually produced):
 """
 ${transcriptText}
 """
 
+PRIORITY RULES (read carefully):
+- The candidate's actual performance in the transcript above is the PRIMARY source of evidence. Score and comment strictly on what the candidate said.
+- The Authoritative Reference Layer (Core Library, Exam Context, descriptors) tells you HOW to interpret that evidence — it does NOT substitute for it.
+- If the Core Library or Exam Context conflicts with the rubric descriptors above, the Cambridge Core Library takes precedence. If it conflicts with what the candidate actually said, the transcript wins for evidence.
+- Do not invent content not present in the transcript.
+
 IMPORTANT:
-- Base every score and comment STRICTLY on the transcript above. Do not invent content.
 - In "strengths" and "areasForImprovement", quote the candidate VERBATIM using straight double quotes (e.g. "I have went to the park yesterday"). Each item must contain at least one verbatim quote followed by a brief comment.
 - Identify each speaker. The Examiner is the teacher; assess only the candidates.
 - Score each candidate INDEPENDENTLY on the 5 Cambridge criteria below.
 - Use the 0–5 scale in 0.5 increments. Half-bands are valid (e.g. 2.5, 3.5, 4.5).
+
 - Do NOT estimate the overall band or overall score yourself. Return only the five criterion scores and feedback. The application computes the weighted result deterministically. The "overallScore" and "overallBand" fields in the schema below are placeholders kept for backwards compatibility; you may set them to the simple mean and best-guess CEFR letter, but the client will overwrite them.
 - Feedback for each criterion should reference the Cambridge descriptors above.
 
