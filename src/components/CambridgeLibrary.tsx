@@ -6,11 +6,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { BookOpen, Trash2, Plus, Loader2, FileText } from "lucide-react";
+import { BookOpen, Trash2, Plus, Loader2, FileText, ShieldCheck } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { CAMBRIDGE_EXAMS, type CambridgeLevel } from "@/lib/cambridgeRubrics";
 import { extractTextFromFile } from "@/lib/extractText";
+import { useRoles } from "@/hooks/useRoles";
+
 
 type Kind = "sample_transcript" | "examiner_comments" | "handbook_extract";
 
@@ -40,10 +42,12 @@ const MAX_CONTENT_CHARS = 30_000;
 
 export function CambridgeLibrary() {
   const { toast } = useToast();
+  const { isAdmin, loading: roleLoading } = useRoles();
   const [items, setItems] = useState<RefItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [extracting, setExtracting] = useState(false);
+
 
   const [level, setLevel] = useState<CambridgeLevel>("B2");
   const [kind, setKind] = useState<Kind>("sample_transcript");
@@ -67,8 +71,10 @@ export function CambridgeLibrary() {
   };
 
   useEffect(() => {
-    load();
-  }, []);
+    if (isAdmin) load();
+    else setLoading(false);
+  }, [isAdmin]);
+
 
   const handleFile = async (file: File) => {
     setExtracting(true);
@@ -105,14 +111,17 @@ export function CambridgeLibrary() {
       setSaving(false);
       return;
     }
+    // Admin-managed Core Library entry — user_id is NULL so it's global.
     const { error } = await supabase.from("cambridge_reference_material").insert({
-      user_id: userId,
+      user_id: null,
+      created_by: userId,
       level_code: level,
       kind,
       title: title.trim(),
       content: content.trim(),
       source_url: sourceUrl.trim(),
     });
+
     setSaving(false);
     if (error) {
       toast({ title: "Could not save", description: error.message, variant: "destructive" });
@@ -134,6 +143,9 @@ export function CambridgeLibrary() {
     setItems((prev) => prev.filter((i) => i.id !== id));
   };
 
+  if (roleLoading) return null;
+  if (!isAdmin) return null;
+
   return (
     <Card>
       <CardHeader>
@@ -142,14 +154,17 @@ export function CambridgeLibrary() {
             <BookOpen className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <CardTitle className="font-display text-lg">Cambridge Reference Library</CardTitle>
+            <CardTitle className="font-display text-lg flex items-center gap-2">
+              Cambridge Core Library
+              <Badge variant="outline" className="gap-1 text-[10px]"><ShieldCheck className="h-3 w-3" /> Admin only</Badge>
+            </CardTitle>
             <CardDescription>
-              Material oficial que se inyecta automáticamente en cada análisis del nivel correspondiente
-              (sample transcripts de YouTube, comentarios de examiner, extractos del handbook). Súbelo una sola vez por nivel.
+              Curated Cambridge knowledge base. Entries you add here are injected into every analysis for all educators on this workspace (handbook extracts, official examiner comments, sample transcripts).
             </CardDescription>
           </div>
         </div>
       </CardHeader>
+
       <CardContent className="space-y-6">
         {/* Add new */}
         <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-4">
