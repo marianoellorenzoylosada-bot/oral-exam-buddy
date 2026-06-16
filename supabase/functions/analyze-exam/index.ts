@@ -35,11 +35,13 @@ async function fetchLibraryBlock(userId: string, level: string): Promise<string>
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+    // Core (admin-curated, user_id IS NULL) + legacy private rows owned by the caller.
     const { data, error } = await admin
       .from("cambridge_reference_material")
-      .select("kind, title, content")
-      .eq("user_id", userId)
+      .select("kind, title, content, user_id")
+      .or(`user_id.is.null,user_id.eq.${userId}`)
       .eq("level_code", level)
+      .order("user_id", { ascending: true, nullsFirst: true }) // Core (NULL) first
       .order("created_at", { ascending: true });
     if (error || !data || data.length === 0) return "";
     const KIND_LABEL: Record<string, string> = {
@@ -47,23 +49,59 @@ async function fetchLibraryBlock(userId: string, level: string): Promise<string>
       examiner_comments: "OFFICIAL EXAMINER COMMENTS",
       handbook_extract: "OFFICIAL HANDBOOK EXTRACT",
     };
-    // Cap total size at 25k chars to leave room for booklet/rubric/transcript.
-    const MAX = 25_000;
+    const MAX = 18_000;
     let used = 0;
-    const sections: string[] = [];
+    const coreSections: string[] = [];
+    const legacySections: string[] = [];
     for (const row of data) {
       const label = KIND_LABEL[row.kind] ?? row.kind.toUpperCase();
       const piece = `\n--- ${label} — ${row.title} ---\n${row.content}`;
       if (used + piece.length > MAX) break;
-      sections.push(piece);
       used += piece.length;
+      if (row.user_id === null) coreSections.push(piece);
+      else legacySections.push(piece);
     }
-    if (sections.length === 0) return "";
-    return `\nCAMBRIDGE REFERENCE LIBRARY (official material previously uploaded by the examiner for this level — use as authoritative reference alongside the descriptors above):${sections.join("")}`;
+    const blocks: string[] = [];
+    if (coreSections.length > 0) {
+      blocks.push(`\nCAMBRIDGE CORE LIBRARY (authoritative reference curated by the administrator — use to guide interpretation of the candidate's performance, NOT as evidence of what was said):${coreSections.join("")}`);
+    }
+    if (legacySections.length > 0) {
+      blocks.push(`\nADDITIONAL REFERENCE (legacy private uploads — supplementary):${legacySections.join("")}`);
+    }
+    return blocks.join("\n");
   } catch {
     return "";
   }
 }
+
+function buildExamContextBlock(examContext: unknown): string {
+  if (!Array.isArray(examContext) || examContext.length === 0) return "";
+  const KIND_LABEL: Record<string, string> = {
+    examiner_script: "EXAMINER SCRIPT",
+    candidate_prompt: "CANDIDATE PROMPT",
+    long_turn: "PART 2 — LONG TURN MATERIAL",
+    collaborative_task: "PART 3 — COLLABORATIVE TASK MATERIAL",
+    visual_task: "VISUAL TASK DESCRIPTION",
+    instructions: "EXAM INSTRUCTIONS",
+    notes: "MOCK-SPECIFIC NOTES",
+  };
+  const MAX = 8_000;
+  let used = 0;
+  const out: string[] = [];
+  for (const entry of examContext as Array<{ kind?: string; title?: string; text?: string }>) {
+    if (!entry || typeof entry.text !== "string" || entry.text.trim() === "") continue;
+    const label = KIND_LABEL[entry.kind ?? ""] ?? (entry.kind ?? "CONTEXT").toUpperCase();
+    const title = entry.title ? ` — ${entry.title}` : "";
+    const piece = `\n--- ${label}${title} ---\n${entry.text.trim()}`;
+    if (used + piece.length > MAX) break;
+    out.push(piece);
+    used += piece.length;
+  }
+  if (out.length === 0) return "";
+  return `\nEXAM-SPECIFIC CONTEXT FOR THIS MOCK (materials the examiner provided for this exact session — use to interpret what the candidate is responding to, but do NOT score the materials themselves):${out.join("")}`;
+}
+
+
 
 
 // ─── Cambridge official Speaking descriptors (0–5 scale, 0.5 increments) ───
@@ -146,7 +184,7 @@ serve(async (req) => {
   const { userId } = auth;
 
   try {
-    const { level, language, candidateNames, bookletText, rubricText, transcript, examinerTags } = await req.json();
+    const { level, language, candidateNames, bookletText, rubricText, transcript, examinerTags, examContext } = await req.json();
 
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -181,6 +219,8 @@ serve(async (req) => {
     const candidateList = names.map((n: string, i: number) => `Candidate ${String.fromCharCode(65 + i)} (${n || "unnamed"})`).join(", ");
     const rubricBlock = buildRubricBlock(level);
     const libraryBlock = await fetchLibraryBlock(userId, level);
+    const examContextBlock = buildExamContextBlock(examContext);
+
 
     // Per-level Speaking parts (mirrors src/lib/examPhases.ts).
     const PARTS_BY_LEVEL: Record<string, string[]> = {
