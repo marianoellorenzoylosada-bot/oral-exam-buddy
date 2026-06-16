@@ -262,7 +262,7 @@ export default function NewExamPage() {
       setAnalyzing(false);
       setAnalyzingStep("");
     }
-  }, [exam, selectedLang, quickTags, liveTranscript, phaseMarks, toast]);
+  }, [exam, selectedLang, quickTags, liveTranscript, phaseMarks, toast, examNotes]);
 
   const handleSubmitForAnalysis = useCallback(async () => {
     const blob = recorder.audioBlob ?? restoredBlob;
