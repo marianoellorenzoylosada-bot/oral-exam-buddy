@@ -232,8 +232,133 @@ function renderPage(items: PdfItem[], styles: PdfStyleMap, pageNum: number): str
 
 async function extractDocxText(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
-  const result = await mammoth.extractRawText({ arrayBuffer });
-  return result.value;
+  const result = await mammoth.convertToHtml({ arrayBuffer });
+  return htmlToReferenceText(result.value);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   DOCX extraction with italics → "quotes"
+   ───────────────────────────────────────────────────────────── */
+
+const DOCX_BLOCK_TAGS = new Set([
+  "ADDRESS",
+  "ARTICLE",
+  "ASIDE",
+  "BLOCKQUOTE",
+  "DD",
+  "DIV",
+  "DL",
+  "DT",
+  "FIGCAPTION",
+  "FIGURE",
+  "FOOTER",
+  "H1",
+  "H2",
+  "H3",
+  "H4",
+  "H5",
+  "H6",
+  "HEADER",
+  "LI",
+  "MAIN",
+  "NAV",
+  "OL",
+  "P",
+  "SECTION",
+  "TABLE",
+  "TBODY",
+  "TD",
+  "TFOOT",
+  "TH",
+  "THEAD",
+  "TR",
+  "UL",
+]);
+
+const DOCX_ITALIC_TAGS = new Set(["EM", "I"]);
+
+function htmlToReferenceText(html: string): string {
+  if (!html.trim()) return "";
+
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const chunks: string[] = [];
+
+  const appendText = (text: string) => {
+    if (!text) return;
+    chunks.push(text.replace(/\s+/g, " "));
+  };
+
+  const appendBreak = (paragraph = false) => {
+    const last = chunks[chunks.length - 1] ?? "";
+    if (paragraph) {
+      if (!last.endsWith("\n\n")) chunks.push("\n\n");
+      return;
+    }
+    if (!last.endsWith("\n")) chunks.push("\n");
+  };
+
+  const renderNode = (node: Node, italic = false) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const value = node.textContent ?? "";
+      appendText(italic ? quoteItalicText(value) : value);
+      return;
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+    const element = node as Element;
+    const tag = element.tagName.toUpperCase();
+
+    if (tag === "BR") {
+      appendBreak(false);
+      return;
+    }
+
+    const isItalic = italic || DOCX_ITALIC_TAGS.has(tag);
+    const isListItem = tag === "LI";
+    const isTableCell = tag === "TD" || tag === "TH";
+    const isTableRow = tag === "TR";
+    const isBlock = DOCX_BLOCK_TAGS.has(tag);
+
+    if (isListItem) appendText("- ");
+
+    Array.from(element.childNodes).forEach((child) => renderNode(child, isItalic));
+
+    if (isTableCell) appendText(" | ");
+    if (isTableRow) appendBreak(false);
+    if (isBlock && !isTableCell && !isTableRow) appendBreak(true);
+  };
+
+  Array.from(doc.body.childNodes).forEach((node) => renderNode(node));
+
+  let text = chunks.join("");
+  text = normalizeQuotes(text)
+    .replace(/[ \t]*\|[ \t]*(?=\n|$)/g, "")
+    .replace(/\s+([.,;:!?)\]])/g, "$1")
+    .replace(/([([{])\s+/g, "$1");
+  text = cleanupWhitespace(text);
+  text = text
+    .split(/\n\n+/)
+    .map((p) => balanceQuotes(p.trim()))
+    .filter((p) => p.length > 0)
+    .join("\n\n");
+
+  return text;
+}
+
+function quoteItalicText(text: string): string {
+  if (!text.trim()) return text;
+
+  const leading = text.match(/^\s*/)?.[0] ?? "";
+  const trailing = text.match(/\s*$/)?.[0] ?? "";
+  const core = text.trim();
+  const startsWithQuote = core.length > 0 && ALL_QUOTES.has(core[0]);
+  const endsWithQuote = core.length > 0 && ALL_QUOTES.has(core[core.length - 1]);
+
+  if (startsWithQuote && endsWithQuote) return text;
+  if (startsWithQuote) return `${leading}${core}${endsWithQuote ? "" : '"'}${trailing}`;
+  if (endsWithQuote) return `${leading}"${core}${trailing}`;
+  return `${leading}"${core}"${trailing}`;
 }
 
 // Lazy-load Tesseract.js (~2MB worker) only when an image is processed.
