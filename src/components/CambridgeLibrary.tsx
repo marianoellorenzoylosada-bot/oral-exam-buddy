@@ -48,6 +48,8 @@ export function CambridgeLibrary() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [extracting, setExtracting] = useState(false);
+  const [editing, setEditing] = useState<RefItem | null>(null);
+  const [updating, setUpdating] = useState(false);
 
 
   const [level, setLevel] = useState<CambridgeLevel>("B2");
