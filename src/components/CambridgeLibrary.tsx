@@ -137,6 +137,40 @@ export function CambridgeLibrary() {
     load();
   };
 
+  const handleUpdate = async () => {
+    if (!editing) return;
+    if (!editing.title.trim() || !editing.content.trim()) {
+      toast({ title: "Missing fields", description: "Title and content are required.", variant: "destructive" });
+      return;
+    }
+    if (editing.content.length > MAX_CONTENT_CHARS) {
+      toast({
+        title: "Content too long",
+        description: `Trim to under ${MAX_CONTENT_CHARS.toLocaleString()} characters (currently ${editing.content.length.toLocaleString()}).`,
+        variant: "destructive",
+      });
+      return;
+    }
+    setUpdating(true);
+    const { error } = await supabase
+      .from("cambridge_reference_material")
+      .update({
+        level_code: editing.level_code,
+        kind: editing.kind,
+        title: editing.title.trim(),
+        content: editing.content.trim(),
+        source_url: editing.source_url?.trim() ?? "",
+      })
+      .eq("id", editing.id);
+    setUpdating(false);
+    if (error) {
+      toast({ title: "Could not update", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: "Reference updated" });
+    setEditing(null);
+    load();
+
   const handleDelete = async (id: string) => {
     const { error } = await supabase.from("cambridge_reference_material").delete().eq("id", id);
     if (error) {
