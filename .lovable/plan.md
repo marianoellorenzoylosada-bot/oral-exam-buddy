@@ -1,68 +1,44 @@
+## Problema
 
-# Pre-AI Speaker Review (Item #1)
+Hoy en el **Cambridge Core Library** (Settings) cuando subís un PDF de comentarios del examinador:
 
-## Goal
-Stop sending an unverified transcript to the AI in the live single-exam flow. After Scribe transcribes the recording, the examiner must confirm who is who; the AI then scores the corrected transcript on the first pass — eliminating the "AI scored the wrong candidate" risk and the credit cost of re-grading.
+1. El texto extraído se carga en el campo **Content** del formulario de alta.
+2. Al guardar, la entrada aparece en la lista de "Saved references" pero **solo muestra una vista previa de 240 caracteres** y los únicos botones disponibles son "Source ↗" y "Eliminar".
+3. No hay forma de abrir el contenido completo ni de corregirlo si la extracción del PDF trajo errores (saltos de línea raros, caracteres mal reconocidos, etc.).
 
-## Scope (what changes)
-- `src/pages/NewExam.tsx` (live mock wizard) only.
-- No changes to: BatchSession, ReportDetail, edge functions, scoring logic, rubrics, RLS, storage, exams schema, PDF, Progress, or any other view.
-- The existing `SpeakerMappingPanel` component is reused as-is (read-only of its behavior); we only call it earlier in the flow.
+## Solución propuesta
 
-## New flow in `NewExam.tsx`
-```text
-Record audio
-   │
-   ▼
-Submit  ──► transcribe (Scribe, with word-level diarization)
-   │
-   ▼
-NEW STEP: "Confirm speakers" review panel
-   • Shows SpeakerMappingPanel populated from out.words
-   • Pre-filled with the heuristic suggested map
-   • Examiner verifies / corrects roles
-   • Two buttons:
-       – "Confirm & score"  (primary)
-       – "Skip review" (secondary, with a small warning tooltip)
-   │
-   ▼
-analyze-exam  ──► report rendered (unchanged)
-```
+Agregar un botón **"Ver / Editar"** (ícono de lápiz) en cada entrada de la lista, que abre un **diálogo modal** con el contenido completo editable.
 
-## Implementation details
-1. **State additions** (local to `NewExam.tsx`):
-   - `reviewStage: "idle" | "awaiting" | "confirmed"`.
-   - `pendingTranscript: string | null`, `pendingWords: ScribeWord[]`.
-   - `speakerMap: SpeakerMap | null`.
+### Comportamiento del diálogo
 
-2. **Split `handleSubmitForAnalysis`** into two functions:
-   - `runTranscription()` — runs the existing pre-flight guards + Scribe transcription, then sets `pendingTranscript/pendingWords` and `reviewStage = "awaiting"`. Does **not** call `analyze-exam`.
-   - `runScoring(finalTranscript: string, map: SpeakerMap | null)` — the existing `analyze-exam` invoke + draft cleanup + report set. Called from the review step.
+- Muestra los campos: **Título**, **Nivel**, **Tipo de material**, **Source URL**, y **Content** (textarea grande, ~20 filas, con contador de caracteres).
+- Todos los campos son editables.
+- Botones: **Cancelar** y **Guardar cambios**.
+- Al guardar: `UPDATE` sobre `cambridge_reference_material` por `id`, refresca la lista y muestra un toast de confirmación.
+- Si el contenido supera el límite (30.000 caracteres) se bloquea el guardado con el mismo mensaje que el alta.
 
-3. **Review UI** rendered between the Record tab and the Report:
-   - Reuse `SpeakerMappingPanel` in an embedded mode: instead of writing to Supabase, pass an `onConfirm(transcript, map)` callback. Since the panel currently writes to `exams`, we add a thin local wrapper inside `NewExam.tsx` that:
-     - Calls `applySpeakerMap(words, map)` directly to build the corrected transcript.
-     - Calls `runScoring(correctedTranscript, map)`.
-   - "Skip review" → `runScoring(pendingTranscript, null)` with original behavior preserved.
+### Sin cambios de archivos en edición
 
-4. **Persistence of the chosen map**: after `analyze-exam` succeeds and the exam row is inserted, write `speaker_map` to the new exam row using the existing column (already supported by `SpeakerMappingPanel`'s update path). No schema change.
+Para mantener el diálogo simple, **no incluye carga de archivos** — solo edición de texto. Si el educador quiere re-extraer un PDF corregido, puede borrar la entrada y volver a crearla desde el formulario de alta existente.
 
-5. **Offline / failure paths**:
-   - If user is offline at submit time → unchanged (draft saved, no transcription).
-   - If transcription fails → unchanged toast, no review shown.
-   - If scoring fails after review → existing draft-saving path runs; on retry we go straight from the saved transcript back through the review step.
+## Archivos involucrados
 
-## What stays the same
-- BatchSession queue: unchanged — batch mode is unattended by design.
-- ReportDetail's post-hoc `SpeakerMappingPanel` + Re-analyze: still works for older reports and corrections.
-- analyze-exam edge function: untouched.
-- All scoring, weights, rubrics, storage, RLS, PDFs.
+- **`src/components/CambridgeLibrary.tsx`** — único archivo modificado:
+  - Nuevo estado `editing: RefItem | null`.
+  - Nuevo botón `Pencil` junto al `Trash2` en cada `<li>`.
+  - Nuevo componente `<Dialog>` (de `@/components/ui/dialog`, ya existente) con el formulario de edición.
+  - Nueva función `handleUpdate()` que ejecuta el `update` en Supabase.
 
-## Risks & mitigations
-- **Examiner friction**: one extra confirm click per mock. Mitigated by good pre-filled defaults and a "Skip review" escape hatch.
-- **Regression in offline retry**: covered by routing the resumed draft through the same `runTranscription → review → runScoring` pipeline.
+## Lo que NO cambia
 
-## Out of scope (kept for later phases)
-- Pre-AI review for BatchSession.
-- Forcing review (removing "Skip review").
-- Storing the pre-review transcript for audit.
+- Esquema de base de datos (la tabla ya soporta `UPDATE`; las políticas RLS de admin ya permiten editar).
+- Formulario de alta, extracción de PDF/DOCX/imagen, lógica de análisis, prompt del modelo, ni ningún otro componente.
+- Permisos: sigue siendo admin-only (heredado del gate existente en el componente).
+
+## Verificación
+
+1. Subir un PDF de comentarios del examinador.
+2. En "Saved references" hacer clic en el nuevo ícono de lápiz.
+3. Confirmar que el texto completo aparece en el textarea.
+4. Editar una palabra, guardar, y verificar que la vista previa de la lista refleja el cambio.
