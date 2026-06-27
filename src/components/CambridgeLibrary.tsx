@@ -170,6 +170,9 @@ export function CambridgeLibrary() {
     toast({ title: "Reference updated" });
     setEditing(null);
     load();
+  };
+
+
 
   const handleDelete = async (id: string) => {
     const { error } = await supabase.from("cambridge_reference_material").delete().eq("id", id);
