@@ -1,46 +1,94 @@
+## Respuesta corta
+
+No hay un inconveniente importante en subir un documento de Word a la biblioteca. De hecho, para tu caso puede ser mejor que PDF, porque Word conserva la estructura de formato —incluida la cursiva— de forma mucho más explícita.
+
+El inconveniente actual no es Word en sí, sino que la aplicación hoy extrae DOCX con `mammoth.extractRawText`, que convierte todo a texto plano y descarta la cursiva. Por eso, si subís Word ahora, probablemente el contenido quedará más ordenado que el PDF, pero la cursiva seguirá sin transformarse automáticamente en comillas/citas.
+
 ## Diagnóstico
 
-El orden del PDF mejoró porque el extractor ya agrega marcadores de página y reconstruye párrafos, pero la cursiva no aparece porque la detección actual mira sólo `item.fontName` de PDF.js. En muchos PDFs ese valor es un alias interno como `g_d0_f1`, no el nombre real de la fuente, por eso `italic/oblique` nunca coincide y el sistema no envuelve esas citas entre comillas.
+- El PDF no está exponiendo la cursiva de una forma que PDF.js pueda leer de manera fiable.
+- Al convertirlo a Word, la cursiva sí queda preservada dentro del DOCX.
+- DOCX es un formato más adecuado para detectar cursiva porque el estilo está marcado en XML como formato de texto, no como una reconstrucción visual de página.
+- La aplicación ya acepta Word, pero lo trata como texto plano, así que todavía no aprovecha esa información.
 
-## Objetivo
+## Inconvenientes de usar Word
 
-Hacer que los comentarios subidos a Cambridge Core Library sean más fiables para calibración, marcando mejor las citas del candidato cuando el PDF trae texto en cursiva.
+1. **No debería afectar la calibración negativamente** si el texto está bien extraído.
+2. **Puede perder paginación exacta del PDF**, porque Word no siempre mantiene páginas equivalentes. Para la biblioteca esto no es grave; lo importante es que comentario, candidato, cita y parte del examen queden claros.
+3. **Puede traer encabezados/pies o saltos raros** si la conversión PDF → Word fue automática. Eso se puede corregir en el campo `Content` antes de guardar.
+4. **Hoy todavía no marca cursiva automáticamente**, hasta que ajustemos el extractor DOCX.
 
-## Plan mínimo y seguro
+## Plan mínimo recomendado
 
-1. **Mejorar extracción de cursiva en PDF**
-   - Modificar sólo `src/lib/extractText.ts`.
-   - Pasar también `content.styles` desde PDF.js a `renderPage`.
-   - Detectar cursiva usando:
-     - `item.fontName`,
-     - `content.styles[item.fontName].fontFamily`,
-     - posibles variantes `Italic`, `Oblique`, `It`, `I`, `BoldItalic`, etc.
-   - Mantener el comportamiento actual de páginas, párrafos y limpieza de espacios.
+### 1. Mejorar sólo extracción DOCX
+Modificar únicamente `src/lib/extractText.ts`, en la función `extractDocxText`.
 
-2. **Añadir fallback visible cuando el PDF no expone cursiva**
-   - Si el PDF no trae metadatos de fuente suficientes, no inventar citas.
-   - Mantener el texto ordenado, pero no marcar falsamente contenido como cita.
-   - Opcionalmente dejar una marca interna simple para poder avisar en consola durante desarrollo, sin cambiar la UI ni tocar la base de datos.
+Cambiar de:
 
-3. **Proteger comillas existentes**
-   - Si el PDF ya trae comillas, conservarlas.
-   - No duplicar comillas cuando una frase ya empieza o termina con comillas.
-   - Mantener el balanceado de comillas actual.
+```ts
+mammoth.extractRawText(...)
+```
 
-4. **No tocar nada fuera de lo necesario**
-   - No cambiar scoring.
-   - No cambiar reports/PDF.
-   - No cambiar auth, RLS, storage ni calibration.
-   - No cambiar la estructura de Cambridge Library salvo que luego quieras una advertencia visual.
+a una extracción HTML con Mammoth, para poder detectar formato:
 
-## Validación recomendada
+```ts
+mammoth.convertToHtml(...)
+```
 
-1. Subir el mismo PDF en Settings > Cambridge Core Library.
-2. Revisar el campo `Content` después de la extracción.
-3. Confirmar que las frases originalmente en cursiva aparecen entre comillas.
-4. Confirmar que los separadores `--- Page N ---` siguen apareciendo.
-5. Confirmar que las referencias tipo `(2.39 Part 2)` quedan pegadas a la cita correcta.
+Luego convertir ese HTML a texto enriquecido simple.
 
-## Nota importante
+### 2. Convertir cursiva a comillas
+Cuando el DOCX tenga texto en cursiva:
 
-Algunos PDFs no conservan información semántica de cursiva: visualmente se ve cursiva, pero el texto extraído no expone esa fuente al navegador. Esta mejora cubrirá los PDFs donde la fuente sí está identificada en los estilos de PDF.js; si tu PDF específico aún no lo refleja, el siguiente paso sería soportar importación DOCX enriquecida o un editor/manual marker para marcar citas con precisión.
+```text
+In the first picture ...
+```
+
+se guardaría en `Content` como:
+
+```text
+"In the first picture ..."
+```
+
+Esto mantiene el contenido compatible con el campo actual, sin crear editor enriquecido ni cambiar base de datos.
+
+### 3. Mantener estructura clara
+Durante la conversión DOCX → texto:
+
+- conservar párrafos,
+- conservar listas como líneas separadas,
+- evitar texto todo corrido,
+- normalizar espacios múltiples,
+- preservar comillas existentes,
+- no duplicar comillas si el texto ya estaba entre comillas.
+
+### 4. No tocar nada fuera de esto
+No cambiar:
+
+- scoring,
+- reports/PDF,
+- auth,
+- RLS,
+- storage,
+- calibration,
+- estructura de Cambridge Library.
+
+## Resultado esperado
+
+Después del cambio, el camino más fiable sería:
+
+1. Convertir PDF a Word.
+2. Revisar en Word que la cursiva esté correcta.
+3. Subir el DOCX a Cambridge Core Library.
+4. Ver en el campo `Content` que las citas en cursiva aparezcan entre comillas.
+5. Corregir manualmente cualquier candidato o comentario ambiguo antes de guardar.
+
+## Validación
+
+Probar con tu mismo documento Word y confirmar:
+
+- el texto aparece ordenado,
+- las frases en cursiva aparecen entre comillas,
+- los timestamps como `(2.39 Part 2)` se conservan,
+- las citas quedan asociadas al comentario del candidato correcto,
+- no se modificó ningún otro flujo de la aplicación.
