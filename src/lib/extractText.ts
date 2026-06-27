@@ -38,9 +38,32 @@ const OPEN_QUOTES = ["\u201C", "\u201F", "\u201E", "\u00AB", "\u2018", "\u201B"]
 const CLOSE_QUOTES = ["\u201D", "\u00BB", "\u2019"];
 const ALL_QUOTES = new Set([...OPEN_QUOTES, ...CLOSE_QUOTES, '"']);
 
-function isItalicFont(fontName: string | undefined): boolean {
-  if (!fontName) return false;
-  return /italic|oblique|-it\b|_it\b/i.test(fontName);
+function isItalicToken(value: string | undefined): boolean {
+  if (!value) return false;
+  return /(^|[-_\s,])(?:italic|oblique|ital|it|i)(?:$|[-_\s,])/i.test(value);
+}
+
+interface PdfStyle {
+  fontFamily?: string;
+  [key: string]: unknown;
+}
+
+type PdfStyleMap = Record<string, PdfStyle | undefined>;
+
+function collectStyleStrings(value: unknown, depth = 0): string[] {
+  if (!value || depth > 2) return [];
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap((item) => collectStyleStrings(item, depth + 1));
+  if (typeof value === "object") {
+    return Object.values(value as Record<string, unknown>).flatMap((item) => collectStyleStrings(item, depth + 1));
+  }
+  return [];
+}
+
+function isItalicItem(item: PdfItem, styles: PdfStyleMap): boolean {
+  const style = item.fontName ? styles[item.fontName] : undefined;
+  const candidates = [item.fontName, ...collectStyleStrings(style)];
+  return candidates.some(isItalicToken);
 }
 
 /** Replace stray single quote marks (excluding apostrophes inside words) and curly quotes with straight `"`. */
@@ -113,13 +136,14 @@ async function extractPdfText(file: File): Promise<string> {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
     const items = content.items as unknown as PdfItem[];
-    pages.push(renderPage(items, i));
+    const styles = (content.styles ?? {}) as PdfStyleMap;
+    pages.push(renderPage(items, styles, i));
   }
 
   return pages.join("\n\n");
 }
 
-function renderPage(items: PdfItem[], pageNum: number): string {
+function renderPage(items: PdfItem[], styles: PdfStyleMap, pageNum: number): string {
   if (items.length === 0) return `--- Page ${pageNum} ---\n`;
 
   // Median line height — used to decide paragraph breaks.
@@ -144,7 +168,7 @@ function renderPage(items: PdfItem[], pageNum: number): string {
     if (!rawStr && !it.hasEOL) continue;
 
     const y = it.transform?.[5] ?? 0;
-    const italic = isItalicFont(it.fontName) && rawStr.trim().length > 0;
+    const italic = isItalicItem(it, styles) && rawStr.trim().length > 0;
 
     // Decide spacing relative to previous item.
     if (prevY !== null) {

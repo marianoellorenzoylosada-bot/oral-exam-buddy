@@ -1,44 +1,46 @@
-## Problema
+## Diagnóstico
 
-Hoy en el **Cambridge Core Library** (Settings) cuando subís un PDF de comentarios del examinador:
+El orden del PDF mejoró porque el extractor ya agrega marcadores de página y reconstruye párrafos, pero la cursiva no aparece porque la detección actual mira sólo `item.fontName` de PDF.js. En muchos PDFs ese valor es un alias interno como `g_d0_f1`, no el nombre real de la fuente, por eso `italic/oblique` nunca coincide y el sistema no envuelve esas citas entre comillas.
 
-1. El texto extraído se carga en el campo **Content** del formulario de alta.
-2. Al guardar, la entrada aparece en la lista de "Saved references" pero **solo muestra una vista previa de 240 caracteres** y los únicos botones disponibles son "Source ↗" y "Eliminar".
-3. No hay forma de abrir el contenido completo ni de corregirlo si la extracción del PDF trajo errores (saltos de línea raros, caracteres mal reconocidos, etc.).
+## Objetivo
 
-## Solución propuesta
+Hacer que los comentarios subidos a Cambridge Core Library sean más fiables para calibración, marcando mejor las citas del candidato cuando el PDF trae texto en cursiva.
 
-Agregar un botón **"Ver / Editar"** (ícono de lápiz) en cada entrada de la lista, que abre un **diálogo modal** con el contenido completo editable.
+## Plan mínimo y seguro
 
-### Comportamiento del diálogo
+1. **Mejorar extracción de cursiva en PDF**
+   - Modificar sólo `src/lib/extractText.ts`.
+   - Pasar también `content.styles` desde PDF.js a `renderPage`.
+   - Detectar cursiva usando:
+     - `item.fontName`,
+     - `content.styles[item.fontName].fontFamily`,
+     - posibles variantes `Italic`, `Oblique`, `It`, `I`, `BoldItalic`, etc.
+   - Mantener el comportamiento actual de páginas, párrafos y limpieza de espacios.
 
-- Muestra los campos: **Título**, **Nivel**, **Tipo de material**, **Source URL**, y **Content** (textarea grande, ~20 filas, con contador de caracteres).
-- Todos los campos son editables.
-- Botones: **Cancelar** y **Guardar cambios**.
-- Al guardar: `UPDATE` sobre `cambridge_reference_material` por `id`, refresca la lista y muestra un toast de confirmación.
-- Si el contenido supera el límite (30.000 caracteres) se bloquea el guardado con el mismo mensaje que el alta.
+2. **Añadir fallback visible cuando el PDF no expone cursiva**
+   - Si el PDF no trae metadatos de fuente suficientes, no inventar citas.
+   - Mantener el texto ordenado, pero no marcar falsamente contenido como cita.
+   - Opcionalmente dejar una marca interna simple para poder avisar en consola durante desarrollo, sin cambiar la UI ni tocar la base de datos.
 
-### Sin cambios de archivos en edición
+3. **Proteger comillas existentes**
+   - Si el PDF ya trae comillas, conservarlas.
+   - No duplicar comillas cuando una frase ya empieza o termina con comillas.
+   - Mantener el balanceado de comillas actual.
 
-Para mantener el diálogo simple, **no incluye carga de archivos** — solo edición de texto. Si el educador quiere re-extraer un PDF corregido, puede borrar la entrada y volver a crearla desde el formulario de alta existente.
+4. **No tocar nada fuera de lo necesario**
+   - No cambiar scoring.
+   - No cambiar reports/PDF.
+   - No cambiar auth, RLS, storage ni calibration.
+   - No cambiar la estructura de Cambridge Library salvo que luego quieras una advertencia visual.
 
-## Archivos involucrados
+## Validación recomendada
 
-- **`src/components/CambridgeLibrary.tsx`** — único archivo modificado:
-  - Nuevo estado `editing: RefItem | null`.
-  - Nuevo botón `Pencil` junto al `Trash2` en cada `<li>`.
-  - Nuevo componente `<Dialog>` (de `@/components/ui/dialog`, ya existente) con el formulario de edición.
-  - Nueva función `handleUpdate()` que ejecuta el `update` en Supabase.
+1. Subir el mismo PDF en Settings > Cambridge Core Library.
+2. Revisar el campo `Content` después de la extracción.
+3. Confirmar que las frases originalmente en cursiva aparecen entre comillas.
+4. Confirmar que los separadores `--- Page N ---` siguen apareciendo.
+5. Confirmar que las referencias tipo `(2.39 Part 2)` quedan pegadas a la cita correcta.
 
-## Lo que NO cambia
+## Nota importante
 
-- Esquema de base de datos (la tabla ya soporta `UPDATE`; las políticas RLS de admin ya permiten editar).
-- Formulario de alta, extracción de PDF/DOCX/imagen, lógica de análisis, prompt del modelo, ni ningún otro componente.
-- Permisos: sigue siendo admin-only (heredado del gate existente en el componente).
-
-## Verificación
-
-1. Subir un PDF de comentarios del examinador.
-2. En "Saved references" hacer clic en el nuevo ícono de lápiz.
-3. Confirmar que el texto completo aparece en el textarea.
-4. Editar una palabra, guardar, y verificar que la vista previa de la lista refleja el cambio.
+Algunos PDFs no conservan información semántica de cursiva: visualmente se ve cursiva, pero el texto extraído no expone esa fuente al navegador. Esta mejora cubrirá los PDFs donde la fuente sí está identificada en los estilos de PDF.js; si tu PDF específico aún no lo refleja, el siguiente paso sería soportar importación DOCX enriquecida o un editor/manual marker para marcar citas con precisión.
