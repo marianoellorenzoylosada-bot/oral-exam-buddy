@@ -284,6 +284,8 @@ PRIORITY RULES (read carefully):
 - The Authoritative Reference Layer (Core Library, Exam Context, descriptors) tells you HOW to interpret that evidence — it does NOT substitute for it.
 - If the Core Library or Exam Context conflicts with the rubric descriptors above, the Cambridge Core Library takes precedence. If it conflicts with what the candidate actually said, the transcript wins for evidence.
 - Do not invent content not present in the transcript.
+- In the Cambridge reference materials, text enclosed in double quotes "…" (sometimes followed by a timestamp like (2.39 Part 2)) is a VERBATIM QUOTE FROM THE CANDIDATE IN THE SAMPLE VIDEO — not examiner commentary. Treat those quotes as exemplars of the assigned band level, never as evidence about the current candidate.
+- Timestamps such as (9.40 Part 3) refer to the Cambridge sample video and have NO relation to the audio of the candidate being assessed now.
 
 IMPORTANT:
 - In "strengths" and "areasForImprovement", quote the candidate VERBATIM using straight double quotes (e.g. "I have went to the park yesterday"). Each item must contain at least one verbatim quote followed by a brief comment.
