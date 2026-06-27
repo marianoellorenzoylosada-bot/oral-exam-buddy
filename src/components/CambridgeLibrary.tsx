@@ -303,15 +303,81 @@ export function CambridgeLibrary() {
                       )}
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon" onClick={() => handleDelete(it.id)} aria-label="Delete">
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button variant="ghost" size="icon" onClick={() => setEditing(it)} aria-label="View / edit">
+                      <Pencil className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => handleDelete(it.id)} aria-label="Delete">
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
                 </li>
               ))}
             </ul>
           )}
         </div>
       </CardContent>
+
+      <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit reference</DialogTitle>
+            <DialogDescription>Correct any extraction errors or refine the text. Changes apply to all educators.</DialogDescription>
+          </DialogHeader>
+          {editing && (
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Level</Label>
+                  <Select value={editing.level_code} onValueChange={(v) => setEditing({ ...editing, level_code: v as CambridgeLevel })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {CAMBRIDGE_EXAMS.map((e) => (
+                        <SelectItem key={e.value} value={e.value}>{e.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Type of material</Label>
+                  <Select value={editing.kind} onValueChange={(v) => setEditing({ ...editing, kind: v as Kind })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(KIND_LABEL) as Kind[]).map((k) => (
+                        <SelectItem key={k} value={k}>{KIND_LABEL[k]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Title</Label>
+                <Input value={editing.title} onChange={(e) => setEditing({ ...editing, title: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Source URL</Label>
+                <Input value={editing.source_url ?? ""} onChange={(e) => setEditing({ ...editing, source_url: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Content ({editing.content.length.toLocaleString()} / {MAX_CONTENT_CHARS.toLocaleString()})</Label>
+                <Textarea
+                  value={editing.content}
+                  onChange={(e) => setEditing({ ...editing, content: e.target.value })}
+                  rows={18}
+                  className="font-mono text-xs"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditing(null)} disabled={updating}>Cancel</Button>
+            <Button onClick={handleUpdate} disabled={updating} className="gap-2">
+              {updating && <Loader2 className="h-4 w-4 animate-spin" />}
+              Save changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
