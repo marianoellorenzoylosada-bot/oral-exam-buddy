@@ -186,6 +186,7 @@ export default function NewExamPage() {
   const recorder = useAudioRecorder();
   const { toast } = useToast();
   const online = useOnlineStatus();
+  const queue = useBatchQueue();
   const [activeTab, setActiveTab] = useState("setup");
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzingStep, setAnalyzingStep] = useState<"" | "transcribing" | "scoring">("");
@@ -204,8 +205,15 @@ export default function NewExamPage() {
   const [restoredBlob, setRestoredBlob] = useState<Blob | null>(null);
   const [restoredDuration, setRestoredDuration] = useState<number>(0);
   const [pendingAnalysis, setPendingAnalysis] = useState(false);
+  const [lastAnalysisError, setLastAnalysisError] = useState<AnalysisError | null>(null);
+  const [liveTranscriptionEnabled, setLiveTranscriptionEnabled] = useState(() => {
+    try {
+      return localStorage.getItem(LIVE_CAPTIONS_KEY) === "true";
+    } catch { return false; }
+  });
   const [examNotes, setExamNotes] = useState("");
   const draftRestoredRef = useRef(false);
+
 
 
   const examLevels = getExamLevels(exam.language);
