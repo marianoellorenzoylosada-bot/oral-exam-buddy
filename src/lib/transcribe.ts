@@ -109,13 +109,8 @@ export async function transcribeBlob(
         { body: { audioPath, mimeType: blob.type || "audio/webm" }, timeoutMs: 180_000 },
       );
     } catch (err: any) {
-      const msg = err?.message ?? "Transcription failed";
-      // Only rewrite true fetch-level network failures; let real HTTP errors
-      // (e.g. "transcribe-audio failed (502): ...") pass through verbatim.
-      if (/^Network error reaching/.test(msg)) {
-        throw new Error(`Network error contacting transcription service (audio ${sizeMb} MB uploaded OK). Check your connection and tap Retry.`);
-      }
-      throw err;
+      const classified = classifyTranscriptionError(err);
+      throw new TranscriptionError(classified.message, classified.code, classified.retryable, classified.userMessage);
     }
     return {
       transcript: data?.transcript ?? "",
