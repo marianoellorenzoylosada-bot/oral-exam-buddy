@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Mic, Square, Pause, Play, Upload, FileText, BookOpen, Trash2, Clock, Users,
   Loader2, Plus, X, CheckCircle2, AlertTriangle, ListChecks, PlayCircle, Sparkles, ChevronRight,
-  LifeBuoy,
+  LifeBuoy, Download,
 } from "lucide-react";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { useBatchQueue, type BatchItem } from "@/hooks/useBatchQueue";
@@ -35,6 +35,23 @@ function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60).toString().padStart(2, "0");
   const s = (seconds % 60).toString().padStart(2, "0");
   return `${m}:${s}`;
+}
+
+function downloadOriginalAudio(item: BatchItem) {
+  if (!item.audioBlob || item.audioBlob.size === 0) return;
+  const safeNames = item.candidateNames
+    .map((n) => n.replace(/[^a-z0-9]/gi, "_").slice(0, 20))
+    .filter(Boolean)
+    .join("_") || "candidates";
+  const filename = `oral-${safeNames}-${item.id.slice(0, 12)}.webm`;
+  const url = URL.createObjectURL(item.audioBlob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function FileDrop({ label, icon: Icon, file, extracted, onFile, onClear, accept }: {
@@ -722,6 +739,16 @@ export default function BatchSessionPage() {
                           >
                             {item.status === "analyzing" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
                             {item.status === "failed" ? "Retry" : "Analyze"}
+                          </Button>
+                        )}
+                        {item.audioBlob && item.audioBlob.size > 0 && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1"
+                            onClick={() => downloadOriginalAudio(item)}
+                          >
+                            <Download className="h-3.5 w-3.5" /> Download original audio
                           </Button>
                         )}
                         <Button
