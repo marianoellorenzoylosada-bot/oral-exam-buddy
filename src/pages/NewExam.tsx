@@ -922,8 +922,9 @@ export default function NewExamPage() {
                     </>
                   )}
                   {recorder.state === "stopped" && (
-                    <Button variant="outline" onClick={recorder.reset}>Record Again</Button>
+                    <Button variant="outline" onClick={handleRecordAgain}>Record Again</Button>
                   )}
+
                 </div>
 
                 {/* Live captions toggle — off by default to save ElevenLabs credits */}
