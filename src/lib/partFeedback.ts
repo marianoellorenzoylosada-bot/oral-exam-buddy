@@ -4,6 +4,13 @@
 
 import { getPhases } from "@/lib/examPhases";
 
+export interface PartCriterionComment {
+  /** e.g. "Grammar and Vocabulary". */
+  criterion: string;
+  /** 1–2 sentence evidence-grounded comment for this criterion in this part. */
+  comment: string;
+}
+
 export interface PartFeedback {
   /** Stable label, e.g. "Part 1". */
   part: string;
@@ -11,10 +18,12 @@ export interface PartFeedback {
   title?: string;
   /** 2–4 sentence examiner commentary, descriptor-informed. */
   commentary: string;
-  /** Short evidence-grounded observations from the transcript. */
+  /** Short evidence-grounded observations from the transcript (legacy). */
   observations?: string[];
-  /** Criterion names this part most clearly informs (for tags). */
+  /** Criterion names this part most clearly informs (legacy tag list). */
   criteriaTouched?: string[];
+  /** Per-criterion breakdown for this part. Preferred over observations. */
+  criteriaBreakdown?: PartCriterionComment[];
   /** Optional single actionable improvement point. */
   improvement?: string;
 }

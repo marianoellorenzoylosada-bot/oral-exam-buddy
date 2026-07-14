@@ -27,6 +27,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { getRecommendations } from "@/lib/practiceData";
 import { generateReportPdf } from "@/lib/generateReportPdf";
 import { generateStudentPdf } from "@/lib/generateStudentPdf";
+import { PartFeedbackSection, hasPartFeedbackContent } from "@/components/PartFeedbackSection";
+import type { PartFeedback } from "@/lib/partFeedback";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { SpeakerTranscript } from "@/components/SpeakerTranscript";
@@ -64,6 +66,8 @@ export type Exam = {
   previous_analyses?: any;
   regrade_count?: number | null;
   speaker_map?: any;
+  part_feedback?: any;
+  overall_summary?: string | null;
 };
 
 interface Props {
@@ -132,6 +136,10 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
   const displayedImprovements = viewing?.areas_for_improvement ?? exam.areas_for_improvement;
   const displayedBand = viewing?.overall_band ?? exam.overall_band;
   const displayedScore = viewing?.overall_score ?? exam.overall_score;
+  const displayedPartFeedback: PartFeedback[] | undefined =
+    (viewing?.part_feedback ?? exam.part_feedback) as PartFeedback[] | undefined;
+  const displayedOverallSummary: string | undefined =
+    (viewing?.overall_summary ?? exam.overall_summary) as string | undefined;
 
   const criteria = Array.isArray(displayedCriteria)
     ? (displayedCriteria as { name: string; score: number; maxScore: number; feedback: string; confidence?: number }[])
@@ -203,6 +211,8 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
         areas_for_improvement: exam.areas_for_improvement,
         examiner_notes: exam.examiner_notes,
         transcript: exam.transcript,
+        part_feedback: exam.part_feedback ?? null,
+        overall_summary: exam.overall_summary ?? null,
       };
       const newHistory = [snapshot, ...previousAnalyses];
 
@@ -240,6 +250,10 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
           examiner_notes: editNotes,
           previous_analyses: newHistory as any,
           regrade_count: (exam.regrade_count ?? 0) + 1,
+          part_feedback: Array.isArray(first.partFeedback) && first.partFeedback.length > 0
+            ? (first.partFeedback as any)
+            : null,
+          overall_summary: typeof first.overallSummary === "string" ? first.overallSummary : null,
         })
         .eq("id", exam.id);
       if (updErr) throw updErr;
@@ -442,8 +456,17 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
           </div>
         )}
 
-        {/* Per-part feedback is presentation-only and not persisted on saved reports;
-            intentionally omitted here to avoid empty-accordion noise. */}
+        {/* Per-part feedback (only when stored on the report). */}
+        {Array.isArray(displayedPartFeedback) && hasPartFeedbackContent(
+          displayedPartFeedback as PartFeedback[],
+          displayedOverallSummary
+        ) && (
+          <PartFeedbackSection
+            levelCode={exam.level_code}
+            partFeedback={displayedPartFeedback as PartFeedback[]}
+            overallSummary={displayedOverallSummary}
+          />
+        )}
 
         {/* Strengths & Improvements */}
         <div className="grid gap-4 sm:grid-cols-2">
@@ -562,6 +585,8 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
               examinerNotes: exam.examiner_notes || "",
               transcript: anonymize ? "[Anonymized]" : (exam.transcript || ""),
               date: new Date(exam.created_at).toLocaleDateString(),
+              partFeedback: Array.isArray(displayedPartFeedback) ? (displayedPartFeedback as PartFeedback[]) : undefined,
+              overallSummary: displayedOverallSummary,
             })} className="gap-2">
               <Download className="h-4 w-4" /> PDF
             </Button>
@@ -580,6 +605,8 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
                 areasForImprovement: improvements,
                 date: new Date(exam.created_at).toLocaleDateString(),
                 practice: recommendations.map((r) => ({ title: r.title, url: r.url })),
+                partFeedback: Array.isArray(displayedPartFeedback) ? (displayedPartFeedback as PartFeedback[]) : undefined,
+                overallSummary: displayedOverallSummary,
               })}
               className="gap-2"
             >

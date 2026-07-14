@@ -233,8 +233,18 @@ serve(async (req) => {
     };
     const partsList = PARTS_BY_LEVEL[level] ?? PARTS_BY_LEVEL.B2;
     const partsBlock = partsList.map((p) => `  - ${p}`).join("\n");
+    const CRITERIA_NAMES = [
+      "Grammar and Vocabulary",
+      "Discourse Management",
+      "Pronunciation",
+      "Interactive Communication",
+      "Global Achievement",
+    ];
+    const criteriaBreakdownJson = CRITERIA_NAMES
+      .map((n) => `            { "criterion": "${n}", "comment": "..." }`)
+      .join(",\n");
     const partFeedbackExample = partsList
-      .map((p) => `        { "part": "${p.split(" — ")[0]}", "title": "${p.split(" — ")[1] ?? ""}", "commentary": "...", "observations": ["..."], "criteriaTouched": ["Discourse Management"], "improvement": "..." }`)
+      .map((p) => `        { "part": "${p.split(" — ")[0]}", "title": "${p.split(" — ")[1] ?? ""}", "commentary": "...", "criteriaBreakdown": [\n${criteriaBreakdownJson}\n          ], "improvement": "..." }`)
       .join(",\n");
 
     // Format examiner-supplied quick tags as time-stamped evidence the model
@@ -315,11 +325,17 @@ PART-BY-PART EXAMINER FEEDBACK:
 For each candidate, also produce a "partFeedback" array covering the speaking parts for this level:
 ${partsBlock}
 For every part:
-- Write 2–4 sentences of professional examiner-style commentary, descriptor-informed but natural.
-- Ground every observation in the transcript; reference observable performance.
-- Mention the criteria most clearly evidenced by that part in "criteriaTouched".
-- If useful, add ONE short actionable "improvement" point. Avoid generic praise and unsupported claims.
+- Write 2–3 sentences of professional examiner-style "commentary" summarising the candidate's performance in that part, descriptor-informed and grounded in the transcript.
+- Then produce a "criteriaBreakdown" array with ONE entry per Cambridge criterion, in this exact order and with these exact criterion names:
+  1. Grammar and Vocabulary
+  2. Discourse Management
+  3. Pronunciation
+  4. Interactive Communication
+  5. Global Achievement
+  Each entry's "comment" must be 1–2 sentences describing how that specific criterion was evidenced IN THAT PART, referencing observable performance from the transcript for that part.
+  If a criterion cannot be reasonably evidenced in that part (e.g. Interactive Communication during a Long Turn monologue), write exactly: "Not clearly evidenced in this part."
 - Do NOT invent per-part scores — these are commentary only; the global criterion scores are unchanged.
+- If useful, add ONE short actionable "improvement" point for the part. Avoid generic praise and unsupported claims.
 Also produce a short "overallSummary" (3–5 sentences) synthesising the candidate's performance across the whole exam.
 
 RESPOND IN THIS EXACT JSON FORMAT:
@@ -488,13 +504,29 @@ Include one entry in the "candidates" array for EACH candidate (${names.length} 
         }
 
         if (Array.isArray(cand.partFeedback)) {
-          cand.partFeedback = cand.partFeedback.filter((p: any) => {
-            if (!p || typeof p !== "object") return false;
-            const commentary = typeof p.commentary === "string" ? p.commentary.trim() : "";
-            if (!commentary) return false;
-            if (NO_EVIDENCE.test(commentary)) return false;
-            return true;
-          });
+          cand.partFeedback = cand.partFeedback
+            .filter((p: any) => {
+              if (!p || typeof p !== "object") return false;
+              const commentary = typeof p.commentary === "string" ? p.commentary.trim() : "";
+              if (!commentary) return false;
+              if (NO_EVIDENCE.test(commentary)) return false;
+              return true;
+            })
+            .map((p: any) => {
+              // Normalise criteriaBreakdown: keep only well-formed entries.
+              const cb = Array.isArray(p.criteriaBreakdown) ? p.criteriaBreakdown : [];
+              const cleanedCb = cb
+                .filter((e: any) =>
+                  e && typeof e === "object" &&
+                  typeof e.criterion === "string" && e.criterion.trim() &&
+                  typeof e.comment === "string" && e.comment.trim()
+                )
+                .map((e: any) => ({
+                  criterion: String(e.criterion).trim(),
+                  comment: String(e.comment).trim(),
+                }));
+              return { ...p, criteriaBreakdown: cleanedCb };
+            });
         } else {
           cand.partFeedback = [];
         }

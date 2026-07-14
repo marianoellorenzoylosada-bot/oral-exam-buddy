@@ -116,6 +116,8 @@ export type Database = {
           level_code: string
           overall_band: string
           overall_score: number
+          overall_summary: string | null
+          part_feedback: Json | null
           phase_marks: Json | null
           previous_analyses: Json
           regrade_count: number
@@ -144,6 +146,8 @@ export type Database = {
           level_code: string
           overall_band: string
           overall_score: number
+          overall_summary?: string | null
+          part_feedback?: Json | null
           phase_marks?: Json | null
           previous_analyses?: Json
           regrade_count?: number
@@ -172,6 +176,8 @@ export type Database = {
           level_code?: string
           overall_band?: string
           overall_score?: number
+          overall_summary?: string | null
+          part_feedback?: Json | null
           phase_marks?: Json | null
           previous_analyses?: Json
           regrade_count?: number

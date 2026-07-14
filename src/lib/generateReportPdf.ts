@@ -1,5 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import type { PartFeedback } from "@/lib/partFeedback";
+import { getPartsForLevel } from "@/lib/partFeedback";
 
 interface CriterionData {
   name: string;
@@ -23,6 +25,10 @@ interface ReportData {
   examinerNotes: string;
   transcript: string;
   date: string;
+  /** Per-part × per-criterion feedback (optional; falls back to legacy layout if missing). */
+  partFeedback?: PartFeedback[];
+  /** Short synthesis paragraph for the whole exam. */
+  overallSummary?: string;
 }
 
 const BRAND_COLOR: [number, number, number] = [30, 64, 175]; // blue-800
@@ -98,34 +104,48 @@ export function generateReportPdf(data: ReportData) {
   doc.text("CEFR Band Assessment", margin + 34, y + 15);
   y += boxH + 8;
 
+  const meaningfulParts = (data.partFeedback ?? []).filter((p) => {
+    const c = (p?.commentary ?? "").trim();
+    const hasBreakdown = Array.isArray(p?.criteriaBreakdown) && p!.criteriaBreakdown!.length > 0;
+    return !!(c || hasBreakdown);
+  });
+  const hasPartFeedback = meaningfulParts.length > 0;
+
   // --- Criteria table ---
+  // When per-part feedback is available, the criterion narrative moves into
+  // each part below and this table becomes a compact score summary.
   if (data.criteria.length > 0) {
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
-    doc.text("Assessment Criteria", margin, y);
+    doc.text(hasPartFeedback ? "Assessment Criteria — Score Summary" : "Assessment Criteria", margin, y);
     y += 2;
 
     autoTable(doc, {
       startY: y,
       margin: { left: margin, right: margin },
-      head: [["Criterion", "Score", "Feedback"]],
-      body: data.criteria.map((c) => [
-        c.name,
-        `${c.score} / ${c.maxScore}`,
-        c.feedback,
-      ]),
+      head: hasPartFeedback ? [["Criterion", "Score"]] : [["Criterion", "Score", "Feedback"]],
+      body: data.criteria.map((c) =>
+        hasPartFeedback
+          ? [c.name, `${c.score} / ${c.maxScore}`]
+          : [c.name, `${c.score} / ${c.maxScore}`, c.feedback]
+      ),
       headStyles: {
         fillColor: BRAND_COLOR,
         fontSize: 8,
         fontStyle: "bold",
       },
       bodyStyles: { fontSize: 8, cellPadding: 3 },
-      columnStyles: {
-        0: { cellWidth: 35, fontStyle: "bold" },
-        1: { cellWidth: 20, halign: "center" },
-        2: { cellWidth: "auto" },
-      },
+      columnStyles: hasPartFeedback
+        ? {
+            0: { cellWidth: "auto", fontStyle: "bold" },
+            1: { cellWidth: 30, halign: "center" },
+          }
+        : {
+            0: { cellWidth: 35, fontStyle: "bold" },
+            1: { cellWidth: 20, halign: "center" },
+            2: { cellWidth: "auto" },
+          },
       didParseCell(hookData) {
         if (hookData.section === "body" && hookData.column.index === 1) {
           const c = data.criteria[hookData.row.index];
@@ -140,6 +160,122 @@ export function generateReportPdf(data: ReportData) {
 
     y = (doc as any).lastAutoTable.finalY + 8;
   }
+
+  // --- Feedback by Exam Part ---
+  if (hasPartFeedback) {
+    const parts = getPartsForLevel(data.levelCode);
+    const byLabel = new Map(meaningfulParts.map((p) => [p.part.toLowerCase(), p]));
+
+    if (y > 240) { doc.addPage(); y = margin; }
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("Feedback by Exam Part", margin, y);
+    y += 6;
+
+    const contentW = pageW - margin * 2;
+
+    for (const { part, title } of parts) {
+      const pf = byLabel.get(part.toLowerCase());
+      if (!pf) continue;
+
+      // Reserve enough space for at least the part heading + a couple lines.
+      if (y > 260) { doc.addPage(); y = margin; }
+
+      // Part heading bar
+      doc.setFillColor(...BRAND_COLOR);
+      doc.setDrawColor(...BRAND_COLOR);
+      doc.roundedRect(margin, y, contentW, 7, 1.5, 1.5, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.text(`${part} — ${pf.title || title}`, margin + 3, y + 5);
+      y += 10;
+
+      // Overview commentary
+      if (pf.commentary && pf.commentary.trim()) {
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "italic");
+        const cLines = doc.splitTextToSize(pf.commentary.trim(), contentW);
+        cLines.forEach((line: string) => {
+          if (y > 275) { doc.addPage(); y = margin; }
+          doc.text(line, margin, y);
+          y += 4;
+        });
+        y += 2;
+      }
+
+      // Criterion breakdown
+      if (Array.isArray(pf.criteriaBreakdown) && pf.criteriaBreakdown.length > 0) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        for (const cb of pf.criteriaBreakdown) {
+          if (y > 272) { doc.addPage(); y = margin; }
+          const labelWidth = 55; // mm reserved for criterion label
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(...BRAND_COLOR);
+          doc.text(`• ${cb.criterion}:`, margin + 2, y);
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(0, 0, 0);
+          const commentLines = doc.splitTextToSize(cb.comment || "—", contentW - labelWidth - 4);
+          commentLines.forEach((line: string, i: number) => {
+            if (y > 275) { doc.addPage(); y = margin; }
+            doc.text(line, margin + 2 + labelWidth, y);
+            if (i < commentLines.length - 1) y += 4;
+          });
+          y += 4.5;
+        }
+      }
+
+      // Improvement callout
+      if (pf.improvement && pf.improvement.trim()) {
+        if (y > 268) { doc.addPage(); y = margin; }
+        doc.setFillColor(255, 247, 230);
+        doc.setDrawColor(...WARNING);
+        const impLines = doc.splitTextToSize(`Suggested focus: ${pf.improvement.trim()}`, contentW - 6);
+        const boxH = impLines.length * 4 + 4;
+        doc.roundedRect(margin, y, contentW, boxH, 1.5, 1.5, "FD");
+        doc.setTextColor(...WARNING);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        let ty = y + 4;
+        impLines.forEach((line: string, i: number) => {
+          if (i === 0) {
+            doc.setFont("helvetica", "bold");
+          } else {
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(80, 60, 20);
+          }
+          doc.text(line, margin + 3, ty);
+          ty += 4;
+        });
+        y += boxH + 3;
+      }
+
+      y += 3;
+    }
+
+    // Overall Summary
+    if (data.overallSummary && data.overallSummary.trim()) {
+      if (y > 245) { doc.addPage(); y = margin; }
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.text("Overall Summary", margin, y);
+      y += 5;
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      const sLines = doc.splitTextToSize(data.overallSummary.trim(), pageW - margin * 2);
+      sLines.forEach((line: string) => {
+        if (y > 275) { doc.addPage(); y = margin; }
+        doc.text(line, margin, y);
+        y += 4;
+      });
+      y += 4;
+    }
+  }
+
 
   // --- Strengths & Areas for improvement ---
   const halfW = (pageW - margin * 2 - 6) / 2;
