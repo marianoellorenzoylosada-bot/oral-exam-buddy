@@ -122,6 +122,14 @@ export function useBatchQueue() {
     }
 
     updateItem(item.id, { status: "analyzing", error: undefined, stageLabel: "Starting…" });
+
+    // Use the item's stored context when available, otherwise fall back to the
+    // shared context from the Batch Session page.
+    const level = item.level ?? ctx.level;
+    const language = item.language ?? ctx.language;
+    const bookletText = item.bookletText ?? ctx.bookletText;
+    const rubricText = item.rubricText ?? ctx.rubricText;
+
     try {
       // Step 1: Scribe transcription (always — gives us speaker diarization + word timing)
       const { transcript, words } = await transcribeBlob(item.audioBlob, (stage) =>
@@ -131,18 +139,32 @@ export function useBatchQueue() {
         throw new Error("Not enough speech detected in this recording.");
       }
       updateItem(item.id, { stageLabel: "Scoring with AI…" });
+
+      // Build exam context from stored materials (mirrors NewExam runScoring).
+      const examContext: Array<{ kind: string; title: string; text: string }> = [];
+      if (bookletText?.trim()) {
+        examContext.push({ kind: "candidate_prompt", title: "Candidate prompt / booklet", text: bookletText });
+      }
+      if (rubricText?.trim()) {
+        examContext.push({ kind: "examiner_script", title: "Examiner script", text: rubricText });
+      }
+      if (item.examNotes?.trim()) {
+        examContext.push({ kind: "notes", title: "Mock-specific notes", text: item.examNotes });
+      }
+
       // Step 2: AI scoring on transcript — with 120 s timeout so the item never
       // hangs forever if the network drops or the function stalls.
       const data = await callEdgeFunction<MultiCandidateResult & { transcript?: string; error?: string }>(
         "analyze-exam",
         {
           body: {
-            level: ctx.level,
-            language: ctx.language,
+            level,
+            language,
             candidateNames: item.candidateNames,
-            bookletText: ctx.bookletText,
-            rubricText: ctx.rubricText,
+            bookletText,
+            rubricText,
             transcript,
+            examContext,
           },
           timeoutMs: 120_000,
         },
@@ -164,6 +186,7 @@ export function useBatchQueue() {
         stageLabel: undefined,
       });
     }
+
   }, [updateItem]);
 
   // Watchdog: same-session reclassification of items stuck in "analyzing" for
