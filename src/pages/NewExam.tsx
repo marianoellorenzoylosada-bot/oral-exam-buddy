@@ -464,8 +464,23 @@ export default function NewExamPage() {
     setActiveTab("setup");
   }, [reset, recorder]);
 
+  const handleRecordAgain = useCallback(() => {
+    recorder.reset();
+    setLiveTranscript("");
+    setScribeWords([]);
+    setPhaseMarks([]);
+    setQuickTags([]);
+    setPendingAnalysis(false);
+    setLastAnalysisError(null);
+    setPendingTranscript("");
+    setPendingWords([]);
+    setSpeakerMap({});
+    setReviewStage("idle");
+    setReport(null);
+  }, [recorder]);
 
   // ── Draft restore on mount ─────────────────────────────────────────────
+
   useEffect(() => {
     if (draftRestoredRef.current) return;
     draftRestoredRef.current = true;
