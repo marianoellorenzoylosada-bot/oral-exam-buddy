@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 
-export type AppRole = "admin" | "educator";
+export type AppRole = "admin" | "educator" | "senior";
 
 export function useRoles() {
   const { user, loading: authLoading } = useAuth();
@@ -31,10 +31,13 @@ export function useRoles() {
     return () => { cancelled = true; };
   }, [user, authLoading]);
 
+  const isAdmin = roles.includes("admin");
+  const isSenior = roles.includes("senior") || isAdmin;
   return {
     roles,
     loading: authLoading || loading,
-    isAdmin: roles.includes("admin"),
+    isAdmin,
+    isSenior,
     isEducator: roles.includes("educator"),
   };
 }

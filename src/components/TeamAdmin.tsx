@@ -109,9 +109,9 @@ export function TeamAdmin() {
                     <div className="truncate font-medium">{m.full_name}</div>
                     <div className="truncate text-xs text-muted-foreground">{m.user_id}</div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {(["educator", "admin"] as AppRole[]).map(r => {
-                      const has = r === "educator" ? hasEdu : hasAdm;
+                  <div className="flex flex-wrap items-center gap-2 justify-end">
+                    {(["educator", "senior", "admin"] as AppRole[]).map(r => {
+                      const has = m.roles.includes(r);
                       return (
                         <Button
                           key={r}
