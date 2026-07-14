@@ -115,8 +115,6 @@ export function generateStudentPdf(data: StudentReportData) {
     y = (doc as any).lastAutoTable.finalY + 8;
   }
 
-    y = (doc as any).lastAutoTable.finalY + 8;
-  }
 
   // --- Feedback by exam part (student-friendly) ---
   const meaningfulParts = (data.partFeedback ?? []).filter((p) => {
