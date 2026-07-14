@@ -1,94 +1,53 @@
-## Respuesta corta
+Contratás **Starter (~US$5, 30.000 créditos)** en ElevenLabs, y en la app dejamos la **transcripción en vivo apagada por defecto** con un toggle para encenderla. Con eso tenés margen para ~30 exámenes reales mañana.
 
-No hay un inconveniente importante en subir un documento de Word a la biblioteca. De hecho, para tu caso puede ser mejor que PDF, porque Word conserva la estructura de formato —incluida la cursiva— de forma mucho más explícita.
+## Plan de implementación
 
-El inconveniente actual no es Word en sí, sino que la aplicación hoy extrae DOCX con `mammoth.extractRawText`, que convierte todo a texto plano y descarta la cursiva. Por eso, si subís Word ahora, probablemente el contenido quedará más ordenado que el PDF, pero la cursiva seguirá sin transformarse automáticamente en comillas/citas.
+### 1. Transcripción en vivo apagada por defecto
+- En la pantalla "New Exam", el componente de subtítulos en vivo (`LiveTranscript`) queda **oculto y desactivado** al abrir.
+- Se agrega un toggle claro arriba del grabador:
+  > **Live captions (consumen créditos extra)** — apagado por defecto
+- Con el toggle apagado: no se pide token, no se abre WebSocket a ElevenLabs, cero consumo en vivo.
+- La preferencia se recuerda en el navegador (`localStorage`) para que no tengas que apagarla cada vez.
+- La **transcripción final** (la que usa la IA para puntuar) se mantiene igual — es imprescindible para el scoring.
 
-## Diagnóstico
+### 2. Cortar el bucle infinito de análisis
+- El auto-reintento pasa a correr **solo** para errores temporales (offline / red caída con `navigator.onLine === false`).
+- Para errores permanentes (cuota agotada, error del proveedor, audio inválido, formato no soportado): se corta el ciclo, el examen queda marcado como "pendiente con error" y aparece un botón **Reintentar manualmente**.
+- La pantalla "Confirm speakers" deja de quedarse pensando indefinidamente cuando el análisis falla.
 
-- El PDF no está exponiendo la cursiva de una forma que PDF.js pueda leer de manera fiable.
-- Al convertirlo a Word, la cursiva sí queda preservada dentro del DOCX.
-- DOCX es un formato más adecuado para detectar cursiva porque el estilo está marcado en XML como formato de texto, no como una reconstrucción visual de página.
-- La aplicación ya acepta Word, pero lo trata como texto plano, así que todavía no aprovecha esa información.
+### 3. Mensajes de error claros (reemplazan el genérico actual)
+El edge function `transcribe-audio` empieza a devolver códigos de error tipados que la app traduce a mensajes entendibles:
 
-## Inconvenientes de usar Word
+- `quota_exceeded` → "Sin créditos de transcripción en ElevenLabs. Tu grabación quedó guardada — reponé créditos y tocá Reintentar."
+- `network_error` → "La conexión se cortó durante el análisis. Tu audio está guardado, tocá Reintentar."
+- `service_unavailable` → "El servicio de transcripción está temporalmente caído. Probá en unos minutos."
+- `audio_invalid` → "El audio parece vacío o dañado. Volvé a grabar."
+- Cualquier otro → mensaje genérico + botón para reintentar.
 
-1. **No debería afectar la calibración negativamente** si el texto está bien extraído.
-2. **Puede perder paginación exacta del PDF**, porque Word no siempre mantiene páginas equivalentes. Para la biblioteca esto no es grave; lo importante es que comentario, candidato, cita y parte del examen queden claros.
-3. **Puede traer encabezados/pies o saltos raros** si la conversión PDF → Word fue automática. Eso se puede corregir en el campo `Content` antes de guardar.
-4. **Hoy todavía no marca cursiva automáticamente**, hasta que ajustemos el extractor DOCX.
+Mismo tratamiento en `LiveTranscript` cuando el toggle esté encendido y falle.
 
-## Plan mínimo recomendado
+### 4. "Guardar para analizar después" en el flujo individual
+- Después de detener la grabación, junto al botón actual **Submit for Analysis** aparece un segundo botón: **Guardar para analizar después**.
+- Persiste el audio + metadatos en IndexedDB (mismo mecanismo que ya usa Batch Session, vía `useBatchQueue`/`batchQueueDb`).
+- Aparece en una lista de "Exámenes pendientes" desde donde podés retomarlos cuando quieras.
+- El botón "Submit for Analysis" y su flujo actual **no se tocan**.
 
-### 1. Mejorar sólo extracción DOCX
-Modificar únicamente `src/lib/extractText.ts`, en la función `extractDocxText`.
+### 5. Validación antes de mañana
+- Compila y typechecks pasan.
+- Con toggle apagado: ninguna llamada a `elevenlabs-scribe-token` en Network durante la grabación.
+- Con toggle encendido: funciona igual que hoy.
+- Simulando `quota_exceeded` en el edge function → aparece el mensaje específico y el botón de reintento manual (sin bucle).
+- Grabar → detener → se ven las dos opciones (Submit / Guardar).
+- Un examen guardado se retoma correctamente y se envía a analizar cuando haya cuota.
 
-Cambiar de:
+## Qué NO se toca
 
-```ts
-mammoth.extractRawText(...)
-```
+- Rúbricas, prompts, criterios de evaluación, scoring.
+- Users, roles, RLS, políticas, storage buckets.
+- Reportes, PDF, calibración, question bank.
+- Integraciones de pago.
+- `src/integrations/supabase/client.ts`, `types.ts`, `.env`.
 
-a una extracción HTML con Mammoth, para poder detectar formato:
+## Confirmación operativa
 
-```ts
-mammoth.convertToHtml(...)
-```
-
-Luego convertir ese HTML a texto enriquecido simple.
-
-### 2. Convertir cursiva a comillas
-Cuando el DOCX tenga texto en cursiva:
-
-```text
-In the first picture ...
-```
-
-se guardaría en `Content` como:
-
-```text
-"In the first picture ..."
-```
-
-Esto mantiene el contenido compatible con el campo actual, sin crear editor enriquecido ni cambiar base de datos.
-
-### 3. Mantener estructura clara
-Durante la conversión DOCX → texto:
-
-- conservar párrafos,
-- conservar listas como líneas separadas,
-- evitar texto todo corrido,
-- normalizar espacios múltiples,
-- preservar comillas existentes,
-- no duplicar comillas si el texto ya estaba entre comillas.
-
-### 4. No tocar nada fuera de esto
-No cambiar:
-
-- scoring,
-- reports/PDF,
-- auth,
-- RLS,
-- storage,
-- calibration,
-- estructura de Cambridge Library.
-
-## Resultado esperado
-
-Después del cambio, el camino más fiable sería:
-
-1. Convertir PDF a Word.
-2. Revisar en Word que la cursiva esté correcta.
-3. Subir el DOCX a Cambridge Core Library.
-4. Ver en el campo `Content` que las citas en cursiva aparezcan entre comillas.
-5. Corregir manualmente cualquier candidato o comentario ambiguo antes de guardar.
-
-## Validación
-
-Probar con tu mismo documento Word y confirmar:
-
-- el texto aparece ordenado,
-- las frases en cursiva aparecen entre comillas,
-- los timestamps como `(2.39 Part 2)` se conservan,
-- las citas quedan asociadas al comentario del candidato correcto,
-- no se modificó ningún otro flujo de la aplicación.
+ElevenLabs Starter ya está activa: 30.000 créditos frescos. Con la transcripción en vivo apagada por defecto, cada examen de ~15 min consume ~900 créditos, lo que da margen para ~30 orales. Si un examen falla, la grabación queda guardada y se puede reintentar sin regrabar.
