@@ -337,6 +337,9 @@ export default function NewExamPage() {
       return;
     }
 
+    // Clear any previous error so the user can retry manually without stale state.
+    setLastAnalysisError(null);
+
     // Offline guard — defer the analysis and let the auto-retry effect run it later.
     if (!navigator.onLine) {
       setPendingAnalysis(true);
@@ -371,6 +374,7 @@ export default function NewExamPage() {
       return;
     }
 
+    setPendingAnalysis(false);
     setAnalyzing(true);
     try {
       // Step 1: ALWAYS re-transcribe the full uploaded audio for final scoring.
@@ -404,10 +408,11 @@ export default function NewExamPage() {
       await runScoring(blob, dur, transcriptText, out.words);
     } catch (err: any) {
       console.error("Transcription error:", err);
-      setPendingAnalysis(true);
+      const classified = await classifyAnalysisError(err);
+      setLastAnalysisError(classified);
       try {
         await saveDraft({
-          pendingAnalysis: true,
+          pendingAnalysis: false,
           title: exam.title, language: exam.language, institution: exam.institution,
           group: exam.group, candidateNames: exam.candidateNames,
           bookletText: exam.bookletText, rubricText: exam.rubricText,
@@ -417,13 +422,14 @@ export default function NewExamPage() {
       } catch { /* ignore */ }
       toast({
         title: "Analysis failed",
-        description: err.message || "Could not process the exam. Your recording is saved — you can retry submission.",
+        description: classified.userMessage,
         variant: "destructive",
       });
       setAnalyzing(false);
       setAnalyzingStep("");
     }
   }, [recorder.audioBlob, recorder.duration, restoredBlob, restoredDuration, exam, toast, liveTranscript, scribeWords, quickTags, phaseMarks, runScoring]);
+
 
   const confirmReviewAndScore = useCallback(async () => {
     const blob = recorder.audioBlob ?? restoredBlob;
