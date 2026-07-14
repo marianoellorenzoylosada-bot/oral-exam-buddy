@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import { callEdgeFunction } from "@/lib/edgeClient";
+import { callEdgeFunction, EdgeFunctionError } from "@/lib/edgeClient";
 
 export interface ScribeWord {
   text: string;
@@ -7,6 +7,60 @@ export interface ScribeWord {
   end: number;
   speaker?: string | null;
 }
+
+export class TranscriptionError extends Error {
+  constructor(
+    message: string,
+    public readonly code: string,
+    public readonly retryable: boolean,
+    public readonly userMessage: string,
+  ) {
+    super(message);
+    this.name = "TranscriptionError";
+  }
+}
+
+const TRANSCRIPTION_USER_MESSAGES: Record<string, string> = {
+  quota_exceeded: "Sin créditos de transcripción en ElevenLabs. Tu grabación quedó guardada — reponé créditos y tocá Reintentar.",
+  auth_error: "La clave de ElevenLabs no es válida. Verificá la conexión en configuración.",
+  rate_limited: "Demasiadas solicitudes a ElevenLabs. Esperá un momento y reintentá.",
+  service_unavailable: "El servicio de transcripción está temporalmente caído. Probá en unos minutos.",
+  audio_invalid: "El audio parece vacío o dañado. Volvé a grabar.",
+  transcription_error: "No se pudo transcribir el audio. Tu grabación quedó guardada — tocá Reintentar.",
+};
+
+export function classifyTranscriptionError(err: any): {
+  message: string;
+  code: string;
+  retryable: boolean;
+  userMessage: string;
+} {
+  if (err instanceof EdgeFunctionError && err.body?.code) {
+    const code = err.body.code as string;
+    return {
+      message: (err.body.error as string) || err.message,
+      code,
+      retryable: !!err.body.retryable,
+      userMessage: TRANSCRIPTION_USER_MESSAGES[code] || (err.body.error as string) || err.message,
+    };
+  }
+  const msg = err?.message || "";
+  if (msg.includes("Network error") || msg.includes("Failed to fetch")) {
+    return {
+      message: msg,
+      code: "network_error",
+      retryable: true,
+      userMessage: "La conexión se cortó durante el análisis. Tu audio está guardado, tocá Reintentar.",
+    };
+  }
+  return {
+    message: msg,
+    code: "unknown",
+    retryable: false,
+    userMessage: msg || "No se pudo procesar el examen. Tu grabación quedó guardada — tocá Reintentar.",
+  };
+}
+
 
 /**
  * Transcribe a recorded audio blob via the `transcribe-audio` edge function
