@@ -1,5 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import type { PartFeedback } from "@/lib/partFeedback";
+import { getPartsForLevel } from "@/lib/partFeedback";
 
 interface CriterionData {
   name: string;
@@ -23,6 +25,10 @@ interface ReportData {
   examinerNotes: string;
   transcript: string;
   date: string;
+  /** Per-part × per-criterion feedback (optional; falls back to legacy layout if missing). */
+  partFeedback?: PartFeedback[];
+  /** Short synthesis paragraph for the whole exam. */
+  overallSummary?: string;
 }
 
 const BRAND_COLOR: [number, number, number] = [30, 64, 175]; // blue-800
