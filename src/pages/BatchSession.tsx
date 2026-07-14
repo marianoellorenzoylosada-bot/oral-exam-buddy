@@ -37,6 +37,23 @@ function formatTime(seconds: number) {
   return `${m}:${s}`;
 }
 
+function downloadOriginalAudio(item: BatchItem) {
+  if (!item.audioBlob || item.audioBlob.size === 0) return;
+  const safeNames = item.candidateNames
+    .map((n) => n.replace(/[^a-z0-9]/gi, "_").slice(0, 20))
+    .filter(Boolean)
+    .join("_") || "candidates";
+  const filename = `oral-${safeNames}-${item.id.slice(0, 12)}.webm`;
+  const url = URL.createObjectURL(item.audioBlob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function FileDrop({ label, icon: Icon, file, extracted, onFile, onClear, accept }: {
   label: string; icon: React.ElementType; file: File | null; extracted: string;
   onFile: (f: File) => void; onClear: () => void; accept: string;
