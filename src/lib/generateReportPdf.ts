@@ -104,34 +104,48 @@ export function generateReportPdf(data: ReportData) {
   doc.text("CEFR Band Assessment", margin + 34, y + 15);
   y += boxH + 8;
 
+  const meaningfulParts = (data.partFeedback ?? []).filter((p) => {
+    const c = (p?.commentary ?? "").trim();
+    const hasBreakdown = Array.isArray(p?.criteriaBreakdown) && p!.criteriaBreakdown!.length > 0;
+    return !!(c || hasBreakdown);
+  });
+  const hasPartFeedback = meaningfulParts.length > 0;
+
   // --- Criteria table ---
+  // When per-part feedback is available, the criterion narrative moves into
+  // each part below and this table becomes a compact score summary.
   if (data.criteria.length > 0) {
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
-    doc.text("Assessment Criteria", margin, y);
+    doc.text(hasPartFeedback ? "Assessment Criteria — Score Summary" : "Assessment Criteria", margin, y);
     y += 2;
 
     autoTable(doc, {
       startY: y,
       margin: { left: margin, right: margin },
-      head: [["Criterion", "Score", "Feedback"]],
-      body: data.criteria.map((c) => [
-        c.name,
-        `${c.score} / ${c.maxScore}`,
-        c.feedback,
-      ]),
+      head: hasPartFeedback ? [["Criterion", "Score"]] : [["Criterion", "Score", "Feedback"]],
+      body: data.criteria.map((c) =>
+        hasPartFeedback
+          ? [c.name, `${c.score} / ${c.maxScore}`]
+          : [c.name, `${c.score} / ${c.maxScore}`, c.feedback]
+      ),
       headStyles: {
         fillColor: BRAND_COLOR,
         fontSize: 8,
         fontStyle: "bold",
       },
       bodyStyles: { fontSize: 8, cellPadding: 3 },
-      columnStyles: {
-        0: { cellWidth: 35, fontStyle: "bold" },
-        1: { cellWidth: 20, halign: "center" },
-        2: { cellWidth: "auto" },
-      },
+      columnStyles: hasPartFeedback
+        ? {
+            0: { cellWidth: "auto", fontStyle: "bold" },
+            1: { cellWidth: 30, halign: "center" },
+          }
+        : {
+            0: { cellWidth: 35, fontStyle: "bold" },
+            1: { cellWidth: 20, halign: "center" },
+            2: { cellWidth: "auto" },
+          },
       didParseCell(hookData) {
         if (hookData.section === "body" && hookData.column.index === 1) {
           const c = data.criteria[hookData.row.index];
