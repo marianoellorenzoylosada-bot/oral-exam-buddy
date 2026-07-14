@@ -183,10 +183,12 @@ serve(async (req) => {
     if (!resp.ok) {
       const err = await resp.text();
       console.error("ElevenLabs Scribe error:", resp.status, err);
-      return new Response(JSON.stringify({ error: `Transcription failed: ${resp.status}` }), {
-        status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      const classified = classifyTranscriptionError(resp.status, err);
+      return new Response(JSON.stringify(classified), {
+        status: resp.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
 
     const result = await resp.json();
     const transcript: string = result.text ?? "";
