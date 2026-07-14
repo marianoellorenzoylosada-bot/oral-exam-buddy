@@ -506,8 +506,59 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
                 </div>
               );
             })}
+            {isSenior && !viewing && (
+              <div className="pt-2">
+                <Button size="sm" variant="outline" className="gap-2" onClick={() => setApproveOpen(true)}>
+                  <GraduationCap className="h-3.5 w-3.5" />
+                  Approve as calibration reference
+                </Button>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Save the current scores as an anchor. Future analyses at {exam.level_code} will use it to calibrate.
+                </p>
+              </div>
+            )}
           </div>
         )}
+
+        <Dialog open={approveOpen} onOpenChange={setApproveOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="font-display">Approve calibration reference</DialogTitle>
+              <DialogDescription>
+                The current transcript and criterion scores will be saved as an anchor for level {exam.level_code}.
+                Future AI analyses at this level will use it to align scoring with your judgment.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs">Notes (optional)</Label>
+                <Textarea
+                  value={approveNotes}
+                  onChange={(e) => setApproveNotes(e.target.value)}
+                  placeholder="Why this performance anchors the level (e.g. borderline B2/C1; strong DM despite pronunciation slips)…"
+                  className="min-h-[80px] text-sm mt-1"
+                />
+              </div>
+              <div className="rounded-md border bg-muted/30 p-3 text-xs">
+                <div className="font-medium mb-1">Scores being anchored</div>
+                <ul className="space-y-0.5">
+                  {criteria.map((c) => (
+                    <li key={c.name} className="flex justify-between">
+                      <span>{c.name}</span>
+                      <span className="font-mono">{c.score}/{c.maxScore}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setApproveOpen(false)} disabled={approving}>Cancel</Button>
+              <Button onClick={handleApproveCalibration} disabled={approving}>
+                {approving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Approve"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Per-part feedback (only when stored on the report). */}
         {Array.isArray(displayedPartFeedback) && hasPartFeedbackContent(
