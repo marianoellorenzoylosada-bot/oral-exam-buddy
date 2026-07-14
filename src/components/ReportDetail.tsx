@@ -456,8 +456,17 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
           </div>
         )}
 
-        {/* Per-part feedback is presentation-only and not persisted on saved reports;
-            intentionally omitted here to avoid empty-accordion noise. */}
+        {/* Per-part feedback (only when stored on the report). */}
+        {Array.isArray(displayedPartFeedback) && hasPartFeedbackContent(
+          displayedPartFeedback as PartFeedback[],
+          displayedOverallSummary
+        ) && (
+          <PartFeedbackSection
+            levelCode={exam.level_code}
+            partFeedback={displayedPartFeedback as PartFeedback[]}
+            overallSummary={displayedOverallSummary}
+          />
+        )}
 
         {/* Strengths & Improvements */}
         <div className="grid gap-4 sm:grid-cols-2">
