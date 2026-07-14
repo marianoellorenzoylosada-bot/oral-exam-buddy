@@ -325,11 +325,17 @@ PART-BY-PART EXAMINER FEEDBACK:
 For each candidate, also produce a "partFeedback" array covering the speaking parts for this level:
 ${partsBlock}
 For every part:
-- Write 2–4 sentences of professional examiner-style commentary, descriptor-informed but natural.
-- Ground every observation in the transcript; reference observable performance.
-- Mention the criteria most clearly evidenced by that part in "criteriaTouched".
-- If useful, add ONE short actionable "improvement" point. Avoid generic praise and unsupported claims.
+- Write 2–3 sentences of professional examiner-style "commentary" summarising the candidate's performance in that part, descriptor-informed and grounded in the transcript.
+- Then produce a "criteriaBreakdown" array with ONE entry per Cambridge criterion, in this exact order and with these exact criterion names:
+  1. Grammar and Vocabulary
+  2. Discourse Management
+  3. Pronunciation
+  4. Interactive Communication
+  5. Global Achievement
+  Each entry's "comment" must be 1–2 sentences describing how that specific criterion was evidenced IN THAT PART, referencing observable performance from the transcript for that part.
+  If a criterion cannot be reasonably evidenced in that part (e.g. Interactive Communication during a Long Turn monologue), write exactly: "Not clearly evidenced in this part."
 - Do NOT invent per-part scores — these are commentary only; the global criterion scores are unchanged.
+- If useful, add ONE short actionable "improvement" point for the part. Avoid generic praise and unsupported claims.
 Also produce a short "overallSummary" (3–5 sentences) synthesising the candidate's performance across the whole exam.
 
 RESPOND IN THIS EXACT JSON FORMAT:
