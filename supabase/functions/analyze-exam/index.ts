@@ -475,6 +475,10 @@ For every part:
 - If useful, add ONE short actionable "improvement" point for the part. Avoid generic praise and unsupported claims.
 Also produce a short "overallSummary" (3–5 sentences) synthesising the candidate's performance across the whole exam.
 
+SELF-CHECK BEFORE RESPONDING (internal reasoning — do NOT include this in the JSON):
+For each of the 5 criteria, silently compare the candidate against the closest CALIBRATION ANCHOR (senior anchors first, built-in anchors otherwise). If your score deviates by MORE than one full band from the closest anchor's score, re-examine the transcript and adjust — you are likely being too strict. If uncertain between two half-bands, choose the higher one when the upper half of the higher band's descriptor is met.
+
+
 RESPOND IN THIS EXACT JSON FORMAT:
 {
   "candidates": [
