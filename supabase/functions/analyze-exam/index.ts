@@ -155,6 +155,130 @@ const CAMBRIDGE_DESCRIPTORS: Record<CambridgeLevel, Record<string, { "5": string
   },
 };
 
+// ─── Built-in calibration anchors (mirrors src/lib/calibrationCases.ts) ───
+// Each case is a transcript with per-criterion "gold" scores that a Cambridge-
+// aligned examiner would award. Injected into the prompt as few-shot anchors
+// so the model calibrates to concrete score levels, not just the descriptors.
+interface BuiltInAnchor {
+  level: CambridgeLevel;
+  taskType: string;
+  title: string;
+  transcript: string;
+  criteria: Array<{ name: string; score: number; rationale: string }>;
+}
+
+const BUILT_IN_ANCHORS: BuiltInAnchor[] = [
+  {
+    level: "A2", taskType: "Interview",
+    title: "A2 — Talking about a recent shopping trip",
+    transcript: "Examiner: So, tell me about your last shopping trip. Where did you go?\nCandidate A: I go… er… I went to the centre last Saturday with my sister.\nCandidate B: Oh nice. What did you buy?\nCandidate A: I buy a new shoes, and a t-shirt. Black colour.\nCandidate B: Was it expensive?\nCandidate A: Yes, a little. But I have… a discount, so it's okay.\nExaminer: Do you prefer shopping online or in shops?\nCandidate A: In shop. I like to see the clothes and try them.\nCandidate B: I prefer online because it's more easy and cheap.",
+    criteria: [
+      { name: "Grammar and Vocabulary", score: 3, rationale: "Sufficient control of simple forms with some past-tense slips ('I buy a new shoes')." },
+      { name: "Discourse Management", score: 3, rationale: "Short phrases with some hesitation, mostly relevant." },
+      { name: "Pronunciation", score: 3.5, rationale: "Mostly intelligible with some control of phonological features." },
+      { name: "Interactive Communication", score: 3.5, rationale: "Maintains simple exchanges, asks back questions naturally." },
+      { name: "Global Achievement", score: 3, rationale: "Handles a basic everyday-topic exchange despite hesitation." },
+    ],
+  },
+  {
+    level: "B1", taskType: "Collaborative Task",
+    title: "B1 — Comparing holidays at home and abroad",
+    transcript: "Examiner: Look at the two photos. Which holiday do you prefer and why?\nCandidate A: For me, the beach holiday is better because you can relax and swim. When I was a child, I went to Valencia every summer with my family.\nCandidate B: Yes, but the city holiday is more interesting. You can visit museums and try new food. What do you think?\nCandidate A: That's true, but in cities it's very tiring. After one day I'm exhausted.\nCandidate B: I understand, but a beach is boring after three days. Maybe a mix is the best option.\nCandidate A: Good idea. One week in a city, then one week at the beach. Perfect.",
+    criteria: [
+      { name: "Grammar and Vocabulary", score: 4, rationale: "Good control of simple forms; attempts complex structures accurately." },
+      { name: "Discourse Management", score: 4, rationale: "Extended responses with clear organisation and basic discourse markers." },
+      { name: "Pronunciation", score: 4, rationale: "Intelligible with generally appropriate intonation and stress." },
+      { name: "Interactive Communication", score: 4.5, rationale: "Initiates, responds, links contributions and negotiates an outcome." },
+      { name: "Global Achievement", score: 4, rationale: "Handles a familiar topic comfortably with little hesitation." },
+    ],
+  },
+  {
+    level: "B2", taskType: "Discussion",
+    title: "B2 — Discussing the impact of technology on education",
+    transcript: "Examiner: Do you think technology has improved education?\nCandidate A: I'd say it's been a mixed blessing. On one hand, students now have access to enormous amounts of information online, which would have been unthinkable twenty years ago.\nCandidate B: I agree, but I think we're losing something important — the ability to focus. My younger brother can't read a book for more than ten minutes without checking his phone.\nCandidate A: That's a fair point, but you can't blame technology itself. It's how we use it.\nCandidate B: True. Schools should teach digital literacy more seriously.\nCandidate A: Exactly. And online lessons during the pandemic showed both sides — flexibility but also a lot of isolation.\nCandidate B: Yes, I missed the social side of school. Learning isn't only about content.",
+    criteria: [
+      { name: "Grammar and Vocabulary", score: 4.5, rationale: "Good control of complex forms; range of vocabulary including idiomatic items ('mixed blessing')." },
+      { name: "Discourse Management", score: 4.5, rationale: "Extended, coherent stretches with varied cohesive devices." },
+      { name: "Pronunciation", score: 4, rationale: "Intelligible throughout; intonation and stress generally appropriate." },
+      { name: "Interactive Communication", score: 4.5, rationale: "Links contributions, develops the discussion, negotiates ideas naturally." },
+      { name: "Global Achievement", score: 4.5, rationale: "Handles an unfamiliar topic confidently with minimal hesitation." },
+    ],
+  },
+  {
+    level: "C1", taskType: "Discussion",
+    title: "C1 — Climate policy and individual responsibility",
+    transcript: "Examiner: To what extent are individuals responsible for tackling climate change?\nCandidate A: I'd argue that placing the burden on individuals is largely a deflection by industries and governments. Yes, we should recycle and cut our emissions where possible, but the real leverage lies in regulation and infrastructure.\nCandidate B: I take your point, although I'd push back slightly. If consumer demand doesn't shift, companies have no incentive to change either.\nCandidate A: Granted, but we need to be realistic about the pace. Voluntary change has had decades to work and emissions are still rising. Carbon pricing, for instance, would shift behaviour overnight.\nCandidate B: Possibly, though carbon taxes tend to be regressive unless they're carefully designed.\nCandidate A: Which is exactly why dividends back to households matter — Canada's model is interesting in that respect.\nCandidate B: Agreed. So perhaps the real question isn't individual versus collective, but how we design policy that aligns the two.",
+    criteria: [
+      { name: "Grammar and Vocabulary", score: 5, rationale: "Wide range of forms used flexibly; advanced lexis ('deflection', 'regressive', 'leverage')." },
+      { name: "Discourse Management", score: 4.5, rationale: "Extended, varied, well-organised contributions; full use of cohesive devices." },
+      { name: "Pronunciation", score: 4.5, rationale: "Intelligible with appropriate intonation and stress." },
+      { name: "Interactive Communication", score: 5, rationale: "Skilfully interweaves contributions and develops the argument towards a negotiated outcome." },
+      { name: "Global Achievement", score: 4.5, rationale: "Handles an abstract, unfamiliar topic with very little hesitation." },
+    ],
+  },
+  {
+    level: "C2", taskType: "Discussion",
+    title: "C2 — The role of art in society",
+    transcript: "Examiner: Has art become marginalised in a society obsessed with productivity?\nCandidate A: I'd resist the premise, actually. Art hasn't been marginalised so much as redistributed — TikTok, fan fiction, generative tools. The forms have multiplied; what's contracted is the cultural authority of so-called 'high art'.\nCandidate B: That's a compelling reframing, though I'd add that the economic model underpinning serious artistic practice has eroded. When everything is content, the painter or the novelist competes with the algorithm for attention.\nCandidate A: Quite. And that scarcity of attention reshapes what gets made. Works that demand sustained engagement are squeezed out, even when they're vital.\nCandidate B: Which raises the question of public investment. Without it, certain art forms simply can't survive market forces.\nCandidate A: Agreed, although public funding always carries the risk of institutional capture.",
+    criteria: [
+      { name: "Grammar and Vocabulary", score: 5, rationale: "Full flexibility and precision; advanced and idiomatic lexis used effortlessly." },
+      { name: "Discourse Management", score: 5, rationale: "Fully extended, coherent, varied and detailed with flexible cohesion." },
+      { name: "Pronunciation", score: 5, rationale: "Readily intelligible; intonation effective for meaning; effortless throughout." },
+      { name: "Interactive Communication", score: 5, rationale: "Interweaves contributions skilfully; develops fully and effectively." },
+      { name: "Global Achievement", score: 5, rationale: "Handles an abstract topic with no hesitation; coherent and fully extended." },
+    ],
+  },
+];
+
+function formatAnchor(a: { level: string; taskType?: string; title?: string; transcript: string; criteria: Array<{ name: string; score: number; rationale?: string }> }): string {
+  const scores = a.criteria.map((c) => `  • ${c.name}: ${c.score}/5${c.rationale ? ` — ${c.rationale}` : ""}`).join("\n");
+  return `--- ANCHOR: ${a.title ?? a.level} (${a.level}${a.taskType ? `, ${a.taskType}` : ""}) ---\nTranscript:\n"""\n${a.transcript}\n"""\nCalibrated scores:\n${scores}`;
+}
+
+async function fetchSeniorAnchors(level: string): Promise<string> {
+  try {
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const { data, error } = await admin
+      .from("calibration_examples")
+      .select("transcript, senior_corrections, senior_notes, approved_at")
+      .eq("level", level)
+      .order("approved_at", { ascending: false })
+      .limit(5);
+    if (error || !data || data.length === 0) return "";
+    const blocks: string[] = [];
+    for (const row of data) {
+      const criteria = Array.isArray(row.senior_corrections) ? (row.senior_corrections as any[]) : [];
+      const cleaned = criteria
+        .filter((c) => c && typeof c.name === "string" && typeof c.score === "number")
+        .map((c) => ({ name: c.name, score: c.score, rationale: row.senior_notes || undefined }));
+      if (cleaned.length === 0) continue;
+      blocks.push(formatAnchor({
+        level, taskType: "Senior-approved",
+        title: `Senior calibration (approved ${new Date(row.approved_at as string).toISOString().slice(0, 10)})`,
+        transcript: String(row.transcript || "").slice(0, 4000),
+        criteria: cleaned,
+      }));
+    }
+    if (blocks.length === 0) return "";
+    return `\n\nSENIOR EXAMINER CALIBRATION (institution-specific — these anchors reflect a senior examiner's judgment for this workspace and take PRIORITY over built-in anchors when in conflict):\n\n${blocks.join("\n\n")}`;
+  } catch {
+    return "";
+  }
+}
+
+function buildCalibrationAnchorsBlock(level: string): string {
+  const same = BUILT_IN_ANCHORS.filter((a) => a.level === level);
+  const picked = same.length > 0
+    ? same.slice(0, 2)
+    : BUILT_IN_ANCHORS.slice(0, 2); // fallback: any two anchors
+  if (picked.length === 0) return "";
+  return `\nCALIBRATION ANCHORS (concrete examples of scored performance — anchor your marks to the closest example, do not merely apply descriptors in isolation):\n\n${picked.map(formatAnchor).join("\n\n")}`;
+}
+
+
 function buildRubricBlock(level: string): string {
   const lvl = (level as CambridgeLevel);
   const descriptors = CAMBRIDGE_DESCRIPTORS[lvl];
