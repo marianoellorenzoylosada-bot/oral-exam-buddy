@@ -120,7 +120,10 @@ serve(async (req) => {
     if (!response.ok) {
       const errText = await response.text();
       console.error("ElevenLabs token error:", response.status, errText);
-      throw new Error(`Failed to get scribe token: ${response.status}`);
+      const classified = classifyTokenError(response.status, errText);
+      return new Response(JSON.stringify(classified), {
+        status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const { token } = await response.json();
@@ -130,8 +133,9 @@ serve(async (req) => {
     });
   } catch (e) {
     console.error("elevenlabs-scribe-token error:", e);
+    const err = e instanceof Error ? e.message : "Unknown error";
     return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
+      JSON.stringify({ error: err, code: "token_error", retryable: false }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
