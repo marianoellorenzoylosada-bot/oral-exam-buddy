@@ -211,6 +211,8 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
         areas_for_improvement: exam.areas_for_improvement,
         examiner_notes: exam.examiner_notes,
         transcript: exam.transcript,
+        part_feedback: exam.part_feedback ?? null,
+        overall_summary: exam.overall_summary ?? null,
       };
       const newHistory = [snapshot, ...previousAnalyses];
 
@@ -248,6 +250,10 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
           examiner_notes: editNotes,
           previous_analyses: newHistory as any,
           regrade_count: (exam.regrade_count ?? 0) + 1,
+          part_feedback: Array.isArray(first.partFeedback) && first.partFeedback.length > 0
+            ? (first.partFeedback as any)
+            : null,
+          overall_summary: typeof first.overallSummary === "string" ? first.overallSummary : null,
         })
         .eq("id", exam.id);
       if (updErr) throw updErr;
