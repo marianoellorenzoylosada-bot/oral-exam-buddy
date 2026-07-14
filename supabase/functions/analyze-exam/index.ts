@@ -345,6 +345,8 @@ serve(async (req) => {
     const rubricBlock = buildRubricBlock(level);
     const libraryBlock = await fetchLibraryBlock(userId, level);
     const examContextBlock = buildExamContextBlock(examContext);
+    const anchorsBlock = buildCalibrationAnchorsBlock(level);
+    const seniorAnchorsBlock = await fetchSeniorAnchors(level);
 
 
     // Per-level Speaking parts (mirrors src/lib/examPhases.ts).
@@ -400,11 +402,22 @@ EXAM CONTEXT:
 LAYER 1 — AUTHORITATIVE REFERENCE (guides how to interpret evidence; never replaces it)
 ══════════════════════════════════════════════════════════════
 ${rubricBlock}
+${anchorsBlock}
+${seniorAnchorsBlock}
 ${libraryBlock}
 ${examContextBlock}
 ${bookletText ? `\nADDITIONAL REFERENCE — EXAM BOOKLET / SAMPLE PAPER:\n${bookletText}` : ""}
 ${rubricText ? `\nADDITIONAL REFERENCE — UPLOADED HANDBOOK / RUBRIC:\n${rubricText}` : ""}
 ${tagBlock}
+
+CALIBRATION RULES (read carefully — these correct a systematic tendency to under-score):
+- The Cambridge descriptors are HOLISTIC, not a checklist. Do NOT lower a score because of isolated errors if the overall performance matches the band descriptor.
+- Hesitations, self-corrections and minor grammatical slips are EXPECTED at every band up to and including 5. Do not treat them as automatic downgrades.
+- If performance shares features of two bands, award the HIGHER half-band whenever the candidate meets the upper half of the higher descriptor. Do not default to the lower band out of caution.
+- Anchor your marks to the CALIBRATION ANCHORS above: if the current candidate performs at the level of an anchor scored 4/5, your score must also be 4/5. Do not silently penalise for cosmetic differences.
+- Samples in the Core Library and anchors are SCORE ANCHORS, not just reference text. Match performance-to-performance, not topic-to-topic.
+- SENIOR EXAMINER CALIBRATION (if present) takes PRIORITY over built-in anchors when in conflict — it reflects institution-specific standards.
+- Low confidence is reported via the "confidence" field. It must NEVER translate into a lower score.
 
 ══════════════════════════════════════════════════════════════
 LAYER 2 — CANDIDATE EVIDENCE (the PRIMARY source of every score)
