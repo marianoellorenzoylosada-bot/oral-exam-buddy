@@ -504,13 +504,29 @@ Include one entry in the "candidates" array for EACH candidate (${names.length} 
         }
 
         if (Array.isArray(cand.partFeedback)) {
-          cand.partFeedback = cand.partFeedback.filter((p: any) => {
-            if (!p || typeof p !== "object") return false;
-            const commentary = typeof p.commentary === "string" ? p.commentary.trim() : "";
-            if (!commentary) return false;
-            if (NO_EVIDENCE.test(commentary)) return false;
-            return true;
-          });
+          cand.partFeedback = cand.partFeedback
+            .filter((p: any) => {
+              if (!p || typeof p !== "object") return false;
+              const commentary = typeof p.commentary === "string" ? p.commentary.trim() : "";
+              if (!commentary) return false;
+              if (NO_EVIDENCE.test(commentary)) return false;
+              return true;
+            })
+            .map((p: any) => {
+              // Normalise criteriaBreakdown: keep only well-formed entries.
+              const cb = Array.isArray(p.criteriaBreakdown) ? p.criteriaBreakdown : [];
+              const cleanedCb = cb
+                .filter((e: any) =>
+                  e && typeof e === "object" &&
+                  typeof e.criterion === "string" && e.criterion.trim() &&
+                  typeof e.comment === "string" && e.comment.trim()
+                )
+                .map((e: any) => ({
+                  criterion: String(e.criterion).trim(),
+                  comment: String(e.comment).trim(),
+                }));
+              return { ...p, criteriaBreakdown: cleanedCb };
+            });
         } else {
           cand.partFeedback = [];
         }
