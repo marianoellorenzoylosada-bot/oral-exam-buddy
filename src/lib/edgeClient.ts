@@ -92,9 +92,10 @@ export async function callEdgeFunction<T = unknown>(
       throw new Error("Unauthorized — please sign in again.");
     }
     const msg = parsed?.error || parsed?.message || text || `HTTP ${response.status}`;
-    throw new Error(`${name} failed (${response.status}): ${msg}`);
+    throw new EdgeFunctionError(`${name} failed (${response.status}): ${msg}`, response.status, parsed ?? null);
   }
 
   if (parsed?.error) throw new Error(parsed.error);
   return parsed as T;
 }
+
