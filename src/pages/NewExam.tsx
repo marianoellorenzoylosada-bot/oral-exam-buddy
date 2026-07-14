@@ -42,7 +42,57 @@ function formatTime(seconds: number) {
   return `${m}:${s}`;
 }
 
+const LIVE_CAPTIONS_KEY = "oralassess-live-captions";
+
+async function readEdgeError(err: any): Promise<string> {
+  if (err instanceof FunctionsHttpError) {
+    try {
+      const text = await err.context.text();
+      return text || err.message;
+    } catch { return err.message; }
+  }
+  return err?.message || String(err);
+}
+
+interface AnalysisError {
+  code: string;
+  retryable: boolean;
+  message: string;
+  userMessage: string;
+}
+
+async function classifyAnalysisError(err: any): Promise<AnalysisError> {
+  if (err instanceof TranscriptionError) {
+    return { code: err.code, retryable: err.retryable, message: err.message, userMessage: err.userMessage };
+  }
+  const raw = await readEdgeError(err);
+  const msg = raw.toLowerCase();
+  if (msg.includes("not enough speech") || msg.includes("could not assess")) {
+    return { code: "insufficient_speech", retryable: false, message: raw, userMessage: "No se detectó suficiente habla en la grabación. Volvé a grabar con los candidatos hablando claramente." };
+  }
+  if (msg.includes("too large") || msg.includes("trim to under") || msg.includes("context_too_large")) {
+    return { code: "context_too_large", retryable: false, message: raw, userMessage: "Los materiales de contexto son muy largos. Reducilos y reintentá." };
+  }
+  if (msg.includes("unauthorized") || msg.includes("please sign in")) {
+    return { code: "auth_error", retryable: false, message: raw, userMessage: "Tu sesión expiró. Volvé a iniciar sesión y reintentá." };
+  }
+  if (msg.includes("quota_exceeded") || msg.includes("quota exceeded") || msg.includes("usage quota")) {
+    return { code: "quota_exceeded", retryable: false, message: raw, userMessage: "Sin créditos de transcripción en ElevenLabs. Tu grabación quedó guardada — reponé créditos y tocá Reintentar." };
+  }
+  if (msg.includes("rate limit") || msg.includes("rate_limited") || msg.includes("too many requests")) {
+    return { code: "rate_limited", retryable: true, message: raw, userMessage: "Demasiadas solicitudes. Esperá un momento y reintentá." };
+  }
+  if (msg.includes("network error") || msg.includes("failed to fetch") || msg.includes("timeout") || msg.includes("timed out")) {
+    return { code: "network_error", retryable: true, message: raw, userMessage: "La conexión se cortó durante el análisis. Tu audio está guardado, tocá Reintentar." };
+  }
+  if (msg.includes("service unavailable") || msg.includes("service_unavailable") || msg.includes("temporarily unavailable") || msg.includes("transcriber_error")) {
+    return { code: "service_unavailable", retryable: true, message: raw, userMessage: "El servicio de análisis está temporalmente caído. Probá en unos minutos." };
+  }
+  return { code: "analysis_error", retryable: false, message: raw, userMessage: raw || "No se pudo analizar el examen. Tu grabación quedó guardada — tocá Reintentar." };
+}
+
 function FileDropZone({ label, icon: Icon, file, extractedText, onFile, onClear, accept, hint }: {
+
   label: string; icon: React.ElementType; file: File | null; extractedText?: string;
   onFile: (f: File) => void; onClear: () => void; accept: string; hint?: string;
 }) {
