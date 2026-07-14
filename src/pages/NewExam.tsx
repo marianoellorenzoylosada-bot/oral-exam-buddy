@@ -943,15 +943,17 @@ export default function NewExamPage() {
                   />
                 )}
 
-                {/* Live Transcription — always mounted while recording so it auto-connects */}
-                {(recorder.state === "recording" || recorder.state === "paused" || liveTranscript) && (
+                {/* Live Transcription — only mounted when the toggle is enabled */}
+                {liveTranscriptionEnabled && (recorder.state === "recording" || recorder.state === "paused" || liveTranscript) && (
                   <div className="w-full max-w-md">
                     <LiveTranscript
                       isRecording={recorder.state === "recording"}
                       onTranscriptUpdate={setLiveTranscript}
+                      enabled={liveTranscriptionEnabled}
                     />
                   </div>
                 )}
+
 
                 {/* Per-candidate quick tags during the exam */}
                 {(recorder.state === "recording" || recorder.state === "paused" || quickTags.length > 0) && (
