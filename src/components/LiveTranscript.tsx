@@ -4,13 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MicOff, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { classifyTranscriptionError } from "@/lib/transcribe";
 
 interface LiveTranscriptProps {
   isRecording: boolean;
   onTranscriptUpdate?: (fullText: string) => void;
+  enabled?: boolean;
 }
 
-export function LiveTranscript({ isRecording, onTranscriptUpdate }: LiveTranscriptProps) {
+export function LiveTranscript({ isRecording, onTranscriptUpdate, enabled = true }: LiveTranscriptProps) {
+
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dropped, setDropped] = useState(false);
