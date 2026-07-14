@@ -30,6 +30,8 @@ import { generateStudentPdf } from "@/lib/generateStudentPdf";
 import { PartFeedbackSection, hasPartFeedbackContent } from "@/components/PartFeedbackSection";
 import type { PartFeedback } from "@/lib/partFeedback";
 import { useToast } from "@/hooks/use-toast";
+import { useRoles } from "@/hooks/useRoles";
+import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { SpeakerTranscript } from "@/components/SpeakerTranscript";
 import { SpeakerMappingPanel } from "@/components/SpeakerMappingPanel";
@@ -83,7 +85,12 @@ function mask(text: string | null | undefined) {
 export function ReportDetail({ exam, anonymize, onClose }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { isSenior } = useRoles();
+  const { user } = useAuth();
   const [deleting, setDeleting] = useState(false);
+  const [approveOpen, setApproveOpen] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [approveNotes, setApproveNotes] = useState("");
   const [deletingAudio, setDeletingAudio] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioGone, setAudioGone] = useState(false);
