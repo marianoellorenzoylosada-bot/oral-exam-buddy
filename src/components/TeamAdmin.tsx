@@ -101,8 +101,6 @@ export function TeamAdmin() {
         ) : (
           <div className="space-y-2">
             {members.map(m => {
-              const hasEdu = m.roles.includes("educator");
-              const hasAdm = m.roles.includes("admin");
               return (
                 <div key={m.user_id} className="flex items-center justify-between rounded-lg border border-border p-3">
                   <div className="min-w-0">
