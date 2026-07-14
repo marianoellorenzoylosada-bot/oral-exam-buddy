@@ -27,6 +27,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { getRecommendations } from "@/lib/practiceData";
 import { generateReportPdf } from "@/lib/generateReportPdf";
 import { generateStudentPdf } from "@/lib/generateStudentPdf";
+import { PartFeedbackSection, hasPartFeedbackContent } from "@/components/PartFeedbackSection";
+import type { PartFeedback } from "@/lib/partFeedback";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { SpeakerTranscript } from "@/components/SpeakerTranscript";
@@ -64,6 +66,8 @@ export type Exam = {
   previous_analyses?: any;
   regrade_count?: number | null;
   speaker_map?: any;
+  part_feedback?: any;
+  overall_summary?: string | null;
 };
 
 interface Props {
@@ -132,6 +136,10 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
   const displayedImprovements = viewing?.areas_for_improvement ?? exam.areas_for_improvement;
   const displayedBand = viewing?.overall_band ?? exam.overall_band;
   const displayedScore = viewing?.overall_score ?? exam.overall_score;
+  const displayedPartFeedback: PartFeedback[] | undefined =
+    (viewing?.part_feedback ?? exam.part_feedback) as PartFeedback[] | undefined;
+  const displayedOverallSummary: string | undefined =
+    (viewing?.overall_summary ?? exam.overall_summary) as string | undefined;
 
   const criteria = Array.isArray(displayedCriteria)
     ? (displayedCriteria as { name: string; score: number; maxScore: number; feedback: string; confidence?: number }[])
