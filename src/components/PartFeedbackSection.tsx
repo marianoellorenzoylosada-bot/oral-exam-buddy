@@ -17,16 +17,12 @@ const NO_EVIDENCE = /no evidence|not covered|n\/?a\b|insufficient/i;
 function isMeaningful(pf?: PartFeedback): boolean {
   if (!pf) return false;
   const c = (pf.commentary ?? "").trim();
-  if (!c) return false;
-  if (NO_EVIDENCE.test(c)) return false;
+  const hasBreakdown = Array.isArray(pf.criteriaBreakdown) && pf.criteriaBreakdown.length > 0;
+  if (!c && !hasBreakdown) return false;
+  if (c && NO_EVIDENCE.test(c) && !hasBreakdown) return false;
   return true;
 }
 
-/**
- * Returns true when there is at least one usable part-feedback entry OR a
- * non-empty overall summary. Callers should use this to avoid mounting the
- * section at all on legacy / failed-parse reports.
- */
 export function hasPartFeedbackContent(
   partFeedback?: PartFeedback[],
   overallSummary?: string
@@ -44,9 +40,6 @@ export function PartFeedbackSection({ levelCode, partFeedback, overallSummary, f
   const summary = (overallSummary ?? "").trim() || (fallbackSummary ?? "").trim();
   const hasAnyPart = cleaned.length > 0;
 
-  // Defence in depth — if a parent forgets to gate on hasPartFeedbackContent,
-  // and there is genuinely nothing to show, render nothing rather than a wall
-  // of empty accordions.
   if (!hasAnyPart && !summary) return null;
 
   const defaultOpen = hasAnyPart
@@ -58,7 +51,7 @@ export function PartFeedbackSection({ levelCode, partFeedback, overallSummary, f
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <MessageSquareText className="h-4 w-4 text-primary" />
-          Examiner feedback by part
+          Examiner feedback by exam part
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -82,30 +75,49 @@ export function PartFeedbackSection({ levelCode, partFeedback, overallSummary, f
                 <AccordionContent>
                   {pf ? (
                     <div className="space-y-3">
-                      <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap">
-                        {pf.commentary}
-                      </p>
-
-                      {pf.observations && pf.observations.length > 0 && (
-                        <ul className="space-y-1.5 text-sm text-muted-foreground">
-                          {pf.observations.map((o, i) => (
-                            <li key={i} className="flex gap-2">
-                              <span aria-hidden className="text-primary">•</span>
-                              <span>{o}</span>
-                            </li>
-                          ))}
-                        </ul>
+                      {pf.commentary && (
+                        <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap">
+                          {pf.commentary}
+                        </p>
                       )}
 
-                      {pf.criteriaTouched && pf.criteriaTouched.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {pf.criteriaTouched.map((c) => (
-                            <Badge key={c} variant="secondary" className="text-[10px] font-normal">
-                              {c}
-                            </Badge>
-                          ))}
+                      {Array.isArray(pf.criteriaBreakdown) && pf.criteriaBreakdown.length > 0 && (
+                        <div className="space-y-2 rounded-md border bg-muted/20 p-3">
+                          <p className="text-xs font-semibold text-foreground/80">By criterion:</p>
+                          <ul className="space-y-1.5">
+                            {pf.criteriaBreakdown.map((cb, i) => (
+                              <li key={i} className="text-sm">
+                                <span className="font-medium text-foreground">{cb.criterion}:</span>{" "}
+                                <span className="text-foreground/80">{cb.comment}</span>
+                              </li>
+                            ))}
+                          </ul>
                         </div>
                       )}
+
+                      {/* Legacy observations (kept for backward compatibility) */}
+                      {(!pf.criteriaBreakdown || pf.criteriaBreakdown.length === 0) &&
+                        pf.observations && pf.observations.length > 0 && (
+                          <ul className="space-y-1.5 text-sm text-muted-foreground">
+                            {pf.observations.map((o, i) => (
+                              <li key={i} className="flex gap-2">
+                                <span aria-hidden className="text-primary">•</span>
+                                <span>{o}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+
+                      {(!pf.criteriaBreakdown || pf.criteriaBreakdown.length === 0) &&
+                        pf.criteriaTouched && pf.criteriaTouched.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {pf.criteriaTouched.map((c) => (
+                              <Badge key={c} variant="secondary" className="text-[10px] font-normal">
+                                {c}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
 
                       {pf.improvement && (
                         <div className="flex gap-2 rounded-md border border-amber-500/20 bg-amber-500/5 p-2.5 text-xs">
