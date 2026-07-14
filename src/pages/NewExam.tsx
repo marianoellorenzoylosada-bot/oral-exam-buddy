@@ -510,14 +510,44 @@ export default function NewExamPage() {
   }, [recorder.audioBlob, recorder.duration, restoredBlob, restoredDuration, exam, liveTranscript, scribeWords, phaseMarks, quickTags, pendingAnalysis]);
 
   // ── Auto-retry pending analysis when we come back online ───────────────
+  // Only auto-retry for the explicit offline guard. Permanent or temporary
+  // service errors set lastAnalysisError and require a manual retry so the
+  // examiner is not trapped in a silent loop.
   useEffect(() => {
-    if (online && pendingAnalysis && !analyzing) {
+    if (online && pendingAnalysis && !analyzing && !lastAnalysisError) {
       toast({ title: "Back online", description: "Resuming queued analysis…" });
       handleSubmitForAnalysis();
     }
-  }, [online, pendingAnalysis, analyzing, handleSubmitForAnalysis, toast]);
+  }, [online, pendingAnalysis, analyzing, lastAnalysisError, handleSubmitForAnalysis, toast]);
+
+  // Persist a finished recording to the batch queue so it can be analyzed later
+  // without consuming credits right now.
+  const handleSaveForLater = useCallback(async () => {
+    const blob = recorder.audioBlob ?? restoredBlob;
+    const dur = recorder.audioBlob ? recorder.duration : restoredDuration;
+    if (!blob || !exam.title) {
+      toast({ title: "Missing data", description: "Please select an exam level and record audio first.", variant: "destructive" });
+      return;
+    }
+    queue.addItem({
+      audioBlob: blob,
+      durationSeconds: dur,
+      candidateNames: [...exam.candidateNames],
+      level: exam.title,
+      language: exam.language,
+      bookletText: exam.bookletText,
+      rubricText: exam.rubricText,
+      examNotes: examNotes.trim(),
+    });
+    toast({
+      title: "Saved for later",
+      description: "The recording was queued. Go to Batch Session to analyze it when you have credits available.",
+    });
+    handleReset();
+  }, [recorder.audioBlob, recorder.duration, restoredBlob, restoredDuration, exam, examNotes, queue, toast, handleReset]);
 
   // Pre-AI speaker review screen
+
   if (reviewStage === "awaiting") {
     const stats = speakerStats(pendingWords);
     const ROLES: SpeakerRole[] = ["Examiner", "Candidate A", "Candidate B", "Candidate C", "Speaker unclear"];
