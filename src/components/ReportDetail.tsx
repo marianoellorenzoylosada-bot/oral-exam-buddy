@@ -585,6 +585,8 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
               examinerNotes: exam.examiner_notes || "",
               transcript: anonymize ? "[Anonymized]" : (exam.transcript || ""),
               date: new Date(exam.created_at).toLocaleDateString(),
+              partFeedback: Array.isArray(displayedPartFeedback) ? (displayedPartFeedback as PartFeedback[]) : undefined,
+              overallSummary: displayedOverallSummary,
             })} className="gap-2">
               <Download className="h-4 w-4" /> PDF
             </Button>
@@ -603,6 +605,8 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
                 areasForImprovement: improvements,
                 date: new Date(exam.created_at).toLocaleDateString(),
                 practice: recommendations.map((r) => ({ title: r.title, url: r.url })),
+                partFeedback: Array.isArray(displayedPartFeedback) ? (displayedPartFeedback as PartFeedback[]) : undefined,
+                overallSummary: displayedOverallSummary,
               })}
               className="gap-2"
             >
