@@ -1,53 +1,95 @@
-Contratás **Starter (~US$5, 30.000 créditos)** en ElevenLabs, y en la app dejamos la **transcripción en vivo apagada por defecto** con un toggle para encenderla. Con eso tenés margen para ~30 exámenes reales mañana.
+# Plan: Calibración de scoring + aprendizaje desde correcciones de examinadores senior
 
-## Plan de implementación
+Combina las dos partes que discutimos, con **control de acceso por rol** para el aprendizaje.
 
-### 1. Transcripción en vivo apagada por defecto
-- En la pantalla "New Exam", el componente de subtítulos en vivo (`LiveTranscript`) queda **oculto y desactivado** al abrir.
-- Se agrega un toggle claro arriba del grabador:
-  > **Live captions (consumen créditos extra)** — apagado por defecto
-- Con el toggle apagado: no se pide token, no se abre WebSocket a ElevenLabs, cero consumo en vivo.
-- La preferencia se recuerda en el navegador (`localStorage`) para que no tengas que apagarla cada vez.
-- La **transcripción final** (la que usa la IA para puntuar) se mantiene igual — es imprescindible para el scoring.
+---
 
-### 2. Cortar el bucle infinito de análisis
-- El auto-reintento pasa a correr **solo** para errores temporales (offline / red caída con `navigator.onLine === false`).
-- Para errores permanentes (cuota agotada, error del proveedor, audio inválido, formato no soportado): se corta el ciclo, el examen queda marcado como "pendiente con error" y aparece un botón **Reintentar manualmente**.
-- La pantalla "Confirm speakers" deja de quedarse pensando indefinidamente cuando el análisis falla.
+## Parte A — Calibración inmediata (sin que subas nada)
 
-### 3. Mensajes de error claros (reemplazan el genérico actual)
-El edge function `transcribe-audio` empieza a devolver códigos de error tipados que la app traduce a mensajes entendibles:
+Cambios en `supabase/functions/analyze-exam/index.ts` únicamente.
 
-- `quota_exceeded` → "Sin créditos de transcripción en ElevenLabs. Tu grabación quedó guardada — reponé créditos y tocá Reintentar."
-- `network_error` → "La conexión se cortó durante el análisis. Tu audio está guardado, tocá Reintentar."
-- `service_unavailable` → "El servicio de transcripción está temporalmente caído. Probá en unos minutos."
-- `audio_invalid` → "El audio parece vacío o dañado. Volvé a grabar."
-- Cualquier otro → mensaje genérico + botón para reintentar.
+1. **Anclas de calibración few-shot**: portar inline los 5 casos de `src/lib/calibrationCases.ts` (transcript + puntajes gold + rationale) al edge function. En cada análisis, inyectar 2 casos del mismo nivel que el examen actual como "CALIBRATION ANCHORS" dentro del Layer 1 del prompt.
 
-Mismo tratamiento en `LiveTranscript` cuando el toggle esté encendido y falle.
+2. **Reglas anti-pesimismo** en el prompt:
+   - Los descriptores son **holísticos**, no una checklist. Errores aislados no bajan el puntaje si la performance globalmente encaja con la banda.
+   - Hesitaciones y auto-correcciones son esperables en todas las bandas hasta 5.
+   - Si dudás entre dos medias-bandas, elegí la más alta cuando el candidato cumpla la mitad superior del descriptor.
+   - Los samples de la Core Library con puntaje asignado son **anclas de puntaje**, no solo texto de referencia.
+   - Confianza baja se reporta vía `confidence`, **no** bajando el score.
 
-### 4. "Guardar para analizar después" en el flujo individual
-- Después de detener la grabación, junto al botón actual **Submit for Analysis** aparece un segundo botón: **Guardar para analizar después**.
-- Persiste el audio + metadatos en IndexedDB (mismo mecanismo que ya usa Batch Session, vía `useBatchQueue`/`batchQueueDb`).
-- Aparece en una lista de "Exámenes pendientes" desde donde podés retomarlos cuando quieras.
-- El botón "Submit for Analysis" y su flujo actual **no se tocan**.
+3. **Self-check interno** antes del JSON final: pedir al modelo que compare cada criterio contra la ancla de calibración más similar y ajuste si la desviación es > 1 banda.
 
-### 5. Validación antes de mañana
-- Compila y typechecks pasan.
-- Con toggle apagado: ninguna llamada a `elevenlabs-scribe-token` en Network durante la grabación.
-- Con toggle encendido: funciona igual que hoy.
-- Simulando `quota_exceeded` en el edge function → aparece el mensaje específico y el botón de reintento manual (sin bucle).
-- Grabar → detener → se ven las dos opciones (Submit / Guardar).
-- Un examen guardado se retoma correctamente y se envía a analizar cuando haya cuota.
+Efecto: los marks se acercan a los de los samples oficiales sin que tengas que hacer nada.
+
+---
+
+## Parte B — Aprender de correcciones (solo examinadores senior)
+
+### B.1 Nuevo rol `senior`
+
+- Se extiende el enum `app_role` con `'senior'`.
+- Un `senior` es un examinador acreditado por Cambridge/experimentado cuyas correcciones se consideran "verdad de referencia".
+- Los `admin` pueden asignar/quitar el rol `senior` desde **Team Admin**.
+- Los `educator` regulares siguen pudiendo editar puntajes de sus propios reportes (comportamiento actual) — solo que sus ediciones **no** alimentan la calibración.
+
+### B.2 Flujo de aprobación (solo visible para senior)
+
+En `ReportDetail`, cuando el usuario logueado tiene rol `senior` y edita un puntaje, aparece un botón adicional:
+
+> **Approve as calibration reference**
+
+Al confirmar, se guarda una fila en la tabla `calibration_examples` (que ya existe y encaja perfecto):
+- `transcript` — el transcript del examen
+- `level` — nivel Cambridge
+- `original_gold` — los puntajes originales de la IA
+- `senior_corrections` — los puntajes finales del senior
+- `score_differences` — diff por criterio
+- `senior_notes` — comentario opcional del senior explicando el ajuste
+- `examiner_id` — `auth.uid()` del senior
+- `approved_at` — `now()`
+
+Con RLS: solo `senior` y `admin` pueden `INSERT`; todos los autenticados pueden `SELECT` (el edge function lee vía `service_role`, pero mantenerlo abierto en lectura permite mostrar transparencia).
+
+### B.3 Inyección al prompt
+
+En `analyze-exam`, además de las anclas built-in de la Parte A, se cargan las **últimas 5 anclas aprobadas** del mismo nivel desde `calibration_examples` y se agregan al bloque de "CALIBRATION ANCHORS" con la etiqueta *"Senior examiner calibration (institution-specific)"*. Si hay conflicto con las anclas built-in, las del senior tienen prioridad — el prompt lo indica explícitamente.
+
+Cap de 5 para no inflar el prompt; se rotan por más recientes.
+
+### B.4 UI de gestión (mínima)
+
+- En **Team Admin**: switch para asignar `senior` (solo visible a `admin`).
+- Nueva pantalla simple **Calibration Library** (solo `senior`/`admin`): lista las anclas aprobadas, permite eliminar las propias. No es un editor completo, es una vista de auditoría.
+
+---
+
+## Qué necesito de vos (0 acciones técnicas)
+
+Nada. Cuando esté implementado:
+1. Te asigno rol `senior` a vos.
+2. Corregís normalmente los reportes. Cuando un ajuste te parezca representativo de "así se puntúa esto en esta institución", tocás **Approve as calibration reference**.
+3. Los siguientes análisis del mismo nivel se calibran con esa referencia.
+
+---
 
 ## Qué NO se toca
 
-- Rúbricas, prompts, criterios de evaluación, scoring.
-- Users, roles, RLS, políticas, storage buckets.
-- Reportes, PDF, calibración, question bank.
-- Integraciones de pago.
-- `src/integrations/supabase/client.ts`, `types.ts`, `.env`.
+- Pesos de scoring, schema de la respuesta de IA, PDFs, live transcription, Question Bank, storage.
+- `src/integrations/supabase/client.ts`, `types.ts`, `.env`, `supabase/config.toml`.
+- Comportamiento actual para `educator` (siguen editando sus reportes, sin cambios).
 
-## Confirmación operativa
+---
 
-ElevenLabs Starter ya está activa: 30.000 créditos frescos. Con la transcripción en vivo apagada por defecto, cada examen de ~15 min consume ~900 créditos, lo que da margen para ~30 orales. Si un examen falla, la grabación queda guardada y se puede reintentar sin regrabar.
+## Validación
+
+1. Re-analizar un sample oficial → los marks quedan dentro de ±0.5 banda del oficial (Parte A).
+2. Como `senior`, corregir un puntaje y aprobarlo → aparece fila en `calibration_examples`.
+3. Re-analizar otro examen del mismo nivel → los edge function logs muestran que la ancla del senior se inyectó al prompt.
+4. Como `educator` (no senior), el botón de aprobar no aparece.
+5. Reportes previos y flujos existentes siguen funcionando.
+
+---
+
+## Nota
+
+El aprendizaje **no es fine-tuning real** — es prompt-conditioning con anclas. Práctico, barato y reversible (podés borrar anclas y volver al estado base). Si con el tiempo acumulás >50 anclas de calidad, ahí sí tiene sentido evaluar fine-tuning real (fuera de scope hoy).

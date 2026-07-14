@@ -30,6 +30,8 @@ import { generateStudentPdf } from "@/lib/generateStudentPdf";
 import { PartFeedbackSection, hasPartFeedbackContent } from "@/components/PartFeedbackSection";
 import type { PartFeedback } from "@/lib/partFeedback";
 import { useToast } from "@/hooks/use-toast";
+import { useRoles } from "@/hooks/useRoles";
+import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { SpeakerTranscript } from "@/components/SpeakerTranscript";
 import { SpeakerMappingPanel } from "@/components/SpeakerMappingPanel";
@@ -83,7 +85,12 @@ function mask(text: string | null | undefined) {
 export function ReportDetail({ exam, anonymize, onClose }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { isSenior } = useRoles();
+  const { user } = useAuth();
   const [deleting, setDeleting] = useState(false);
+  const [approveOpen, setApproveOpen] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [approveNotes, setApproveNotes] = useState("");
   const [deletingAudio, setDeletingAudio] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioGone, setAudioGone] = useState(false);
@@ -270,6 +277,52 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
     }
   };
 
+  // Approve current scores as a senior calibration reference.
+  // Uses the earliest AI-produced criteria (from previous_analyses) as
+  // `original_gold` when available; otherwise the current criteria.
+  const handleApproveCalibration = async () => {
+    if (!user) return;
+    if (!exam.transcript || exam.transcript.trim().split(/\s+/).filter(Boolean).length < 30) {
+      toast({ title: "Transcript too short", description: "Need at least 30 words to approve.", variant: "destructive" });
+      return;
+    }
+    setApproving(true);
+    try {
+      const firstAnalysis = previousAnalyses[previousAnalyses.length - 1];
+      const original: any[] = Array.isArray(firstAnalysis?.criteria) ? firstAnalysis.criteria : (Array.isArray(exam.criteria) ? exam.criteria : []);
+      const current: any[] = Array.isArray(exam.criteria) ? exam.criteria : [];
+      const scoreDiff = current.map((c) => {
+        const o = original.find((x) => x?.name === c.name);
+        return {
+          name: c.name,
+          original: typeof o?.score === "number" ? o.score : null,
+          senior: typeof c.score === "number" ? c.score : null,
+          delta: (typeof o?.score === "number" && typeof c.score === "number") ? Math.round((c.score - o.score) * 10) / 10 : null,
+        };
+      });
+      const { error } = await supabase.from("calibration_examples").insert({
+        case_id: exam.id,
+        level: exam.level_code,
+        task_type: "",
+        transcript: exam.transcript,
+        original_gold: original as any,
+        senior_corrections: current as any,
+        score_differences: scoreDiff as any,
+        rationale_differences: [] as any,
+        senior_notes: approveNotes.trim(),
+        examiner_id: user.id,
+      });
+      if (error) throw error;
+      toast({ title: "Calibration reference approved", description: "Future analyses at this level will use it as an anchor." });
+      setApproveOpen(false);
+      setApproveNotes("");
+    } catch (err: any) {
+      toast({ title: "Approval failed", description: err.message, variant: "destructive" });
+    } finally {
+      setApproving(false);
+    }
+  };
+
   return (
     <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
       <DialogHeader>
@@ -453,8 +506,59 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
                 </div>
               );
             })}
+            {isSenior && !viewing && (
+              <div className="pt-2">
+                <Button size="sm" variant="outline" className="gap-2" onClick={() => setApproveOpen(true)}>
+                  <GraduationCap className="h-3.5 w-3.5" />
+                  Approve as calibration reference
+                </Button>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Save the current scores as an anchor. Future analyses at {exam.level_code} will use it to calibrate.
+                </p>
+              </div>
+            )}
           </div>
         )}
+
+        <Dialog open={approveOpen} onOpenChange={setApproveOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="font-display">Approve calibration reference</DialogTitle>
+              <DialogDescription>
+                The current transcript and criterion scores will be saved as an anchor for level {exam.level_code}.
+                Future AI analyses at this level will use it to align scoring with your judgment.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs">Notes (optional)</Label>
+                <Textarea
+                  value={approveNotes}
+                  onChange={(e) => setApproveNotes(e.target.value)}
+                  placeholder="Why this performance anchors the level (e.g. borderline B2/C1; strong DM despite pronunciation slips)…"
+                  className="min-h-[80px] text-sm mt-1"
+                />
+              </div>
+              <div className="rounded-md border bg-muted/30 p-3 text-xs">
+                <div className="font-medium mb-1">Scores being anchored</div>
+                <ul className="space-y-0.5">
+                  {criteria.map((c) => (
+                    <li key={c.name} className="flex justify-between">
+                      <span>{c.name}</span>
+                      <span className="font-mono">{c.score}/{c.maxScore}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setApproveOpen(false)} disabled={approving}>Cancel</Button>
+              <Button onClick={handleApproveCalibration} disabled={approving}>
+                {approving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Approve"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Per-part feedback (only when stored on the report). */}
         {Array.isArray(displayedPartFeedback) && hasPartFeedbackContent(
