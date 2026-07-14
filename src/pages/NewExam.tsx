@@ -455,6 +455,7 @@ export default function NewExamPage() {
     setRestoredBlob(null);
     setRestoredDuration(0);
     setPendingAnalysis(false);
+    setLastAnalysisError(null);
     setReviewStage("idle");
     setPendingTranscript("");
     setPendingWords([]);
@@ -462,6 +463,7 @@ export default function NewExamPage() {
     clearDraft().catch(() => undefined);
     setActiveTab("setup");
   }, [reset, recorder]);
+
 
   // ── Draft restore on mount ─────────────────────────────────────────────
   useEffect(() => {
