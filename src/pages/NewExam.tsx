@@ -304,10 +304,11 @@ export default function NewExamPage() {
       clearDraft().catch(() => undefined);
     } catch (err: any) {
       console.error("Scoring error:", err);
-      setPendingAnalysis(true);
+      const classified = await classifyAnalysisError(err);
+      setLastAnalysisError(classified);
       try {
         await saveDraft({
-          pendingAnalysis: true,
+          pendingAnalysis: false,
           title: exam.title, language: exam.language, institution: exam.institution,
           group: exam.group, candidateNames: exam.candidateNames,
           bookletText: exam.bookletText, rubricText: exam.rubricText,
@@ -317,7 +318,7 @@ export default function NewExamPage() {
       } catch { /* ignore */ }
       toast({
         title: "Analysis failed",
-        description: err.message || "Could not score the exam. Your recording is saved — you can retry submission.",
+        description: classified.userMessage,
         variant: "destructive",
       });
     } finally {
@@ -325,6 +326,7 @@ export default function NewExamPage() {
       setAnalyzingStep("");
     }
   }, [exam, selectedLang, quickTags, liveTranscript, phaseMarks, toast, examNotes]);
+
 
   const handleSubmitForAnalysis = useCallback(async () => {
     const blob = recorder.audioBlob ?? restoredBlob;
