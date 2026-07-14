@@ -356,6 +356,8 @@ export function DraftReport({ result, level, levelCode, language, institution, g
       examinerNotes: sharedDraft.examinerNotes,
       transcript: sharedDraft.transcript,
       date: new Date().toLocaleDateString(),
+      partFeedback: draft.partFeedback,
+      overallSummary: draft.overallSummary,
     });
   };
 
