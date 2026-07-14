@@ -296,6 +296,8 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         phase_marks: phaseMarks && phaseMarks.length > 0 ? (phaseMarks as any) : null,
         audio_path: audioPath,
         audio_expires_at: audioPath ? new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString() : null,
+        part_feedback: draft.partFeedback && draft.partFeedback.length > 0 ? (draft.partFeedback as any) : null,
+        overall_summary: draft.overallSummary || null,
       }).select("id").single();
       if (error) throw error;
 
