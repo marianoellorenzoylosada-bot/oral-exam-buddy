@@ -911,6 +911,23 @@ export default function NewExamPage() {
                   )}
                 </div>
 
+                {/* Live captions toggle — off by default to save ElevenLabs credits */}
+                <div className="flex items-center justify-between gap-3 w-full max-w-md rounded-lg border border-border/50 bg-muted/20 px-4 py-3">
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-medium">Live captions</p>
+                    <p className="text-xs text-muted-foreground">Uses extra ElevenLabs transcription credits.</p>
+                  </div>
+                  <Switch
+                    checked={liveTranscriptionEnabled}
+                    onCheckedChange={(checked) => {
+                      setLiveTranscriptionEnabled(checked);
+                      try { localStorage.setItem(LIVE_CAPTIONS_KEY, checked ? "true" : "false"); } catch { /* ignore */ }
+                    }}
+                    aria-label="Toggle live captions"
+                  />
+                </div>
+
+
                 {/* Playback */}
                 {recorder.audioUrl && (
                   <audio controls src={recorder.audioUrl} className="w-full max-w-md" />
