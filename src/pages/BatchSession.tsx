@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Mic, Square, Pause, Play, Upload, FileText, BookOpen, Trash2, Clock, Users,
   Loader2, Plus, X, CheckCircle2, AlertTriangle, ListChecks, PlayCircle, Sparkles, ChevronRight,
-  LifeBuoy,
+  LifeBuoy, Download,
 } from "lucide-react";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { useBatchQueue, type BatchItem } from "@/hooks/useBatchQueue";
