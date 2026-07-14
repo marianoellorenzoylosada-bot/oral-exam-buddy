@@ -1,6 +1,86 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
+type TranscriptionErrorCode =
+  | "quota_exceeded"
+  | "rate_limited"
+  | "auth_error"
+  | "service_unavailable"
+  | "audio_invalid"
+  | "transcription_error";
+
+interface TranscriptionErrorResponse {
+  error: string;
+  code: TranscriptionErrorCode;
+  retryable: boolean;
+}
+
+function classifyTranscriptionError(
+  status: number,
+  bodyText: string,
+): TranscriptionErrorResponse {
+  const lower = bodyText.toLowerCase();
+  if (
+    status === 402 || status === 403 ||
+    lower.includes("quota_exceeded") || lower.includes("quota exceeded") ||
+    lower.includes("billing") || lower.includes("credit")
+  ) {
+    return {
+      error: "ElevenLabs usage quota exceeded. Please upgrade your plan or wait for the next billing cycle.",
+      code: "quota_exceeded",
+      retryable: false,
+    };
+  }
+  if (
+    status === 401 ||
+    lower.includes("unauthorized") || lower.includes("invalid api key") ||
+    lower.includes("auth_error") || lower.includes("authentication")
+  ) {
+    return {
+      error: "ElevenLabs API key is invalid or missing. Check the connection settings.",
+      code: "auth_error",
+      retryable: false,
+    };
+  }
+  if (status === 429 || lower.includes("rate_limited") || lower.includes("rate limit")) {
+    return {
+      error: "Too many requests to ElevenLabs. Please wait a moment and retry.",
+      code: "rate_limited",
+      retryable: true,
+    };
+  }
+  if (
+    (status === 400 || status === 422) &&
+    (lower.includes("no speech") || lower.includes("no audio") ||
+      lower.includes("invalid audio") || lower.includes("audio_invalid") ||
+      lower.includes("input_error") || lower.includes("insufficient_audio"))
+  ) {
+    return {
+      error: "The audio file appears to be empty or invalid. Please record again.",
+      code: "audio_invalid",
+      retryable: false,
+    };
+  }
+  if (
+    status >= 500 ||
+    lower.includes("service_unavailable") || lower.includes("transcriber_error") ||
+    lower.includes("temporary") || lower.includes("server error") ||
+    lower.includes("gateway")
+  ) {
+    return {
+      error: "ElevenLabs transcription service is temporarily unavailable. Please retry in a few moments.",
+      code: "service_unavailable",
+      retryable: true,
+    };
+  }
+  return {
+    error: `Transcription failed (${status}): ${bodyText}`,
+    code: "transcription_error",
+    retryable: status >= 500 || status === 429,
+  };
+}
+
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -103,10 +183,12 @@ serve(async (req) => {
     if (!resp.ok) {
       const err = await resp.text();
       console.error("ElevenLabs Scribe error:", resp.status, err);
-      return new Response(JSON.stringify({ error: `Transcription failed: ${resp.status}` }), {
-        status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      const classified = classifyTranscriptionError(resp.status, err);
+      return new Response(JSON.stringify(classified), {
+        status: resp.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
 
     const result = await resp.json();
     const transcript: string = result.text ?? "";
@@ -122,7 +204,12 @@ serve(async (req) => {
     });
   } catch (e) {
     console.error("transcribe-audio error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+    const err = e instanceof Error ? e.message : "Unknown error";
+    return new Response(JSON.stringify({
+      error: err,
+      code: "transcription_error",
+      retryable: false,
+    }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

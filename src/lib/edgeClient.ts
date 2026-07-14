@@ -9,6 +9,17 @@ interface CallOptions {
   timeoutMs?: number;
 }
 
+export class EdgeFunctionError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly body: Record<string, any> | null,
+  ) {
+    super(message);
+    this.name = "EdgeFunctionError";
+  }
+}
+
 /**
  * Thin replacement for supabase.functions.invoke() that:
  *  - guarantees a fresh user JWT (refreshes if within 60s of expiry),
@@ -16,6 +27,7 @@ interface CallOptions {
  *  - surfaces the real HTTP status + response body on failure,
  *  - distinguishes network errors from HTTP errors.
  */
+
 export async function callEdgeFunction<T = unknown>(
   name: string,
   { body, signal, timeoutMs }: CallOptions = {},
@@ -80,9 +92,10 @@ export async function callEdgeFunction<T = unknown>(
       throw new Error("Unauthorized — please sign in again.");
     }
     const msg = parsed?.error || parsed?.message || text || `HTTP ${response.status}`;
-    throw new Error(`${name} failed (${response.status}): ${msg}`);
+    throw new EdgeFunctionError(`${name} failed (${response.status}): ${msg}`, response.status, parsed ?? null);
   }
 
   if (parsed?.error) throw new Error(parsed.error);
   return parsed as T;
 }
+

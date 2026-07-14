@@ -19,15 +19,16 @@ async function requireUser(req: Request): Promise<Response | { userId: string }>
     Deno.env.get("SUPABASE_ANON_KEY")!,
     { global: { headers: { Authorization: authHeader } } },
   );
-  const token = authHeader.replace("Bearer ", "");
-  const { data, error } = await supabase.auth.getClaims(token);
-  if (error || !data?.claims?.sub) {
+  const jwt = authHeader.replace("Bearer ", "");
+  const { data, error } = await supabase.auth.getUser(jwt);
+  if (error || !data?.user?.id) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-  return { userId: data.claims.sub as string };
+  return { userId: data.user.id };
 }
+
 
 async function fetchLibraryBlock(userId: string, level: string): Promise<string> {
   try {

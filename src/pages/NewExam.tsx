@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Mic, Square, Pause, Play, Upload, FileText, BookOpen, Trash2, Clock, Users, ExternalLink, Info, Loader2, AlertCircle, Plus, X, WifiOff, ShieldCheck } from "lucide-react";
+import { Mic, Square, Pause, Play, Upload, FileText, BookOpen, Trash2, Clock, Users, ExternalLink, Info, Loader2, AlertCircle, Plus, X, WifiOff, ShieldCheck, Save, RefreshCw } from "lucide-react";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { useExamStore } from "@/hooks/useExamStore";
 
@@ -20,7 +20,11 @@ import { LiveTranscript } from "@/components/LiveTranscript";
 import { PhaseTimer, type PhaseMark } from "@/components/PhaseTimer";
 import { MicCheck } from "@/components/MicCheck";
 import { QuickTags, type QuickTag } from "@/components/QuickTags";
-import { transcribeBlob, type ScribeWord } from "@/lib/transcribe";
+import { transcribeBlob, TranscriptionError, type ScribeWord } from "@/lib/transcribe";
+import { useBatchQueue } from "@/hooks/useBatchQueue";
+import { Switch } from "@/components/ui/switch";
+import { FunctionsHttpError } from "@supabase/supabase-js";
+
 import { labelTranscriptFromWords, hasClearSpeakerLabels } from "@/lib/labelTranscript";
 import { checkAudioSize, checkAudioDuration, checkContextSize } from "@/lib/uploadGuards";
 import { GroupPicker } from "@/components/GroupPicker";
@@ -38,7 +42,57 @@ function formatTime(seconds: number) {
   return `${m}:${s}`;
 }
 
+const LIVE_CAPTIONS_KEY = "oralassess-live-captions";
+
+async function readEdgeError(err: any): Promise<string> {
+  if (err instanceof FunctionsHttpError) {
+    try {
+      const text = await err.context.text();
+      return text || err.message;
+    } catch { return err.message; }
+  }
+  return err?.message || String(err);
+}
+
+interface AnalysisError {
+  code: string;
+  retryable: boolean;
+  message: string;
+  userMessage: string;
+}
+
+async function classifyAnalysisError(err: any): Promise<AnalysisError> {
+  if (err instanceof TranscriptionError) {
+    return { code: err.code, retryable: err.retryable, message: err.message, userMessage: err.userMessage };
+  }
+  const raw = await readEdgeError(err);
+  const msg = raw.toLowerCase();
+  if (msg.includes("not enough speech") || msg.includes("could not assess")) {
+    return { code: "insufficient_speech", retryable: false, message: raw, userMessage: "No se detectó suficiente habla en la grabación. Volvé a grabar con los candidatos hablando claramente." };
+  }
+  if (msg.includes("too large") || msg.includes("trim to under") || msg.includes("context_too_large")) {
+    return { code: "context_too_large", retryable: false, message: raw, userMessage: "Los materiales de contexto son muy largos. Reducilos y reintentá." };
+  }
+  if (msg.includes("unauthorized") || msg.includes("please sign in")) {
+    return { code: "auth_error", retryable: false, message: raw, userMessage: "Tu sesión expiró. Volvé a iniciar sesión y reintentá." };
+  }
+  if (msg.includes("quota_exceeded") || msg.includes("quota exceeded") || msg.includes("usage quota")) {
+    return { code: "quota_exceeded", retryable: false, message: raw, userMessage: "Sin créditos de transcripción en ElevenLabs. Tu grabación quedó guardada — reponé créditos y tocá Reintentar." };
+  }
+  if (msg.includes("rate limit") || msg.includes("rate_limited") || msg.includes("too many requests")) {
+    return { code: "rate_limited", retryable: true, message: raw, userMessage: "Demasiadas solicitudes. Esperá un momento y reintentá." };
+  }
+  if (msg.includes("network error") || msg.includes("failed to fetch") || msg.includes("timeout") || msg.includes("timed out")) {
+    return { code: "network_error", retryable: true, message: raw, userMessage: "La conexión se cortó durante el análisis. Tu audio está guardado, tocá Reintentar." };
+  }
+  if (msg.includes("service unavailable") || msg.includes("service_unavailable") || msg.includes("temporarily unavailable") || msg.includes("transcriber_error")) {
+    return { code: "service_unavailable", retryable: true, message: raw, userMessage: "El servicio de análisis está temporalmente caído. Probá en unos minutos." };
+  }
+  return { code: "analysis_error", retryable: false, message: raw, userMessage: raw || "No se pudo analizar el examen. Tu grabación quedó guardada — tocá Reintentar." };
+}
+
 function FileDropZone({ label, icon: Icon, file, extractedText, onFile, onClear, accept, hint }: {
+
   label: string; icon: React.ElementType; file: File | null; extractedText?: string;
   onFile: (f: File) => void; onClear: () => void; accept: string; hint?: string;
 }) {
@@ -132,6 +186,7 @@ export default function NewExamPage() {
   const recorder = useAudioRecorder();
   const { toast } = useToast();
   const online = useOnlineStatus();
+  const queue = useBatchQueue();
   const [activeTab, setActiveTab] = useState("setup");
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzingStep, setAnalyzingStep] = useState<"" | "transcribing" | "scoring">("");
@@ -150,8 +205,15 @@ export default function NewExamPage() {
   const [restoredBlob, setRestoredBlob] = useState<Blob | null>(null);
   const [restoredDuration, setRestoredDuration] = useState<number>(0);
   const [pendingAnalysis, setPendingAnalysis] = useState(false);
+  const [lastAnalysisError, setLastAnalysisError] = useState<AnalysisError | null>(null);
+  const [liveTranscriptionEnabled, setLiveTranscriptionEnabled] = useState(() => {
+    try {
+      return localStorage.getItem(LIVE_CAPTIONS_KEY) === "true";
+    } catch { return false; }
+  });
   const [examNotes, setExamNotes] = useState("");
   const draftRestoredRef = useRef(false);
+
 
 
   const examLevels = getExamLevels(exam.language);
@@ -242,10 +304,11 @@ export default function NewExamPage() {
       clearDraft().catch(() => undefined);
     } catch (err: any) {
       console.error("Scoring error:", err);
-      setPendingAnalysis(true);
+      const classified = await classifyAnalysisError(err);
+      setLastAnalysisError(classified);
       try {
         await saveDraft({
-          pendingAnalysis: true,
+          pendingAnalysis: false,
           title: exam.title, language: exam.language, institution: exam.institution,
           group: exam.group, candidateNames: exam.candidateNames,
           bookletText: exam.bookletText, rubricText: exam.rubricText,
@@ -255,7 +318,7 @@ export default function NewExamPage() {
       } catch { /* ignore */ }
       toast({
         title: "Analysis failed",
-        description: err.message || "Could not score the exam. Your recording is saved — you can retry submission.",
+        description: classified.userMessage,
         variant: "destructive",
       });
     } finally {
@@ -263,6 +326,7 @@ export default function NewExamPage() {
       setAnalyzingStep("");
     }
   }, [exam, selectedLang, quickTags, liveTranscript, phaseMarks, toast, examNotes]);
+
 
   const handleSubmitForAnalysis = useCallback(async () => {
     const blob = recorder.audioBlob ?? restoredBlob;
@@ -272,6 +336,9 @@ export default function NewExamPage() {
       toast({ title: "Missing exam level", description: "Please select a CEFR level in the Setup tab.", variant: "destructive" });
       return;
     }
+
+    // Clear any previous error so the user can retry manually without stale state.
+    setLastAnalysisError(null);
 
     // Offline guard — defer the analysis and let the auto-retry effect run it later.
     if (!navigator.onLine) {
@@ -307,6 +374,7 @@ export default function NewExamPage() {
       return;
     }
 
+    setPendingAnalysis(false);
     setAnalyzing(true);
     try {
       // Step 1: ALWAYS re-transcribe the full uploaded audio for final scoring.
@@ -340,10 +408,11 @@ export default function NewExamPage() {
       await runScoring(blob, dur, transcriptText, out.words);
     } catch (err: any) {
       console.error("Transcription error:", err);
-      setPendingAnalysis(true);
+      const classified = await classifyAnalysisError(err);
+      setLastAnalysisError(classified);
       try {
         await saveDraft({
-          pendingAnalysis: true,
+          pendingAnalysis: false,
           title: exam.title, language: exam.language, institution: exam.institution,
           group: exam.group, candidateNames: exam.candidateNames,
           bookletText: exam.bookletText, rubricText: exam.rubricText,
@@ -353,13 +422,14 @@ export default function NewExamPage() {
       } catch { /* ignore */ }
       toast({
         title: "Analysis failed",
-        description: err.message || "Could not process the exam. Your recording is saved — you can retry submission.",
+        description: classified.userMessage,
         variant: "destructive",
       });
       setAnalyzing(false);
       setAnalyzingStep("");
     }
   }, [recorder.audioBlob, recorder.duration, restoredBlob, restoredDuration, exam, toast, liveTranscript, scribeWords, quickTags, phaseMarks, runScoring]);
+
 
   const confirmReviewAndScore = useCallback(async () => {
     const blob = recorder.audioBlob ?? restoredBlob;
@@ -385,6 +455,7 @@ export default function NewExamPage() {
     setRestoredBlob(null);
     setRestoredDuration(0);
     setPendingAnalysis(false);
+    setLastAnalysisError(null);
     setReviewStage("idle");
     setPendingTranscript("");
     setPendingWords([]);
@@ -393,7 +464,23 @@ export default function NewExamPage() {
     setActiveTab("setup");
   }, [reset, recorder]);
 
+  const handleRecordAgain = useCallback(() => {
+    recorder.reset();
+    setLiveTranscript("");
+    setScribeWords([]);
+    setPhaseMarks([]);
+    setQuickTags([]);
+    setPendingAnalysis(false);
+    setLastAnalysisError(null);
+    setPendingTranscript("");
+    setPendingWords([]);
+    setSpeakerMap({});
+    setReviewStage("idle");
+    setReport(null);
+  }, [recorder]);
+
   // ── Draft restore on mount ─────────────────────────────────────────────
+
   useEffect(() => {
     if (draftRestoredRef.current) return;
     draftRestoredRef.current = true;
@@ -440,14 +527,44 @@ export default function NewExamPage() {
   }, [recorder.audioBlob, recorder.duration, restoredBlob, restoredDuration, exam, liveTranscript, scribeWords, phaseMarks, quickTags, pendingAnalysis]);
 
   // ── Auto-retry pending analysis when we come back online ───────────────
+  // Only auto-retry for the explicit offline guard. Permanent or temporary
+  // service errors set lastAnalysisError and require a manual retry so the
+  // examiner is not trapped in a silent loop.
   useEffect(() => {
-    if (online && pendingAnalysis && !analyzing) {
+    if (online && pendingAnalysis && !analyzing && !lastAnalysisError) {
       toast({ title: "Back online", description: "Resuming queued analysis…" });
       handleSubmitForAnalysis();
     }
-  }, [online, pendingAnalysis, analyzing, handleSubmitForAnalysis, toast]);
+  }, [online, pendingAnalysis, analyzing, lastAnalysisError, handleSubmitForAnalysis, toast]);
+
+  // Persist a finished recording to the batch queue so it can be analyzed later
+  // without consuming credits right now.
+  const handleSaveForLater = useCallback(async () => {
+    const blob = recorder.audioBlob ?? restoredBlob;
+    const dur = recorder.audioBlob ? recorder.duration : restoredDuration;
+    if (!blob || !exam.title) {
+      toast({ title: "Missing data", description: "Please select an exam level and record audio first.", variant: "destructive" });
+      return;
+    }
+    queue.addItem({
+      audioBlob: blob,
+      durationSeconds: dur,
+      candidateNames: [...exam.candidateNames],
+      level: exam.title,
+      language: exam.language,
+      bookletText: exam.bookletText,
+      rubricText: exam.rubricText,
+      examNotes: examNotes.trim(),
+    });
+    toast({
+      title: "Saved for later",
+      description: "The recording was queued. Go to Batch Session to analyze it when you have credits available.",
+    });
+    handleReset();
+  }, [recorder.audioBlob, recorder.duration, restoredBlob, restoredDuration, exam, examNotes, queue, toast, handleReset]);
 
   // Pre-AI speaker review screen
+
   if (reviewStage === "awaiting") {
     const stats = speakerStats(pendingWords);
     const ROLES: SpeakerRole[] = ["Examiner", "Candidate A", "Candidate B", "Candidate C", "Speaker unclear"];
@@ -805,9 +922,27 @@ export default function NewExamPage() {
                     </>
                   )}
                   {recorder.state === "stopped" && (
-                    <Button variant="outline" onClick={recorder.reset}>Record Again</Button>
+                    <Button variant="outline" onClick={handleRecordAgain}>Record Again</Button>
                   )}
+
                 </div>
+
+                {/* Live captions toggle — off by default to save ElevenLabs credits */}
+                <div className="flex items-center justify-between gap-3 w-full max-w-md rounded-lg border border-border/50 bg-muted/20 px-4 py-3">
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-medium">Live captions</p>
+                    <p className="text-xs text-muted-foreground">Uses extra ElevenLabs transcription credits.</p>
+                  </div>
+                  <Switch
+                    checked={liveTranscriptionEnabled}
+                    onCheckedChange={(checked) => {
+                      setLiveTranscriptionEnabled(checked);
+                      try { localStorage.setItem(LIVE_CAPTIONS_KEY, checked ? "true" : "false"); } catch { /* ignore */ }
+                    }}
+                    aria-label="Toggle live captions"
+                  />
+                </div>
+
 
                 {/* Playback */}
                 {recorder.audioUrl && (
@@ -824,15 +959,18 @@ export default function NewExamPage() {
                   />
                 )}
 
-                {/* Live Transcription — always mounted while recording so it auto-connects */}
-                {(recorder.state === "recording" || recorder.state === "paused" || liveTranscript) && (
+                {/* Live Transcription — only mounted when the toggle is enabled */}
+                {liveTranscriptionEnabled && (
                   <div className="w-full max-w-md">
                     <LiveTranscript
                       isRecording={recorder.state === "recording"}
                       onTranscriptUpdate={setLiveTranscript}
+                      enabled={liveTranscriptionEnabled}
                     />
                   </div>
                 )}
+
+
 
                 {/* Per-candidate quick tags during the exam */}
                 {(recorder.state === "recording" || recorder.state === "paused" || quickTags.length > 0) && (
@@ -862,14 +1000,30 @@ export default function NewExamPage() {
                 )}
 
                 {/* Pending offline analysis notice */}
-                {pendingAnalysis && (
+                {pendingAnalysis && !lastAnalysisError && (
                   <div className="w-full max-w-md rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
                     <WifiOff className="h-4 w-4 shrink-0" />
                     Analysis queued — will run automatically when you're back online.
                   </div>
                 )}
 
+                {/* Analysis error — manual retry, no infinite loop */}
+                {lastAnalysisError && (
+                  <div className="w-full max-w-md rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
+                    <div className="flex items-start gap-2 text-sm text-destructive">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <span>{lastAnalysisError.userMessage}</span>
+                    </div>
+                    <div className="flex justify-end">
+                      <Button size="sm" variant="outline" onClick={handleSubmitForAnalysis} className="gap-1">
+                        <RefreshCw className="h-3.5 w-3.5" /> Reintentar
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Restored draft notice */}
+
                 {restoredBlob && !recorder.audioBlob && (
                   <div className="w-full max-w-md rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
                     <p className="font-medium">Recovered recording ready ({Math.floor(restoredDuration / 60)}:{String(restoredDuration % 60).padStart(2, "0")})</p>
@@ -877,22 +1031,33 @@ export default function NewExamPage() {
                   </div>
                 )}
 
-                <div className="w-full max-w-md flex justify-between">
+                <div className="w-full max-w-md flex flex-col sm:flex-row justify-between gap-3">
                   <Button variant="outline" onClick={() => setActiveTab("context")}>← Back</Button>
-                  <Button
-                    disabled={(!audioBlobForSubmit || (recorder.state !== "stopped" && !restoredBlob)) || analyzing || !exam.title}
-                    onClick={handleSubmitForAnalysis}
-                    className="gap-2"
-                  >
-                    {analyzing ? (
-                      <><Loader2 className="h-4 w-4 animate-spin" /> {analyzingStep === "transcribing" ? "Transcribing…" : "Scoring…"}</>
-                    ) : !online ? (
-                      <><WifiOff className="h-4 w-4" /> Queue for analysis</>
-                    ) : (
-                      "Submit for Analysis →"
-                    )}
-                  </Button>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Button
+                      variant="outline"
+                      disabled={!audioBlobForSubmit || (recorder.state !== "stopped" && !restoredBlob) || analyzing || !exam.title}
+                      onClick={handleSaveForLater}
+                      className="gap-2"
+                    >
+                      <Save className="h-4 w-4" /> Guardar para analizar después
+                    </Button>
+                    <Button
+                      disabled={(!audioBlobForSubmit || (recorder.state !== "stopped" && !restoredBlob)) || analyzing || !exam.title}
+                      onClick={handleSubmitForAnalysis}
+                      className="gap-2"
+                    >
+                      {analyzing ? (
+                        <><Loader2 className="h-4 w-4 animate-spin" /> {analyzingStep === "transcribing" ? "Transcribing…" : "Scoring…"}</>
+                      ) : !online ? (
+                        <><WifiOff className="h-4 w-4" /> Queue for analysis</>
+                      ) : (
+                        "Submit for Analysis →"
+                      )}
+                    </Button>
+                  </div>
                 </div>
+
               </CardContent>
             </Card>
           </TabsContent>

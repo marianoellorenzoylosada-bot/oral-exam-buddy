@@ -4,13 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MicOff, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { classifyTranscriptionError } from "@/lib/transcribe";
 
 interface LiveTranscriptProps {
   isRecording: boolean;
   onTranscriptUpdate?: (fullText: string) => void;
+  enabled?: boolean;
 }
 
-export function LiveTranscript({ isRecording, onTranscriptUpdate }: LiveTranscriptProps) {
+export function LiveTranscript({ isRecording, onTranscriptUpdate, enabled = true }: LiveTranscriptProps) {
+
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dropped, setDropped] = useState(false);
@@ -51,14 +54,16 @@ export function LiveTranscript({ isRecording, onTranscriptUpdate }: LiveTranscri
       setDropped(false);
     } catch (err: any) {
       console.error("Transcription start failed:", err);
-      setError(err?.message || "Could not start live transcription.");
+      const classified = classifyTranscriptionError(err);
+      setError(classified.userMessage);
     } finally {
       setConnecting(false);
     }
   }, [scribe]);
 
-  // Auto-connect when recording starts; auto-disconnect when it stops
+  // Auto-connect when recording starts (only if enabled); auto-disconnect when it stops
   useEffect(() => {
+    if (!enabled) return;
     if (isRecording && !scribe.isConnected && !connecting && !triedRef.current) {
       triedRef.current = true;
       void startTranscription();
@@ -70,10 +75,11 @@ export function LiveTranscript({ isRecording, onTranscriptUpdate }: LiveTranscri
       setDropped(false);
       if (scribe.isConnected) scribe.disconnect();
     }
-  }, [isRecording, scribe, connecting, startTranscription]);
+  }, [isRecording, scribe, connecting, startTranscription, enabled]);
 
   // Detect a silent disconnect mid-recording: warn the examiner and try ONE silent reconnect.
   useEffect(() => {
+    if (!enabled) return;
     if (scribe.isConnected) {
       wasConnectedRef.current = true;
       setDropped(false);
@@ -86,7 +92,8 @@ export function LiveTranscript({ isRecording, onTranscriptUpdate }: LiveTranscri
         void startTranscription();
       }
     }
-  }, [scribe.isConnected, isRecording, connecting, startTranscription]);
+  }, [scribe.isConnected, isRecording, connecting, startTranscription, enabled]);
+
 
   const committedTexts = scribe.committedTranscripts?.map((t) => t.text) ?? [];
   const displayText = [...committedTexts, scribe.partialTranscript].filter(Boolean).join(" ");
