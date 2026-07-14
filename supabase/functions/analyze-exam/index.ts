@@ -233,8 +233,18 @@ serve(async (req) => {
     };
     const partsList = PARTS_BY_LEVEL[level] ?? PARTS_BY_LEVEL.B2;
     const partsBlock = partsList.map((p) => `  - ${p}`).join("\n");
+    const CRITERIA_NAMES = [
+      "Grammar and Vocabulary",
+      "Discourse Management",
+      "Pronunciation",
+      "Interactive Communication",
+      "Global Achievement",
+    ];
+    const criteriaBreakdownJson = CRITERIA_NAMES
+      .map((n) => `            { "criterion": "${n}", "comment": "..." }`)
+      .join(",\n");
     const partFeedbackExample = partsList
-      .map((p) => `        { "part": "${p.split(" — ")[0]}", "title": "${p.split(" — ")[1] ?? ""}", "commentary": "...", "observations": ["..."], "criteriaTouched": ["Discourse Management"], "improvement": "..." }`)
+      .map((p) => `        { "part": "${p.split(" — ")[0]}", "title": "${p.split(" — ")[1] ?? ""}", "commentary": "...", "criteriaBreakdown": [\n${criteriaBreakdownJson}\n          ], "improvement": "..." }`)
       .join(",\n");
 
     // Format examiner-supplied quick tags as time-stamped evidence the model
