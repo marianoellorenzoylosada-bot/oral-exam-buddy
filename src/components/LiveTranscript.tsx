@@ -54,14 +54,16 @@ export function LiveTranscript({ isRecording, onTranscriptUpdate, enabled = true
       setDropped(false);
     } catch (err: any) {
       console.error("Transcription start failed:", err);
-      setError(err?.message || "Could not start live transcription.");
+      const classified = classifyTranscriptionError(err);
+      setError(classified.userMessage);
     } finally {
       setConnecting(false);
     }
   }, [scribe]);
 
-  // Auto-connect when recording starts; auto-disconnect when it stops
+  // Auto-connect when recording starts (only if enabled); auto-disconnect when it stops
   useEffect(() => {
+    if (!enabled) return;
     if (isRecording && !scribe.isConnected && !connecting && !triedRef.current) {
       triedRef.current = true;
       void startTranscription();
@@ -73,10 +75,11 @@ export function LiveTranscript({ isRecording, onTranscriptUpdate, enabled = true
       setDropped(false);
       if (scribe.isConnected) scribe.disconnect();
     }
-  }, [isRecording, scribe, connecting, startTranscription]);
+  }, [isRecording, scribe, connecting, startTranscription, enabled]);
 
   // Detect a silent disconnect mid-recording: warn the examiner and try ONE silent reconnect.
   useEffect(() => {
+    if (!enabled) return;
     if (scribe.isConnected) {
       wasConnectedRef.current = true;
       setDropped(false);
@@ -89,7 +92,8 @@ export function LiveTranscript({ isRecording, onTranscriptUpdate, enabled = true
         void startTranscription();
       }
     }
-  }, [scribe.isConnected, isRecording, connecting, startTranscription]);
+  }, [scribe.isConnected, isRecording, connecting, startTranscription, enabled]);
+
 
   const committedTexts = scribe.committedTranscripts?.map((t) => t.text) ?? [];
   const displayText = [...committedTexts, scribe.partialTranscript].filter(Boolean).join(" ");
