@@ -277,6 +277,51 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
     }
   };
 
+  // Approve current scores as a senior calibration reference.
+  // Uses the earliest AI-produced criteria (from previous_analyses) as
+  // `original_gold` when available; otherwise the current criteria.
+  const handleApproveCalibration = async () => {
+    if (!user) return;
+    if (!exam.transcript || exam.transcript.trim().split(/\s+/).filter(Boolean).length < 30) {
+      toast({ title: "Transcript too short", description: "Need at least 30 words to approve.", variant: "destructive" });
+      return;
+    }
+    setApproving(true);
+    try {
+      const firstAnalysis = previousAnalyses[previousAnalyses.length - 1];
+      const original: any[] = Array.isArray(firstAnalysis?.criteria) ? firstAnalysis.criteria : (Array.isArray(exam.criteria) ? exam.criteria : []);
+      const current: any[] = Array.isArray(exam.criteria) ? exam.criteria : [];
+      const scoreDiff = current.map((c) => {
+        const o = original.find((x) => x?.name === c.name);
+        return {
+          name: c.name,
+          original: typeof o?.score === "number" ? o.score : null,
+          senior: typeof c.score === "number" ? c.score : null,
+          delta: (typeof o?.score === "number" && typeof c.score === "number") ? Math.round((c.score - o.score) * 10) / 10 : null,
+        };
+      });
+      const { error } = await supabase.from("calibration_examples").insert({
+        case_id: exam.id,
+        level: exam.level_code,
+        task_type: "",
+        transcript: exam.transcript,
+        original_gold: original as any,
+        senior_corrections: current as any,
+        score_differences: scoreDiff as any,
+        rationale_differences: [] as any,
+        senior_notes: approveNotes.trim(),
+        examiner_id: user.id,
+      });
+      if (error) throw error;
+      toast({ title: "Calibration reference approved", description: "Future analyses at this level will use it as an anchor." });
+      setApproveOpen(false);
+      setApproveNotes("");
+    } catch (err: any) {
+      toast({ title: "Approval failed", description: err.message, variant: "destructive" });
+    } finally {
+      setApproving(false);
+    }
+
   return (
     <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
       <DialogHeader>
