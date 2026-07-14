@@ -204,7 +204,12 @@ serve(async (req) => {
     });
   } catch (e) {
     console.error("transcribe-audio error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+    const err = e instanceof Error ? e.message : "Unknown error";
+    return new Response(JSON.stringify({
+      error: err,
+      code: "transcription_error",
+      retryable: false,
+    }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
