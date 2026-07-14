@@ -25,6 +25,14 @@ export interface BatchItem {
   scribeWords?: ScribeWord[];
   error?: string;
   stageLabel?: string;
+  // Optional per-item context (populated by the New Exam flow so queued items
+  // carry their own level / materials instead of relying on the Batch Session
+  // shared context).
+  level?: string;
+  language?: string;
+  bookletText?: string;
+  rubricText?: string;
+  examNotes?: string;
 }
 
 interface AnalyzeContext {
@@ -33,6 +41,7 @@ interface AnalyzeContext {
   bookletText: string;
   rubricText: string;
 }
+
 
 export function useBatchQueue() {
   const [items, setItems] = useState<BatchItem[]>([]);
