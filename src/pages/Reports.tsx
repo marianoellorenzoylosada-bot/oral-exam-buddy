@@ -137,9 +137,10 @@ export default function ReportsPage() {
           const { error: deleteErr } = await supabase.from("exams").delete().eq("id", exam.id);
           if (deleteErr) throw deleteErr;
           deleted++;
-        } catch (err: any) {
+        } catch (err) {
           failed++;
-          errors.push(`${exam.title}: ${err.message || "Unknown error"}`);
+          const message = err instanceof Error ? err.message : "Unknown error";
+          errors.push(`${exam.title}: ${message}`);
           console.error("delete report failed", exam.id, err);
         }
       }),
