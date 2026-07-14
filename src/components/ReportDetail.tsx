@@ -321,6 +321,7 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
     } finally {
       setApproving(false);
     }
+  };
 
   return (
     <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
