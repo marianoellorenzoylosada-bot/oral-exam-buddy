@@ -5,19 +5,26 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   FileText, Search, Filter, Clock, ShieldCheck, EyeOff,
-  FolderTree, List, CalendarIcon, Users, Building2,
+  FolderTree, List, CalendarIcon, Users, Building2, Trash2,
+  CheckSquare, X, Loader2,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { ReportDetail, type Exam } from "@/components/ReportDetail";
 import { format } from "date-fns";
 import { ReportsSkeleton } from "@/components/PageSkeleton";
+import { useToast } from "@/hooks/use-toast";
 
 const LEVELS = ["All", "A1", "A2", "B1", "B2", "C1", "C2"];
 const LANGUAGES = ["All", "en", "es", "fr", "de", "pt", "it"];
@@ -27,6 +34,8 @@ const langLabel: Record<string, string> = {
 };
 
 export default function ReportsPage() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [levelFilter, setLevelFilter] = useState("All");
   const [langFilter, setLangFilter] = useState("All");
@@ -35,6 +44,10 @@ export default function ReportsPage() {
   const [grouped, setGrouped] = useState(false);
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const { data: exams = [], isLoading } = useQuery({
     queryKey: ["exams-reports"],
@@ -83,6 +96,75 @@ export default function ReportsPage() {
     return map;
   }, [filtered, grouped]);
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllFiltered = () => {
+    setSelectedIds(new Set(filtered.map((e) => e.id)));
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+  };
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const handleDeleteSelected = async () => {
+    setDeleting(true);
+    const targets = exams.filter((e) => selectedIds.has(e.id));
+    let deleted = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    await Promise.allSettled(
+      targets.map(async (exam) => {
+        try {
+          if (exam.audio_path) {
+            const { error: storageErr } = await supabase.storage.from("exam-audio").remove([exam.audio_path]);
+            if (storageErr) {
+              console.warn("storage remove failed", exam.id, storageErr.message);
+            }
+          }
+          const { error: deleteErr } = await supabase.from("exams").delete().eq("id", exam.id);
+          if (deleteErr) throw deleteErr;
+          deleted++;
+        } catch (err: any) {
+          failed++;
+          errors.push(`${exam.title}: ${err.message || "Unknown error"}`);
+          console.error("delete report failed", exam.id, err);
+        }
+      }),
+    );
+
+    setDeleting(false);
+    setDeleteConfirmOpen(false);
+    setSelectedIds(new Set());
+    setSelectMode(false);
+    queryClient.invalidateQueries({ queryKey: ["exams-reports"] });
+
+    if (failed > 0) {
+      toast({
+        title: `Deleted ${deleted} report${deleted === 1 ? "" : "s"}`,
+        description: `${failed} could not be deleted. ${errors[0] || ""}`,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: `Deleted ${deleted} report${deleted === 1 ? "" : "s"}`,
+        description: "Selected reports and their audio recordings were removed.",
+      });
+    }
+  };
+
   if (isLoading) return <ReportsSkeleton />;
 
   return (
@@ -91,7 +173,7 @@ export default function ReportsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="font-display text-3xl font-bold tracking-tight">Reports</h1>
-          <p className="mt-1 text-sm text-muted-foreground">View, search and review all signed assessment reports.</p>
+          <p className="mt-1 text-sm text-muted-foreground">View, search, review and remove assessment reports.</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">
@@ -108,8 +190,47 @@ export default function ReportsPage() {
               <FolderTree className="h-3.5 w-3.5" />
             </Button>
           </div>
+          <Button
+            variant={selectMode ? "secondary" : "outline"}
+            size="sm"
+            className="gap-2"
+            onClick={() => {
+              setSelectMode((m) => !m);
+              if (selectMode) setSelectedIds(new Set());
+            }}
+          >
+            {selectMode ? <X className="h-3.5 w-3.5" /> : <CheckSquare className="h-3.5 w-3.5" />}
+            {selectMode ? "Cancel" : "Select"}
+          </Button>
         </div>
       </div>
+
+      {/* Selection action bar */}
+      {selectMode && (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-lg border p-3 bg-muted/30">
+          <div className="text-sm">
+            <span className="font-medium">{selectedIds.size}</span> selected
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={selectAllFiltered}>
+              Select all filtered
+            </Button>
+            <Button variant="outline" size="sm" onClick={clearSelection} disabled={selectedIds.size === 0}>
+              Clear
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="gap-2"
+              disabled={selectedIds.size === 0 || deleting}
+              onClick={() => setDeleteConfirmOpen(true)}
+            >
+              {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              Delete selected
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Filters — responsive */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -203,7 +324,15 @@ export default function ReportsPage() {
                       </h4>
                       <div className="space-y-1.5 ml-2">
                         {items.map((exam) => (
-                          <ExamRow key={exam.id} exam={exam} anonymize={anonymize} onClick={() => setSelected(exam)} />
+                          <ExamRow
+                            key={exam.id}
+                            exam={exam}
+                            anonymize={anonymize}
+                            selectMode={selectMode}
+                            selected={selectedIds.has(exam.id)}
+                            onToggle={() => toggleSelect(exam.id)}
+                            onClick={() => setSelected(exam)}
+                          />
                         ))}
                       </div>
                     </div>
@@ -214,7 +343,15 @@ export default function ReportsPage() {
           ) : (
             <div className="space-y-2">
               {filtered.map((exam) => (
-                <ExamRow key={exam.id} exam={exam} anonymize={anonymize} onClick={() => setSelected(exam)} />
+                <ExamRow
+                  key={exam.id}
+                  exam={exam}
+                  anonymize={anonymize}
+                  selectMode={selectMode}
+                  selected={selectedIds.has(exam.id)}
+                  onToggle={() => toggleSelect(exam.id)}
+                  onClick={() => setSelected(exam)}
+                />
               ))}
             </div>
           )}
@@ -224,34 +361,77 @@ export default function ReportsPage() {
       <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
         {selected && <ReportDetail exam={selected} anonymize={anonymize} onClose={() => setSelected(null)} />}
       </Dialog>
+
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedIds.size} report{selectedIds.size === 1 ? "" : "s"}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove the selected reports and their associated audio recordings.
+              The action cannot be undone. If you want to keep any score as a calibration reference, approve it first.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeleteConfirmOpen(false)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteSelected}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
 
-function ExamRow({ exam, anonymize, onClick }: { exam: Exam; anonymize: boolean; onClick: () => void }) {
+function ExamRow({
+  exam,
+  anonymize,
+  selectMode,
+  selected,
+  onToggle,
+  onClick,
+}: {
+  exam: Exam;
+  anonymize: boolean;
+  selectMode: boolean;
+  selected: boolean;
+  onToggle: () => void;
+  onClick: () => void;
+}) {
   return (
-    <button
-      onClick={onClick}
+    <div
       className="flex w-full flex-col gap-2 rounded-lg border p-4 text-left transition-colors hover:bg-muted/50 sm:flex-row sm:items-center sm:justify-between"
     >
-      <div className="flex-1 min-w-0 space-y-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-          <h3 className="font-medium truncate">{exam.title}</h3>
-          <Badge variant="default" className="gap-1 bg-success hover:bg-success/90 text-success-foreground text-xs">
-            <ShieldCheck className="h-3 w-3" /> Official
-          </Badge>
-        </div>
-        <p className="text-sm text-muted-foreground truncate">
-          {exam.candidate_name ? (
-            <span className="font-medium text-foreground">
-              {anonymize ? "██████" : exam.candidate_name} ·{" "}
-            </span>
-          ) : null}
-          {anonymize ? "██████" : (exam.institution || "—")} · {anonymize ? "██████" : (exam.group || "—")}
-        </p>
+      <div className="flex items-center gap-3 flex-1 min-w-0">
+        {selectMode && (
+          <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
+            <Checkbox checked={selected} onCheckedChange={onToggle} aria-label={`Select ${exam.title}`} />
+          </div>
+        )}
+        <button onClick={onClick} className="flex-1 text-left min-w-0 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+            <h3 className="font-medium truncate">{exam.title}</h3>
+            <Badge variant="default" className="gap-1 bg-success hover:bg-success/90 text-success-foreground text-xs">
+              <ShieldCheck className="h-3 w-3" /> Official
+            </Badge>
+          </div>
+          <p className="text-sm text-muted-foreground truncate">
+            {exam.candidate_name ? (
+              <span className="font-medium text-foreground">
+                {anonymize ? "██████" : exam.candidate_name} ·{" "}
+              </span>
+            ) : null}
+            {anonymize ? "██████" : (exam.institution || "—")} · {anonymize ? "██████" : (exam.group || "—")}
+          </p>
+        </button>
       </div>
-      <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+      <button onClick={onClick} className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground sm:text-right">
         <Badge variant="secondary">{exam.level_code}</Badge>
         <Badge variant="outline">{langLabel[exam.language] || exam.language}</Badge>
         <span className="font-display font-bold text-foreground">{Number(exam.overall_score).toFixed(1)}/5</span>
@@ -259,7 +439,7 @@ function ExamRow({ exam, anonymize, onClick }: { exam: Exam; anonymize: boolean;
           <Clock className="h-3.5 w-3.5" />
           {new Date(exam.created_at).toLocaleDateString()}
         </span>
-      </div>
-    </button>
+      </button>
+    </div>
   );
 }
