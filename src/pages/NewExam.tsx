@@ -983,14 +983,30 @@ export default function NewExamPage() {
                 )}
 
                 {/* Pending offline analysis notice */}
-                {pendingAnalysis && (
+                {pendingAnalysis && !lastAnalysisError && (
                   <div className="w-full max-w-md rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
                     <WifiOff className="h-4 w-4 shrink-0" />
                     Analysis queued — will run automatically when you're back online.
                   </div>
                 )}
 
+                {/* Analysis error — manual retry, no infinite loop */}
+                {lastAnalysisError && (
+                  <div className="w-full max-w-md rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
+                    <div className="flex items-start gap-2 text-sm text-destructive">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <span>{lastAnalysisError.userMessage}</span>
+                    </div>
+                    <div className="flex justify-end">
+                      <Button size="sm" variant="outline" onClick={handleSubmitForAnalysis} className="gap-1">
+                        <RefreshCw className="h-3.5 w-3.5" /> Reintentar
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Restored draft notice */}
+
                 {restoredBlob && !recorder.audioBlob && (
                   <div className="w-full max-w-md rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
                     <p className="font-medium">Recovered recording ready ({Math.floor(restoredDuration / 60)}:{String(restoredDuration % 60).padStart(2, "0")})</p>
