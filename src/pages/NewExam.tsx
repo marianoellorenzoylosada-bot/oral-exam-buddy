@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Mic, Square, Pause, Play, Upload, FileText, BookOpen, Trash2, Clock, Users, ExternalLink, Info, Loader2, AlertCircle, Plus, X, WifiOff, ShieldCheck } from "lucide-react";
+import { Mic, Square, Pause, Play, Upload, FileText, BookOpen, Trash2, Clock, Users, ExternalLink, Info, Loader2, AlertCircle, Plus, X, WifiOff, ShieldCheck, Save, RefreshCw } from "lucide-react";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { useExamStore } from "@/hooks/useExamStore";
 
