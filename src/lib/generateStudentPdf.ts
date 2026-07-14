@@ -1,5 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import type { PartFeedback } from "@/lib/partFeedback";
+import { getPartsForLevel } from "@/lib/partFeedback";
 
 interface CriterionData {
   name: string;
@@ -21,6 +23,10 @@ interface StudentReportData {
   date: string;
   /** Optional links to suggested practice activities. */
   practice?: { title: string; url: string }[];
+  /** Per-part × per-criterion feedback (optional). */
+  partFeedback?: PartFeedback[];
+  /** Short synthesis paragraph. */
+  overallSummary?: string;
 }
 
 const BRAND: [number, number, number] = [30, 64, 175];
