@@ -1014,22 +1014,33 @@ export default function NewExamPage() {
                   </div>
                 )}
 
-                <div className="w-full max-w-md flex justify-between">
+                <div className="w-full max-w-md flex flex-col sm:flex-row justify-between gap-3">
                   <Button variant="outline" onClick={() => setActiveTab("context")}>← Back</Button>
-                  <Button
-                    disabled={(!audioBlobForSubmit || (recorder.state !== "stopped" && !restoredBlob)) || analyzing || !exam.title}
-                    onClick={handleSubmitForAnalysis}
-                    className="gap-2"
-                  >
-                    {analyzing ? (
-                      <><Loader2 className="h-4 w-4 animate-spin" /> {analyzingStep === "transcribing" ? "Transcribing…" : "Scoring…"}</>
-                    ) : !online ? (
-                      <><WifiOff className="h-4 w-4" /> Queue for analysis</>
-                    ) : (
-                      "Submit for Analysis →"
-                    )}
-                  </Button>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Button
+                      variant="outline"
+                      disabled={!audioBlobForSubmit || (recorder.state !== "stopped" && !restoredBlob) || analyzing || !exam.title}
+                      onClick={handleSaveForLater}
+                      className="gap-2"
+                    >
+                      <Save className="h-4 w-4" /> Guardar para analizar después
+                    </Button>
+                    <Button
+                      disabled={(!audioBlobForSubmit || (recorder.state !== "stopped" && !restoredBlob)) || analyzing || !exam.title}
+                      onClick={handleSubmitForAnalysis}
+                      className="gap-2"
+                    >
+                      {analyzing ? (
+                        <><Loader2 className="h-4 w-4 animate-spin" /> {analyzingStep === "transcribing" ? "Transcribing…" : "Scoring…"}</>
+                      ) : !online ? (
+                        <><WifiOff className="h-4 w-4" /> Queue for analysis</>
+                      ) : (
+                        "Submit for Analysis →"
+                      )}
+                    </Button>
+                  </div>
                 </div>
+
               </CardContent>
             </Card>
           </TabsContent>
