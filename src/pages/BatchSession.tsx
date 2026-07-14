@@ -741,6 +741,16 @@ export default function BatchSessionPage() {
                             {item.status === "failed" ? "Retry" : "Analyze"}
                           </Button>
                         )}
+                        {item.audioBlob && item.audioBlob.size > 0 && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1"
+                            onClick={() => downloadOriginalAudio(item)}
+                          >
+                            <Download className="h-3.5 w-3.5" /> Download original audio
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="ghost"
