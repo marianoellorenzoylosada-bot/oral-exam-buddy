@@ -39,7 +39,13 @@ const WARNING: [number, number, number] = [217, 119, 6];
  * confidence scores; rephrases tone in second person; keeps the score,
  * key takeaways and practice suggestions.
  */
-export function generateStudentPdf(data: StudentReportData) {
+export function generateStudentPdf(input: StudentReportData) {
+  // Guard against AI-provided objects rendering as "(object) (object)".
+  const data: StudentReportData = {
+    ...input,
+    strengths: toTextList(input.strengths),
+    areasForImprovement: toTextList(input.areasForImprovement),
+  };
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const margin = 18;
