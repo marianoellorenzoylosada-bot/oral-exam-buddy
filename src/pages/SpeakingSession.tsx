@@ -27,6 +27,8 @@ import {
   type SessionWithDetails, type SessionAttempt, type TranscriptionMode, type AttemptStatus,
 } from "@/hooks/useSpeakingSession";
 import { SessionMaterialPanel } from "@/components/session/SessionMaterialPanel";
+import { DraftReport, type MultiCandidateResult } from "@/components/DraftReport";
+
 import { SpeakerMappingPanel } from "@/components/SpeakerMappingPanel";
 import { transcribeStoragePath, TranscriptionError, type ScribeWord } from "@/lib/transcribe";
 import { applySpeakerMap, speakerStats, type SpeakerMap, type SpeakerRole } from "@/lib/applySpeakerMap";
@@ -90,6 +92,8 @@ export default function SpeakingSessionPage() {
   const [processing, setProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState("");
   const [lastError, setLastError] = useState<string | null>(null);
+  const [reviewAttemptId, setReviewAttemptId] = useState<string | null>(null);
+
   const [signedAudioUrl, setSignedAudioUrl] = useState<string | null>(null);
   const [localAudioUrl, setLocalAudioUrl] = useState<string | null>(null);
   const [localAudioPlaying, setLocalAudioPlaying] = useState(false);
@@ -290,34 +294,15 @@ export default function SpeakingSessionPage() {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      // Persist as a confirmed exam record linked to candidates
-      const candidates = data?.candidates ?? [data];
-      for (let i = 0; i < attempt.candidate_names.length; i++) {
-        const candidateId = attempt.candidate_ids[i];
-        if (!candidateId) continue;
-        const candidateResult = candidates[i] ?? candidates[0] ?? {};
-        await supabase.from("exams").insert({
-          user_id: user?.id,
-          candidate_id: candidateId,
-          candidate_name: attempt.candidate_names[i],
-          title: levelCode,
-          level_code: levelCode,
-          language,
-          transcript: attempt.transcript,
-          audio_path: attempt.audio_path,
-          overall_score: candidateResult.overallScore ?? 0,
-          overall_band: candidateResult.overallBand ?? "",
-          criteria: candidateResult.criteria ?? [],
-          strengths: candidateResult.strengths ?? [],
-          areas_for_improvement: candidateResult.areasForImprovement ?? [],
-          part_feedback: candidateResult.partFeedback ?? null,
-          overall_summary: candidateResult.overallSummary ?? "",
-          status: "completed",
-          confirmed_at: new Date().toISOString(),
-        } as any);
-      }
-      await updateAttempt.mutateAsync({ id: attempt.id, status: "done" });
-      toast({ title: "Analysis complete", description: "Reports are available in the Reports page." });
+      // Hold the analysis for examiner review — reports are only created on sign-off.
+      await updateAttempt.mutateAsync({
+        id: attempt.id,
+        status: "reviewing_report",
+        analysis_result: data,
+      });
+      setReviewAttemptId(attempt.id);
+      toast({ title: "Analysis ready", description: "Review the report, then confirm and sign it." });
+
     } catch (e: any) {
       const msg = readError(e);
       setLastError(msg);
@@ -391,6 +376,32 @@ export default function SpeakingSessionPage() {
   // Show selected session or create form
   const showCreateForm = !activeSessionId;
   const showSession = !!activeSessionId && !!session;
+
+  const reviewAttempt = session?.attempts.find((a) => a.id === reviewAttemptId) ?? null;
+  const reviewResult: MultiCandidateResult | null = (() => {
+    if (!reviewAttempt?.analysis_result) return null;
+    const raw = reviewAttempt.analysis_result as any;
+    const list: any[] = Array.isArray(raw?.candidates) ? raw.candidates : [raw];
+    return {
+      candidates: reviewAttempt.candidate_names.map((name, i) => {
+        const c = list[i] ?? list[0] ?? {};
+        return {
+          candidateName: c.candidateName || name || `Candidate ${String.fromCharCode(65 + i)}`,
+          overallBand: c.overallBand ?? "",
+          overallScore: c.overallScore ?? 0,
+          criteria: c.criteria ?? [],
+          strengths: c.strengths ?? [],
+          areasForImprovement: c.areasForImprovement ?? [],
+          partFeedback: c.partFeedback ?? undefined,
+          overallSummary: c.overallSummary ?? undefined,
+        };
+      }),
+      transcript: reviewAttempt.transcript || "",
+      examinerNotes: raw?.examinerNotes ?? "",
+    };
+  })();
+
+
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 py-6">
@@ -518,7 +529,33 @@ export default function SpeakingSessionPage() {
         </Card>
       )}
 
-      {showSession && session && (
+      {reviewAttempt && reviewResult && (
+        <div className="space-y-4">
+          <Button variant="outline" size="sm" onClick={() => setReviewAttemptId(null)}>
+            <ChevronLeft className="mr-2 h-4 w-4" /> Back to queue
+          </Button>
+          <DraftReport
+            result={reviewResult}
+            level={levelCode}
+            levelCode={levelCode}
+            language={selectedLang?.label ?? "English"}
+            candidateNames={reviewAttempt.candidate_names}
+            candidateIds={reviewAttempt.candidate_ids}
+            audioPath={reviewAttempt.audio_path}
+            sessionId={reviewAttempt.session_id}
+            attemptId={reviewAttempt.id}
+            scribeWords={(reviewAttempt.live_words ?? []) as ScribeWord[]}
+            draftKey={`session-attempt-${reviewAttempt.id}`}
+            onReset={async () => {
+              await updateAttempt.mutateAsync({ id: reviewAttempt.id, status: "done" }).catch(() => undefined);
+              setReviewAttemptId(null);
+            }}
+          />
+        </div>
+      )}
+
+      {showSession && session && !reviewAttempt && (
+
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="prepare"><Upload className="mr-2 h-4 w-4" /> Prepare</TabsTrigger>
@@ -738,12 +775,19 @@ export default function SpeakingSessionPage() {
                       </div>
                     )}
 
+                    {attempt.status === "reviewing_report" && (
+                      <Button size="sm" onClick={() => setReviewAttemptId(attempt.id)}>
+                        <FileText className="mr-2 h-4 w-4" /> Review &amp; sign report
+                      </Button>
+                    )}
+
                     {(attempt.status === "analyzing" || attempt.status === "done" || attempt.status === "failed") && (
                       <Button size="sm" onClick={() => handleAnalyze(attempt)} disabled={processing || workingAttemptId === attempt.id || attempt.status === "done"}>
                         {workingAttemptId === attempt.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
                         {attempt.status === "done" ? "Analyzed" : "Analyze"}
                       </Button>
                     )}
+
 
                     {workingAttemptId === attempt.id && processingStep && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">

@@ -53,10 +53,16 @@ interface DraftReportProps {
   /** Roster student ids aligned with candidateNames (null when free-typed). */
   candidateIds?: (string | null)[];
   audioBlob?: Blob | null;
+  /** Already-uploaded audio path (session attempts upload audio before review). */
+  audioPath?: string | null;
+  /** Speaking session traceability. */
+  sessionId?: string | null;
+  attemptId?: string | null;
   scribeWords?: { text: string; start: number; end: number; speaker?: string | null }[];
   phaseMarks?: { phaseIndex: number; startedAtSec: number }[];
   /** Stable id used to autosave draft edits to localStorage (e.g. batch item id). */
   draftKey?: string;
+
   onReset: () => void;
 }
 
@@ -112,15 +118,42 @@ function ConfidenceBadge({ confidence }: { confidence?: number }) {
 
 const COPYRIGHT_TEXT = "© 2026 Int'l Oral Exam Assistant. Evaluation methodology and AI results are subject to teacher supervision.";
 
-export function DraftReport({ result, level, levelCode, language, institution, group, candidateNames, candidateIds, audioBlob, scribeWords, phaseMarks, draftKey, onReset }: DraftReportProps) {
+export function DraftReport({ result, level, levelCode, language, institution, group, candidateNames, candidateIds, audioBlob, audioPath, sessionId, attemptId, scribeWords, phaseMarks, draftKey, onReset }: DraftReportProps) {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user } = useAuth();
   const [activeCandidate, setActiveCandidate] = useState(0);
   const [saving, setSaving] = useState(false);
   // Shared audio storage path across all candidates in this session (upload once).
-  const [audioStoragePath, setAudioStoragePath] = useState<string | null>(null);
+  const [audioStoragePath, setAudioStoragePath] = useState<string | null>(audioPath ?? null);
   const [audioUploadFailed, setAudioUploadFailed] = useState(false);
+  // Per-candidate group/institution resolved from the roster (pairs can be mixed-group).
+  const [candidateMeta, setCandidateMeta] = useState<Record<string, { group: string; institution: string }>>({});
+
+  useEffect(() => {
+    const ids = (candidateIds ?? []).filter((id): id is string => !!id);
+    if (ids.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("students")
+        .select("id, groups(name, institution)")
+        .in("id", ids);
+      if (error || cancelled || !data) return;
+      const map: Record<string, { group: string; institution: string }> = {};
+      for (const row of data as any[]) {
+        map[row.id] = {
+          group: row.groups?.name ?? "",
+          institution: row.groups?.institution ?? "",
+        };
+      }
+      setCandidateMeta(map);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(candidateIds ?? [])]);
+
+
 
 
   // Try to restore a previously auto-saved draft for this exam.
@@ -301,16 +334,21 @@ export function DraftReport({ result, level, levelCode, language, institution, g
 
       const candidateName = draft.candidateName || candidateNames[activeCandidate] || `Candidate ${String.fromCharCode(65 + activeCandidate)}`;
       const examTitle = `${levelCode} ${language} Oral — ${candidateName}`;
+      const activeCandidateId = candidateIds?.[activeCandidate] ?? null;
+      const meta = activeCandidateId ? candidateMeta[activeCandidateId] : undefined;
 
       const { error } = await supabase.from("exams").insert({
         title: examTitle,
         level_code: levelCode,
         language,
-        institution: institutionName,
-        group: group || "",
+        institution: meta?.institution || institutionName,
+        group: meta?.group || group || "",
         candidate_name: candidateName,
-        candidate_id: candidateIds?.[activeCandidate] ?? null,
+        candidate_id: activeCandidateId,
         candidates: candidateNames.length,
+        session_id: sessionId ?? null,
+        attempt_id: attemptId ?? null,
+
         overall_band: computeWeightedSpeakingScore(draft.criteria, levelCode).approxLevel,
         overall_score: Math.round((computeWeightedSpeakingScore(draft.criteria, levelCode).percent / 100) * 5 * 10) / 10,
         criteria: draft.criteria as any,
