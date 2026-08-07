@@ -97,10 +97,14 @@ export function SessionMaterialPanel({ sessionId, materials }: SessionMaterialPa
         aiDescription,
       });
       setFile(null);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+      setDescribeError(null);
       setDescription("");
       setAiDescription("");
       setKind("photo");
       toast({ title: "Material added" });
+
     } catch (e: any) {
       toast({ title: "Upload failed", description: e.message, variant: "destructive" });
     } finally {
