@@ -52,8 +52,9 @@ const App = () => (
               <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
                 <Route path="/" element={<Index />} />
                 <Route path="/speaking-session" element={<RoleGate role="educator"><SpeakingSession /></RoleGate>} />
-                <Route path="/new-exam" element={<RoleGate role="educator"><NewExam /></RoleGate>} />
-                <Route path="/batch-session" element={<RoleGate role="educator"><BatchSession /></RoleGate>} />
+                <Route path="/new-exam" element={<Navigate to="/speaking-session" replace />} />
+                <Route path="/batch-session" element={<Navigate to="/speaking-session" replace />} />
+
                 <Route path="/calibration" element={<RoleGate role="educator"><Calibration /></RoleGate>} />
                 <Route path="/roster" element={<Roster />} />
                 <Route path="/candidates/:id" element={<CandidateDetail />} />
