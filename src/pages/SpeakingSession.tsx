@@ -91,8 +91,10 @@ export default function SpeakingSessionPage() {
   const [processingStep, setProcessingStep] = useState("");
   const [lastError, setLastError] = useState<string | null>(null);
   const [signedAudioUrl, setSignedAudioUrl] = useState<string | null>(null);
-  const [audioPlaying, setAudioPlaying] = useState(false);
+  const [localAudioUrl, setLocalAudioUrl] = useState<string | null>(null);
+  const [localAudioPlaying, setLocalAudioPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const localAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Reset form when creating a new session
   const resetForm = useCallback(() => {
