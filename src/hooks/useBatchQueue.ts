@@ -125,7 +125,8 @@ export function useBatchQueue() {
       return;
     }
 
-    updateItem(item.id, { status: "analyzing", error: undefined, stageLabel: "Starting…" });
+    updateItem(item.id, { status: "analyzing", error: undefined, stageLabel: "Starting…", analysisStartedAt: Date.now() });
+
 
     // Use the item's stored context when available, otherwise fall back to the
     // shared context from the Batch Session page.
