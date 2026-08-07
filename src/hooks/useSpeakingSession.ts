@@ -92,7 +92,7 @@ export function useSession(sessionId?: string | null) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("speaking_sessions")
-        .select("*, session_materials(*), session_attempts(*)")
+        .select("*, materials:session_materials(*), attempts:session_attempts(*)")
         .eq("id", sessionId!)
         .single();
       if (error) throw error;
