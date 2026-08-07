@@ -149,17 +149,28 @@ export function SessionMaterialPanel({ sessionId, materials }: SessionMaterialPa
             <div className="flex gap-2">
               <input ref={inputRef} type="file" accept="image/*,application/pdf,text/plain" className="hidden" onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])} />
               <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])} />
-              <Button variant="outline" className="flex-1" onClick={() => inputRef.current?.click()}>
-                <Upload className="mr-2 h-4 w-4" /> {file ? file.name : "Choose file"}
+              <Button variant="outline" className="flex-1 justify-start overflow-hidden" onClick={() => inputRef.current?.click()}>
+                <Upload className="mr-2 h-4 w-4 shrink-0" />
+                <span className="truncate">{file ? file.name : "Choose file"}</span>
               </Button>
               {kind !== "script" && (
-                <Button variant="outline" onClick={() => cameraRef.current?.click()} className="sm:hidden">
+                <Button variant="outline" onClick={() => cameraRef.current?.click()} title="Take a photo">
                   <Camera className="h-4 w-4" />
                 </Button>
               )}
             </div>
           </div>
         </div>
+
+        {previewUrl && (
+          <div className="flex items-center gap-3 rounded-md border p-2">
+            <img src={previewUrl} alt="Selected material preview" className="h-20 w-20 rounded object-cover" />
+            <div className="min-w-0 text-xs text-muted-foreground">
+              <p className="truncate font-medium text-foreground">{file?.name}</p>
+              <p>Photo selected. Add a description and upload it.</p>
+            </div>
+          </div>
+        )}
 
         {file && kind !== "script" && (
           <div className="space-y-2">
@@ -175,9 +186,16 @@ export function SessionMaterialPanel({ sessionId, materials }: SessionMaterialPa
                 {describing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground">Tap the wand to auto-generate a description, then edit it.</p>
+            {describeError ? (
+              <p className="text-xs text-destructive">
+                AI description failed: {describeError}. You can still type the description yourself and upload the material.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">Tap the wand to auto-generate a description, then edit it.</p>
+            )}
           </div>
         )}
+
 
         <div className="space-y-2">
           <Label>Your description / script</Label>
