@@ -2,6 +2,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { PartFeedback } from "@/lib/partFeedback";
 import { getPartsForLevel } from "@/lib/partFeedback";
+import { toTextList } from "@/lib/toText";
 
 interface CriterionData {
   name: string;
