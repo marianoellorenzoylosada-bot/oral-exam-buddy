@@ -526,7 +526,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Badge variant="secondary">Level: {level}</Badge>
                   <Badge variant="outline">{language}</Badge>
-                  {institutionName && <Badge variant="outline">{institutionName}</Badge>}
+                  {activeCandidateInstitution && <Badge variant="outline">{activeCandidateInstitution}</Badge>}
                   {isOfficial ? (
                     <Badge variant="default" className="gap-1 bg-emerald-600 hover:bg-emerald-700">
                       <ShieldCheck className="h-3 w-3" /> Official
