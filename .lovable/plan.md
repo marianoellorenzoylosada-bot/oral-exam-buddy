@@ -44,6 +44,13 @@ Además hay un tercer defecto que todavía no llegaste a ver: **el botón de la 
 ### E. Pista de orientación dentro de la sesión
 - Un texto corto arriba de las pestañas que diga el orden: preparar material → grabar candidatos → procesar la cola. Sin cambiar la lógica.
 
+### F. El material se sube sin candidatos (ya es así, se aclara en pantalla)
+- Subir material solo requiere la sesión creada: la pestaña **Prepare** no pide ni valida candidatos.
+- Los candidatos se eligen recién en **Record**, y solo se exigen (mínimo dos) al empezar a grabar o al guardar el intento.
+- Se agrega una nota en Prepare: "Podés cargar todo el material antes de saber qué candidatos vienen; los candidatos se eligen al momento de grabar."
+- El mismo material queda disponible para todos los intentos de la sesión, en el día que sea, hasta que la cierres.
+
+
 ---
 
 ## Detalles técnicos
