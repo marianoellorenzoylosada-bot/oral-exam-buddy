@@ -123,7 +123,7 @@ export default function SpeakingSessionPage() {
     setLocalAudioUrl(null);
     setActiveSessionId(null);
     setActiveTab("prepare");
-  }, []);
+  }, [setActiveSessionId]);
 
   useEffect(() => {
     if (recorder.audioUrl) setLocalAudioUrl(recorder.audioUrl);
