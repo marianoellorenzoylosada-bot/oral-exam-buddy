@@ -780,10 +780,12 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle className="font-display flex items-center gap-2">
-              <RefreshCw className="h-5 w-5 text-primary" /> Re-analyze Exam
+              <RefreshCw className="h-5 w-5 text-primary" /> {exam.confirmed_at ? "Create corrected version" : "Re-analyze Exam"}
             </DialogTitle>
             <DialogDescription>
-              Edit the transcript, add notes or extra observations, then run the AI again. The current scores will be saved to version history.
+              {exam.confirmed_at
+                ? "This report is confirmed and frozen. You can create a new corrected version; the original will remain unchanged."
+                : "Edit the transcript, add notes or extra observations, then run the AI again. The current scores will be saved to version history."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -799,15 +801,23 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
               <Label htmlFor="rg-extra" className="text-xs">Additional observation (optional)</Label>
               <Textarea id="rg-extra" value={extraObservation} onChange={(e) => setExtraObservation(e.target.value)} placeholder="e.g. Candidate was very nervous in the first minute and self-corrected several times" className="min-h-[50px] text-xs" />
             </div>
+            {exam.confirmed_at && (
+              <div className="space-y-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
+                <Label htmlFor="rg-reason" className="text-xs text-amber-700 dark:text-amber-400">Reason for correction *</Label>
+                <Textarea id="rg-reason" value={correctionReason} onChange={(e) => setCorrectionReason(e.target.value)} placeholder="e.g. I noticed I missed a candidate turn, so the Interaction score was too low." className="min-h-[50px] text-xs bg-background" />
+                <p className="text-[11px] text-amber-700 dark:text-amber-400">A reason is required to create a new version of a confirmed report.</p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRegradeOpen(false)} disabled={regrading}>Cancel</Button>
             <Button onClick={handleRegrade} disabled={regrading} className="gap-2">
-              {regrading ? <><Loader2 className="h-4 w-4 animate-spin" /> Re-analyzing…</> : <><RefreshCw className="h-4 w-4" /> Run analysis</>}
+              {regrading ? <><Loader2 className="h-4 w-4 animate-spin" /> Re-analyzing…</> : <><RefreshCw className="h-4 w-4" /> {exam.confirmed_at ? "Create corrected version" : "Run analysis"}</>}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
     </DialogContent>
   );
 }
