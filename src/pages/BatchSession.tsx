@@ -818,16 +818,7 @@ export default function BatchSessionPage() {
                           <Button size="sm" variant="default" className="gap-1" onClick={() => setReviewItemId(item.id)}>
                             <PlayCircle className="h-3.5 w-3.5" /> Review report
                           </Button>
-                        ) : item.status === "reviewing_speakers" ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="gap-1"
-                            onClick={() => queue.startAnalysis(item, { level, language: langLabel, bookletText, rubricText })}
-                          >
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Transcribing…
-                          </Button>
-                        ) : isTooShort ? null : (
+                        ) : item.status === "reviewing_speakers" ? null : isTooShort ? null : (
                           <Button
                             size="sm"
                             variant="outline"
