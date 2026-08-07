@@ -1,0 +1,1 @@
+DELETE FROM public.session_materials WHERE session_id = 'c0504826-0b6a-4e33-b03b-a645c4461c06' AND id IN ('15993149-95be-4a95-8a2d-7dc317655128', '483b0a59-6827-43bd-b21d-e310491be42c', 'b58d0f96-d2c9-4b4d-b7a2-cad79fed2582');
