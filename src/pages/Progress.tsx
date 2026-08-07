@@ -22,6 +22,7 @@ function useExams() {
       const { data, error } = await supabase
         .from("exams")
         .select("*")
+        .eq("archived", false)
         .order("created_at", { ascending: true });
       if (error) throw error;
       return data ?? [];

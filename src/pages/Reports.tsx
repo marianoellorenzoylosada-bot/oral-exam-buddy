@@ -55,6 +55,7 @@ export default function ReportsPage() {
       const { data, error } = await supabase
         .from("exams")
         .select("*")
+        .eq("archived", false)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data as Exam[];

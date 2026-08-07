@@ -11,6 +11,7 @@ import Index from "./pages/Index";
 import NewExam from "./pages/NewExam";
 import BatchSession from "./pages/BatchSession";
 import Roster from "./pages/Roster";
+import CandidateDetail from "./pages/CandidateDetail";
 import QuestionBank from "./pages/QuestionBank";
 import Reports from "./pages/Reports";
 import Progress from "./pages/Progress";
@@ -53,6 +54,7 @@ const App = () => (
                 <Route path="/batch-session" element={<RoleGate role="educator"><BatchSession /></RoleGate>} />
                 <Route path="/calibration" element={<RoleGate role="educator"><Calibration /></RoleGate>} />
                 <Route path="/roster" element={<Roster />} />
+                <Route path="/candidates/:id" element={<CandidateDetail />} />
                 <Route path="/question-bank" element={<QuestionBank />} />
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/progress" element={<Progress />} />

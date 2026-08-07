@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { Link } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +15,7 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
-  Plus, Users, Trash2, Pencil, Building2, GraduationCap, Search, UserPlus, Loader2,
+  Plus, Users, Trash2, Pencil, Building2, GraduationCap, Search, UserPlus, Loader2, LineChart,
 } from "lucide-react";
 import {
   useGroups, useStudents, useCreateGroup, useUpdateGroup, useDeleteGroup,
@@ -200,6 +201,9 @@ function StudentRow({ student }: { student: Student }) {
         <span className="text-sm font-medium">{student.full_name}</span>
       )}
       <div className="flex items-center gap-1">
+        <Button asChild size="icon" variant="ghost" className="h-7 w-7" title="View candidate history">
+          <Link to={`/candidates/${student.id}`}><LineChart className="h-3.5 w-3.5" /></Link>
+        </Button>
         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditing(true)}>
           <Pencil className="h-3.5 w-3.5" />
         </Button>
