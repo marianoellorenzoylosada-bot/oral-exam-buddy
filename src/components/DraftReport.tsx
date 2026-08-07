@@ -248,6 +248,9 @@ export function DraftReport({ result, level, levelCode, language, institution, g
 
   const allOfficial = officialStatus.every(Boolean);
   const institutionName = institution || localStorage.getItem("oralassess-institution") || "";
+  // Institution shown for the candidate currently under review (mixed-group pairs).
+  const activeCandidateInstitution =
+    candidateMeta[candidateIds?.[activeCandidate] ?? ""]?.institution || institutionName;
 
   const draft = drafts[activeCandidate];
   const overrides = allOverrides[activeCandidate] || {};
