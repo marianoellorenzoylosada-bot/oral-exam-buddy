@@ -158,10 +158,10 @@ export function useBatchQueue() {
         pendingWords: words,
         scribeWords: words,
       });
-    } catch (err: any) {
+    } catch (err) {
       updateItem(item.id, {
         status: "failed",
-        error: err?.message ?? "Transcription failed",
+        error: getErrorMessage(err),
         stageLabel: undefined,
       });
     }
