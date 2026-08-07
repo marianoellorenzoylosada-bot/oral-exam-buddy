@@ -195,8 +195,8 @@ export function useBatchQueue() {
   }, [updateItem]);
 
   // Watchdog: same-session reclassification of items stuck in "analyzing" for
-  // more than 5 minutes (e.g. user navigated away mid-analyze). loadQueue()
-  // already handles this on fresh hydration; this covers in-session navigation.
+  // more than 5 minutes of *processing* time (not recording age). This covers
+  // in-session navigation; loadQueue() handles the fresh-hydration case.
   useEffect(() => {
     const STALE_MS = 5 * 60 * 1000;
     const tick = () => {
@@ -204,7 +204,9 @@ export function useBatchQueue() {
       setItems(prev => {
         let changed = false;
         const next = prev.map(i => {
-          if (i.status === "analyzing" && now - i.recordedAt > STALE_MS) {
+          if (i.status !== "analyzing") return i;
+          const started = i.analysisStartedAt ?? i.recordedAt;
+          if (now - started > STALE_MS) {
             changed = true;
             const updated: BatchItem = {
               ...i,
@@ -223,6 +225,7 @@ export function useBatchQueue() {
     tick();
     return () => clearInterval(id);
   }, []);
+
 
   const analyzeAll = useCallback(async (ctx: AnalyzeContext) => {
     setAnalyzingAll(true);
