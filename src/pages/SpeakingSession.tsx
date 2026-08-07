@@ -51,16 +51,24 @@ function readError(err: any): string {
 
 export default function SpeakingSessionPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const initialSessionId = searchParams.get("id");
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const { toast } = useToast();
   const online = useOnlineStatus();
   const qc = useQueryClient();
   const recorder = useAudioRecorder();
 
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(initialSessionId);
+  // The active session id lives in the URL so that returning from the camera /
+  // file picker (which can reload the tab on mobile) keeps the session open.
+  const activeSessionId = searchParams.get("id");
+  const setActiveSessionId = useCallback(
+    (id: string | null) => {
+      setSearchParams(id ? { id } : {}, { replace: true });
+    },
+    [setSearchParams]
+  );
   const [activeTab, setActiveTab] = useState("prepare");
+
 
   // Setup form
   const [title, setTitle] = useState("");
