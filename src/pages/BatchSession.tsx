@@ -124,6 +124,87 @@ function StatusBadge({ status }: { status: BatchItem["status"] }) {
   );
 }
 
+const ROLES: SpeakerRole[] = ["Examiner", "Candidate A", "Candidate B", "Candidate C", "Speaker unclear"];
+
+function fmtTs(s: number) {
+  const m = Math.floor(s / 60), r = Math.floor(s % 60);
+  return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+}
+
+function SpeakerReviewPanel({
+  item,
+  onConfirm,
+}: {
+  item: BatchItem;
+  onConfirm: (map: SpeakerMap) => void;
+}) {
+  const stats = useMemo(() => speakerStats(item.pendingWords || item.scribeWords), [item]);
+  const [map, setMap] = useState<SpeakerMap>(() => {
+    const m: SpeakerMap = {};
+    for (const s of stats) {
+      m[s.id] = item.speakerMap?.[s.id] ?? "Speaker unclear";
+    }
+    return m;
+  });
+
+  if (stats.length === 0) {
+    return (
+      <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+        No diarized speakers detected. You can still confirm to score with the raw transcript.
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border bg-card p-3 space-y-3 mt-2">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="font-display font-semibold text-sm flex items-center gap-1.5">
+          <ShieldCheck className="h-4 w-4 text-primary" /> Confirm speakers
+        </h3>
+        <span className="text-[11px] text-muted-foreground">{stats.length} speaker{stats.length === 1 ? "" : "s"} detected</span>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Verify who is who before the AI scores. This prevents the wrong candidate being graded if diarization is off.
+      </p>
+      <ul className="space-y-2">
+        {stats.map((s) => (
+          <li key={s.id} className="rounded-md border bg-muted/20 p-2.5">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 min-w-0">
+                <Badge variant="outline" className="font-mono text-[10px]">{s.id}</Badge>
+                <span className="text-[11px] text-muted-foreground tabular-nums">
+                  {fmtTs(s.totalSeconds)} · {(s.share * 100).toFixed(0)}%
+                </span>
+              </div>
+              <Select
+                value={map[s.id] ?? "Speaker unclear"}
+                onValueChange={(v) => setMap((m) => ({ ...m, [s.id]: v as SpeakerRole }))}
+              >
+                <SelectTrigger className="h-8 w-[180px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ROLES.map((r) => (
+                    <SelectItem key={r} value={r} className="text-xs">{r}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {s.sampleText && (
+              <p className="mt-2 line-clamp-2 text-xs text-muted-foreground italic">"{s.sampleText}…"</p>
+            )}
+          </li>
+        ))}
+      </ul>
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => onConfirm(map)} className="gap-2">
+          <Sparkles className="h-3.5 w-3.5" /> Confirm & score
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function BatchSessionPage() {
   const { toast } = useToast();
   const queue = useBatchQueue();
