@@ -43,7 +43,13 @@ function scoreColor(pct: number): [number, number, number] {
   return DANGER;
 }
 
-export function generateReportPdf(data: ReportData) {
+export function generateReportPdf(input: ReportData) {
+  // Guard against AI-provided objects rendering as "(object) (object)".
+  const data: ReportData = {
+    ...input,
+    strengths: toTextList(input.strengths),
+    areasForImprovement: toTextList(input.areasForImprovement),
+  };
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const margin = 18;
