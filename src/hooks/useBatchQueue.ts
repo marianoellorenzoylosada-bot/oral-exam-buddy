@@ -314,6 +314,8 @@ export function useBatchQueue() {
     updateItem,
     analyzeOne,
     analyzeAll,
+    startAnalysis,
+    confirmSpeakersAndAnalyze,
     analyzingAll,
     hydrated,
   };
