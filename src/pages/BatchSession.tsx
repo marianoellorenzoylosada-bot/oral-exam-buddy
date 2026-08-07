@@ -109,6 +109,7 @@ function StatusBadge({ status }: { status: BatchItem["status"] }) {
     recorded:  { label: "Recorded",  className: "border-muted-foreground/30 bg-muted text-muted-foreground", icon: Mic },
     queued:    { label: "Queued",    className: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400", icon: ListChecks },
     analyzing: { label: "Analyzing", className: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400", icon: Loader2 },
+    reviewing_speakers: { label: "Review speakers", className: "border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-400", icon: Users },
     done:      { label: "Done",      className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400", icon: CheckCircle2 },
     failed:    { label: "Failed",    className: "border-destructive/30 bg-destructive/10 text-destructive", icon: AlertTriangle },
   };
