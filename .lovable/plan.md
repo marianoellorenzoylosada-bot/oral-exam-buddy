@@ -140,7 +140,8 @@ Academic Year / Enrollments · cambiar el motor de scoring · calibración · ba
 
 - **Foto ilegible o mal interpretada** → por eso la descripción es editable; además queda a la vista la versión original de la IA.
 - **Cambio de navegación** → New Exam y Batch se redirigen, no se borran.
-- **Consumo de IA** → describir una foto es una llamada barata y ocurre una vez por sesión; el análisis sigue siendo manual y los informes confirmados no se pueden re-analizar.
+- **Consumo de IA** → describir una foto es una llamada barata y ocurre una vez por sesión; el análisis sigue siendo manual y los informes confirmados no se pueden re-analizar. La transcripción en vivo consume créditos durante la grabación, por eso viene desactivada por defecto.
+- **Transcripción en vivo en móvil** → la conexión WebSocket puede interrumpirse; el audio siempre se guarda por separado, así que se puede volver a transcribir en modo manual si falla.
 
 ---
 
