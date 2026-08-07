@@ -42,28 +42,42 @@ export function SessionMaterialPanel({ sessionId, materials }: SessionMaterialPa
   const handleFile = (f: File) => {
     setFile(f);
     setAiDescription("");
+    setDescribeError(null);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(f.type.startsWith("image/") ? URL.createObjectURL(f) : null);
   };
 
   const handleDescribe = async () => {
     if (!file) return;
     setDescribing(true);
+    setDescribeError(null);
     try {
-      // Upload first so the edge function can read from storage.
+      const { data: auth } = await supabase.auth.getUser();
+      const userId = auth.user?.id;
+      if (!userId) throw new Error("You are signed out. Sign in again and retry.");
+      // Temp path must live under the caller's own folder to satisfy storage policies
+      // and the ownership check in the describe-material function.
       const ext = file.name.split(".").pop() ?? "jpg";
-      const imagePath = `${crypto.randomUUID()}-tmp.${ext}`;
+      const imagePath = `${userId}/${sessionId}/tmp-${crypto.randomUUID()}.${ext}`;
       const { error: uploadError } = await supabase.storage
         .from("exam-context")
         .upload(imagePath, file, { contentType: file.type, upsert: true });
       if (uploadError) throw uploadError;
-      const description = await describeMaterial(imagePath, kind);
-      setAiDescription(description);
-      await supabase.storage.from("exam-context").remove([imagePath]).catch(() => undefined);
+      try {
+        const description = await describeMaterial(imagePath, kind);
+        setAiDescription(description);
+      } finally {
+        await supabase.storage.from("exam-context").remove([imagePath]);
+      }
     } catch (e: any) {
-      toast({ title: "Could not describe image", description: e.message, variant: "destructive" });
+      const msg = e?.message || String(e);
+      setDescribeError(msg);
+      toast({ title: "Could not describe image", description: msg, variant: "destructive" });
     } finally {
       setDescribing(false);
     }
   };
+
 
   const handleUpload = async () => {
     if (!file || !kind) {
