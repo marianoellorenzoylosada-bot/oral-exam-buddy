@@ -724,8 +724,9 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
 
           <div className="flex gap-2 flex-wrap justify-end">
             <Button variant="outline" size="sm" onClick={() => { setEditTranscript(exam.transcript ?? ""); setEditNotes(exam.examiner_notes ?? ""); setRegradeOpen(true); }} className="gap-2" disabled={viewing != null}>
-              <RefreshCw className="h-4 w-4" /> Re-analyze
+              <RefreshCw className="h-4 w-4" /> {exam.confirmed_at ? "Corrected version" : "Re-analyze"}
             </Button>
+
             <Button variant="outline" size="sm" onClick={() => generateReportPdf({
               title: exam.title,
               candidateName: anonymize ? "Anonymous" : (exam.candidate_name || ""),
