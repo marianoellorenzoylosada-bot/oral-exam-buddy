@@ -571,7 +571,12 @@ export default function SpeakingSessionPage() {
             <TabsTrigger value="queue"><FileText className="mr-2 h-4 w-4" /> Queue ({session.attempts.length})</TabsTrigger>
           </TabsList>
 
+          <p className="mt-3 text-xs text-muted-foreground">
+            Order of work: <strong>Prepare</strong> the materials → <strong>Record</strong> each pair or trio → process the <strong>Queue</strong> when you finish for the day.
+          </p>
+
           <TabsContent value="prepare" className="space-y-4">
+
             <Card>
               <CardHeader>
                 <CardTitle className="font-display text-lg">Session setup</CardTitle>
