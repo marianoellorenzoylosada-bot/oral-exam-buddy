@@ -23,6 +23,7 @@ import { generateReportPdf } from "@/lib/generateReportPdf";
 import { useAuth } from "@/hooks/useAuth";
 import { computeWeightedSpeakingScore } from "@/lib/speakingScore";
 import type { PartFeedback } from "@/lib/partFeedback";
+import { toTextList } from "@/lib/toText";
 
 export interface AssessmentResult {
   overallBand: string;
@@ -153,8 +154,17 @@ export function DraftReport({ result, level, levelCode, language, institution, g
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(candidateIds ?? [])]);
 
-
-
+  // The AI occasionally returns objects inside the evidence lists; coerce to text
+  // so nothing ever renders as "(object) (object)".
+  const normalizedCandidates = useMemo(
+    () =>
+      result.candidates.map((c) => ({
+        ...c,
+        strengths: toTextList(c.strengths),
+        areasForImprovement: toTextList(c.areasForImprovement),
+      })),
+    [result]
+  );
 
   // Try to restore a previously auto-saved draft for this exam.
   const persisted = useMemo<PersistedDraft | null>(() => {
@@ -170,7 +180,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
 
   // Per-candidate draft state
   const [drafts, setDrafts] = useState<MultiCandidateResult["candidates"]>(() =>
-    persisted?.drafts ?? JSON.parse(JSON.stringify(result.candidates))
+    persisted?.drafts ?? JSON.parse(JSON.stringify(normalizedCandidates))
   );
   const [sharedDraft, setSharedDraft] = useState(() =>
     persisted?.sharedDraft ?? {
@@ -181,21 +191,21 @@ export function DraftReport({ result, level, levelCode, language, institution, g
 
   // Per-candidate overrides
   const [allOverrides, setAllOverrides] = useState<Record<number, Record<number, string>>>(() =>
-    persisted?.allOverrides ?? Object.fromEntries(result.candidates.map((_, i) => [i, {}]))
+    persisted?.allOverrides ?? Object.fromEntries(normalizedCandidates.map((_, i) => [i, {}]))
   );
 
   // Per-candidate original scores (always from the AI response, never persisted)
   const allOriginalScores = useMemo(() =>
-    result.candidates.map(c => c.criteria.map(cr => cr.score)),
-    [result]
+    normalizedCandidates.map(c => c.criteria.map(cr => cr.score)),
+    [normalizedCandidates]
   );
 
   // Per-candidate accepted evidence
   const [allAcceptedStrengths, setAllAcceptedStrengths] = useState<boolean[][]>(() =>
-    persisted?.allAcceptedStrengths ?? result.candidates.map(c => c.strengths.map(() => true))
+    persisted?.allAcceptedStrengths ?? normalizedCandidates.map(c => c.strengths.map(() => true))
   );
   const [allAcceptedImprovements, setAllAcceptedImprovements] = useState<boolean[][]>(() =>
-    persisted?.allAcceptedImprovements ?? result.candidates.map(c => c.areasForImprovement.map(() => true))
+    persisted?.allAcceptedImprovements ?? normalizedCandidates.map(c => c.areasForImprovement.map(() => true))
   );
 
   // Per-candidate official status
@@ -238,6 +248,9 @@ export function DraftReport({ result, level, levelCode, language, institution, g
 
   const allOfficial = officialStatus.every(Boolean);
   const institutionName = institution || localStorage.getItem("oralassess-institution") || "";
+  // Institution shown for the candidate currently under review (mixed-group pairs).
+  const activeCandidateInstitution =
+    candidateMeta[candidateIds?.[activeCandidate] ?? ""]?.institution || institutionName;
 
   const draft = drafts[activeCandidate];
   const overrides = allOverrides[activeCandidate] || {};
@@ -400,11 +413,14 @@ export function DraftReport({ result, level, levelCode, language, institution, g
     const finalImprovements = draft.areasForImprovement.filter((_, i) => acceptedImprovements[i]);
     const candidateName = draft.candidateName || candidateNames[activeCandidate] || `Candidate ${String.fromCharCode(65 + activeCandidate)}`;
     const examTitle = `${levelCode} ${language} Oral — ${candidateName}`;
+    // Pairs/trios can mix groups: resolve this candidate's own group + institution.
+    const activeCandidateId = candidateIds?.[activeCandidate] ?? null;
+    const meta = activeCandidateId ? candidateMeta[activeCandidateId] : undefined;
     generateReportPdf({
       title: examTitle,
       candidateName,
-      institution: institutionName,
-      group: group || "",
+      institution: meta?.institution || institutionName,
+      group: meta?.group || group || "",
       levelCode,
       language,
       overallBand: draft.overallBand,
@@ -510,7 +526,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Badge variant="secondary">Level: {level}</Badge>
                   <Badge variant="outline">{language}</Badge>
-                  {institutionName && <Badge variant="outline">{institutionName}</Badge>}
+                  {activeCandidateInstitution && <Badge variant="outline">{activeCandidateInstitution}</Badge>}
                   {isOfficial ? (
                     <Badge variant="default" className="gap-1 bg-emerald-600 hover:bg-emerald-700">
                       <ShieldCheck className="h-3 w-3" /> Official
