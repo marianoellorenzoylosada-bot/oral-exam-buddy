@@ -813,13 +813,22 @@ export default function BatchSessionPage() {
                           <Button size="sm" variant="default" className="gap-1" onClick={() => setReviewItemId(item.id)}>
                             <PlayCircle className="h-3.5 w-3.5" /> Review report
                           </Button>
+                        ) : item.status === "reviewing_speakers" ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1"
+                            onClick={() => queue.startAnalysis(item, { level, language: langLabel, bookletText, rubricText })}
+                          >
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Transcribing…
+                          </Button>
                         ) : isTooShort ? null : (
                           <Button
                             size="sm"
                             variant="outline"
                             className="gap-1"
                             disabled={item.status === "analyzing" || queue.analyzingAll}
-                            onClick={() => queue.analyzeOne(item, { level, language: langLabel, bookletText, rubricText })}
+                            onClick={() => queue.startAnalysis(item, { level, language: langLabel, bookletText, rubricText })}
                           >
                             {item.status === "analyzing" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
                             {item.status === "failed" ? "Retry" : "Analyze"}
@@ -839,12 +848,18 @@ export default function BatchSessionPage() {
                           size="sm"
                           variant="ghost"
                           className="gap-1 text-muted-foreground hover:text-destructive"
-                          disabled={item.status === "analyzing"}
+                          disabled={item.status === "analyzing" || item.status === "reviewing_speakers"}
                           onClick={() => queue.removeItem(item.id)}
                         >
                           <Trash2 className="h-3.5 w-3.5" /> Remove
                         </Button>
                       </div>
+                      {item.status === "reviewing_speakers" && (
+                        <SpeakerReviewPanel
+                          item={item}
+                          onConfirm={(map) => queue.confirmSpeakersAndAnalyze(item.id, map, { level, language: langLabel, bookletText, rubricText })}
+                        />
+                      )}
                     </li>
                   );
                 })}
