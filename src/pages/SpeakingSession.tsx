@@ -741,8 +741,6 @@ export default function SpeakingSessionPage() {
         <audio
           ref={audioRef}
           src={signedAudioUrl}
-          onEnded={() => setAudioPlaying(false)}
-          onPause={() => setAudioPlaying(false)}
           controls
           className="w-full"
         />
