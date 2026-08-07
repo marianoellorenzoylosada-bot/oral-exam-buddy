@@ -13,8 +13,10 @@ export type AttemptStatus =
   | "transcribing"
   | "reviewing_speakers"
   | "analyzing"
+  | "reviewing_report"
   | "done"
   | "failed";
+
 
 export interface SpeakingSession {
   id: string;
