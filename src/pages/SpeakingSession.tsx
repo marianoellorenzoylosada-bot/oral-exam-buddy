@@ -290,34 +290,15 @@ export default function SpeakingSessionPage() {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      // Persist as a confirmed exam record linked to candidates
-      const candidates = data?.candidates ?? [data];
-      for (let i = 0; i < attempt.candidate_names.length; i++) {
-        const candidateId = attempt.candidate_ids[i];
-        if (!candidateId) continue;
-        const candidateResult = candidates[i] ?? candidates[0] ?? {};
-        await supabase.from("exams").insert({
-          user_id: user?.id,
-          candidate_id: candidateId,
-          candidate_name: attempt.candidate_names[i],
-          title: levelCode,
-          level_code: levelCode,
-          language,
-          transcript: attempt.transcript,
-          audio_path: attempt.audio_path,
-          overall_score: candidateResult.overallScore ?? 0,
-          overall_band: candidateResult.overallBand ?? "",
-          criteria: candidateResult.criteria ?? [],
-          strengths: candidateResult.strengths ?? [],
-          areas_for_improvement: candidateResult.areasForImprovement ?? [],
-          part_feedback: candidateResult.partFeedback ?? null,
-          overall_summary: candidateResult.overallSummary ?? "",
-          status: "completed",
-          confirmed_at: new Date().toISOString(),
-        } as any);
-      }
-      await updateAttempt.mutateAsync({ id: attempt.id, status: "done" });
-      toast({ title: "Analysis complete", description: "Reports are available in the Reports page." });
+      // Hold the analysis for examiner review — reports are only created on sign-off.
+      await updateAttempt.mutateAsync({
+        id: attempt.id,
+        status: "reviewing_report",
+        analysis_result: data,
+      });
+      setReviewAttemptId(attempt.id);
+      toast({ title: "Analysis ready", description: "Review the report, then confirm and sign it." });
+
     } catch (e: any) {
       const msg = readError(e);
       setLastError(msg);
