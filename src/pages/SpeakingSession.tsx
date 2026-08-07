@@ -27,6 +27,8 @@ import {
   type SessionWithDetails, type SessionAttempt, type TranscriptionMode, type AttemptStatus,
 } from "@/hooks/useSpeakingSession";
 import { SessionMaterialPanel } from "@/components/session/SessionMaterialPanel";
+import { DraftReport, type MultiCandidateResult } from "@/components/DraftReport";
+
 import { SpeakerMappingPanel } from "@/components/SpeakerMappingPanel";
 import { transcribeStoragePath, TranscriptionError, type ScribeWord } from "@/lib/transcribe";
 import { applySpeakerMap, speakerStats, type SpeakerMap, type SpeakerRole } from "@/lib/applySpeakerMap";
