@@ -410,11 +410,14 @@ export function DraftReport({ result, level, levelCode, language, institution, g
     const finalImprovements = draft.areasForImprovement.filter((_, i) => acceptedImprovements[i]);
     const candidateName = draft.candidateName || candidateNames[activeCandidate] || `Candidate ${String.fromCharCode(65 + activeCandidate)}`;
     const examTitle = `${levelCode} ${language} Oral — ${candidateName}`;
+    // Pairs/trios can mix groups: resolve this candidate's own group + institution.
+    const activeCandidateId = candidateIds?.[activeCandidate] ?? null;
+    const meta = activeCandidateId ? candidateMeta[activeCandidateId] : undefined;
     generateReportPdf({
       title: examTitle,
       candidateName,
-      institution: institutionName,
-      group: group || "",
+      institution: meta?.institution || institutionName,
+      group: meta?.group || group || "",
       levelCode,
       language,
       overallBand: draft.overallBand,
