@@ -345,6 +345,12 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
               <RefreshCw className="h-3 w-3" /> Re-graded {exam.regrade_count}×
             </Badge>
           )}
+          {exam.confirmed_at && (
+            <Badge variant="outline" className="gap-1 text-xs border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+              <CheckCircle2 className="h-3 w-3" /> Confirmed
+            </Badge>
+          )}
+
         </DialogTitle>
         <DialogDescription>
           {displayName && <span className="font-medium">{displayName} · </span>}
