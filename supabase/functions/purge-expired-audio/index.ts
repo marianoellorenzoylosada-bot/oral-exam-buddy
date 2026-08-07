@@ -25,15 +25,26 @@ serve(async (req) => {
 
     const { data: rows, error } = await admin
       .from("exams")
-      .select("id, audio_path")
+      .select("id, user_id, audio_path")
       .not("audio_path", "is", null)
       .lt("audio_expires_at", new Date().toISOString())
       .limit(500);
     if (error) throw error;
 
     let deleted = 0;
+    let skipped = 0;
     for (const r of rows ?? []) {
       if (!r.audio_path) continue;
+      // Ownership guard: only ever delete objects inside the row owner's own folder.
+      if (
+        !r.user_id ||
+        !r.audio_path.startsWith(`${r.user_id}/`) ||
+        r.audio_path.includes("..")
+      ) {
+        console.warn("skipping audio_path not owned by exam owner", r.id);
+        skipped++;
+        continue;
+      }
       const { error: rmErr } = await admin.storage.from("exam-audio").remove([r.audio_path]);
       if (rmErr) {
         console.warn("storage remove failed", r.id, rmErr.message);
@@ -47,7 +58,7 @@ serve(async (req) => {
       else deleted++;
     }
 
-    return new Response(JSON.stringify({ deleted, scanned: rows?.length ?? 0 }), {
+    return new Response(JSON.stringify({ deleted, skipped, scanned: rows?.length ?? 0 }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
