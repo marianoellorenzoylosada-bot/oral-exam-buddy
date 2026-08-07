@@ -222,7 +222,7 @@ export default function ProgressPage() {
             <CardTitle className="font-display mt-4">No Exams Yet</CardTitle>
             <CardDescription>
               {selectedCandidate !== "__all__"
-                ? `No exams found for ${selectedCandidate}.`
+                ? `No exams found for ${candidateOptions.find((c) => c.value === selectedCandidate)?.label ?? "this candidate"}.`
                 : "Complete your first exam to start seeing analytics here."}
             </CardDescription>
           </CardHeader>
