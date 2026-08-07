@@ -32,7 +32,7 @@ Nada se procesa por su cuenta mientras estás tomando orales, **salvo que el mod
 - **Material por foto**: la IA la interpreta y genera la descripción; vos podés editarla antes de guardar. Esa descripción editada es lo que recibe el análisis, así que el examen sabe qué mostraba la imagen.
 - **Grupos mixtos**: la sesión no tiene un grupo único. Cada candidato se elige del roster y su evaluación queda con su propio grupo, su docente y su institución. Una pareja de dos grupos distintos produce dos informes con grupos distintos.
 - **Reutilizar material**: la sesión se reabre. Queda abierta hasta que la cierres, y el material sube una sola vez para todos los días que la uses.
-- **Procesamiento**: manual, cuando lo pidas.
+- **Procesamiento**: manual por defecto, con opción de transcripción en vivo que se puede activar por sesión. El análisis con IA siempre es manual y requiere confirmación.
 
 ---
 
