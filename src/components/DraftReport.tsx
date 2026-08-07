@@ -334,16 +334,21 @@ export function DraftReport({ result, level, levelCode, language, institution, g
 
       const candidateName = draft.candidateName || candidateNames[activeCandidate] || `Candidate ${String.fromCharCode(65 + activeCandidate)}`;
       const examTitle = `${levelCode} ${language} Oral — ${candidateName}`;
+      const activeCandidateId = candidateIds?.[activeCandidate] ?? null;
+      const meta = activeCandidateId ? candidateMeta[activeCandidateId] : undefined;
 
       const { error } = await supabase.from("exams").insert({
         title: examTitle,
         level_code: levelCode,
         language,
-        institution: institutionName,
-        group: group || "",
+        institution: meta?.institution || institutionName,
+        group: meta?.group || group || "",
         candidate_name: candidateName,
-        candidate_id: candidateIds?.[activeCandidate] ?? null,
+        candidate_id: activeCandidateId,
         candidates: candidateNames.length,
+        session_id: sessionId ?? null,
+        attempt_id: attemptId ?? null,
+
         overall_band: computeWeightedSpeakingScore(draft.criteria, levelCode).approxLevel,
         overall_score: Math.round((computeWeightedSpeakingScore(draft.criteria, levelCode).percent / 100) * 5 * 10) / 10,
         criteria: draft.criteria as any,
