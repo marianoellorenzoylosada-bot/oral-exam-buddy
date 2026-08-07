@@ -106,7 +106,9 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
   const [editTranscript, setEditTranscript] = useState(exam.transcript ?? "");
   const [editNotes, setEditNotes] = useState(exam.examiner_notes ?? "");
   const [extraObservation, setExtraObservation] = useState("");
+  const [correctionReason, setCorrectionReason] = useState("");
   const [viewingPrevIdx, setViewingPrevIdx] = useState<number | null>(null);
+
 
   const previousAnalyses: any[] = Array.isArray(exam.previous_analyses) ? exam.previous_analyses : [];
 
