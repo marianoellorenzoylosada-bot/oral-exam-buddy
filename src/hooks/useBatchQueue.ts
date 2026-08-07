@@ -25,6 +25,9 @@ export interface BatchItem {
   scribeWords?: ScribeWord[];
   error?: string;
   stageLabel?: string;
+  // Timestamp when this item actually started analysis (not recording age).
+  // Used by the watchdog to detect stuck analysis runs.
+  analysisStartedAt?: number;
   // Optional per-item context (populated by the New Exam flow so queued items
   // carry their own level / materials instead of relying on the Batch Session
   // shared context).
@@ -34,6 +37,7 @@ export interface BatchItem {
   rubricText?: string;
   examNotes?: string;
 }
+
 
 interface AnalyzeContext {
   level: string;
