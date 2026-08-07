@@ -50,6 +50,8 @@ interface DraftReportProps {
   institution?: string;
   group?: string;
   candidateNames: string[];
+  /** Roster student ids aligned with candidateNames (null when free-typed). */
+  candidateIds?: (string | null)[];
   audioBlob?: Blob | null;
   scribeWords?: { text: string; start: number; end: number; speaker?: string | null }[];
   phaseMarks?: { phaseIndex: number; startedAtSec: number }[];
@@ -110,7 +112,7 @@ function ConfidenceBadge({ confidence }: { confidence?: number }) {
 
 const COPYRIGHT_TEXT = "© 2026 Int'l Oral Exam Assistant. Evaluation methodology and AI results are subject to teacher supervision.";
 
-export function DraftReport({ result, level, levelCode, language, institution, group, candidateNames, audioBlob, scribeWords, phaseMarks, draftKey, onReset }: DraftReportProps) {
+export function DraftReport({ result, level, levelCode, language, institution, group, candidateNames, candidateIds, audioBlob, scribeWords, phaseMarks, draftKey, onReset }: DraftReportProps) {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -307,6 +309,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         institution: institutionName,
         group: group || "",
         candidate_name: candidateName,
+        candidate_id: candidateIds?.[activeCandidate] ?? null,
         candidates: candidateNames.length,
         overall_band: computeWeightedSpeakingScore(draft.criteria, levelCode).approxLevel,
         overall_score: Math.round((computeWeightedSpeakingScore(draft.criteria, levelCode).percent / 100) * 5 * 10) / 10,

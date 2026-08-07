@@ -21,6 +21,7 @@ export interface ActiveRecordingSnapshot {
   audioBlob: Blob;
   durationSeconds: number;
   candidateNames: string[];
+  candidateIds?: (string | null)[];
   level: string;
   institution: string;
   group: string;
@@ -34,6 +35,7 @@ interface StoredActiveRecording {
   mimeType: string;
   durationSeconds: number;
   candidateNames: string[];
+  candidateIds?: (string | null)[];
   level: string;
   institution: string;
   group: string;
@@ -160,6 +162,7 @@ export async function saveActiveRecording(
         mimeType,
         durationSeconds: snapshot.durationSeconds,
         candidateNames: snapshot.candidateNames,
+        candidateIds: snapshot.candidateIds ?? [],
         level: snapshot.level,
         institution: snapshot.institution,
         group: snapshot.group,
@@ -207,6 +210,7 @@ export async function loadActiveRecording(): Promise<ActiveRecordingSnapshot | n
       audioBlob: blob,
       durationSeconds: stored.durationSeconds ?? 0,
       candidateNames: stored.candidateNames ?? [],
+      candidateIds: stored.candidateIds ?? [],
       level: stored.level ?? "",
       institution: stored.institution ?? "",
       group: stored.group ?? "",

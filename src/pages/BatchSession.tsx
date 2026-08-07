@@ -222,6 +222,8 @@ export default function BatchSessionPage() {
 
   // Per-exam candidate names
   const [candidateNames, setCandidateNames] = useState<string[]>(["", ""]);
+  // Roster student ids aligned with candidateNames (null when free-typed).
+  const [candidateIds, setCandidateIds] = useState<(string | null)[]>([null, null]);
   const [contextLocked, setContextLocked] = useState(false);
   const [reviewItemId, setReviewItemId] = useState<string | null>(null);
 
@@ -233,10 +235,10 @@ export default function BatchSessionPage() {
   const firstSnapshotDoneRef = useRef(false);
   // Latest context the recorder should snapshot with (kept in a ref so the
   // onChunk callback always sees fresh values without re-creating the recorder).
-  const snapshotCtxRef = useRef({ candidateNames, level, institution, group, contextLocked });
+  const snapshotCtxRef = useRef({ candidateNames, candidateIds, level, institution, group, contextLocked });
   useEffect(() => {
-    snapshotCtxRef.current = { candidateNames, level, institution, group, contextLocked };
-  }, [candidateNames, level, institution, group, contextLocked]);
+    snapshotCtxRef.current = { candidateNames, candidateIds, level, institution, group, contextLocked };
+  }, [candidateNames, candidateIds, level, institution, group, contextLocked]);
 
   const recorder = useAudioRecorder({
     onChunk: useCallback((blob: Blob, durationSeconds: number) => {
@@ -251,6 +253,7 @@ export default function BatchSessionPage() {
         audioBlob: blob,
         durationSeconds,
         candidateNames: [...ctx.candidateNames],
+        candidateIds: [...ctx.candidateIds],
         level: ctx.level,
         institution: ctx.institution,
         group: ctx.group,
@@ -375,16 +378,28 @@ export default function BatchSessionPage() {
     toast({ title: "Text extracted", description: `${text.length} characters from ${file.name}.` });
   }, [toast]);
 
-  const updateCandidateName = (i: number, v: string) => {
+  const updateCandidateName = (i: number, v: string, studentId?: string | null) => {
     setCandidateNames(prev => prev.map((n, idx) => (idx === i ? v : n)));
+    setCandidateIds(prev => {
+      const next = [...prev];
+      while (next.length <= i) next.push(null);
+      next[i] = studentId ?? null;
+      return next;
+    });
   };
 
   const addCandidate = () => {
-    if (candidateNames.length < 3) setCandidateNames(prev => [...prev, ""]);
+    if (candidateNames.length < 3) {
+      setCandidateNames(prev => [...prev, ""]);
+      setCandidateIds(prev => [...prev, null]);
+    }
   };
 
   const removeCandidate = () => {
-    if (candidateNames.length > 2) setCandidateNames(prev => prev.slice(0, -1));
+    if (candidateNames.length > 2) {
+      setCandidateNames(prev => prev.slice(0, -1));
+      setCandidateIds(prev => prev.slice(0, -1));
+    }
   };
 
   const handleSaveExam = useCallback(() => {
@@ -394,17 +409,19 @@ export default function BatchSessionPage() {
     }
     queue.addItem({
       candidateNames: [...candidateNames],
+      candidateIds: [...candidateIds],
       audioBlob: recorder.audioBlob,
       durationSeconds: recorder.duration,
     });
     toast({ title: "Exam saved to queue", description: "Ready to record the next one." });
     recorder.reset();
     setCandidateNames(prev => prev.map(() => ""));
+    setCandidateIds(prev => prev.map(() => null));
     lastSnapshotAtRef.current = 0;
     firstSnapshotDoneRef.current = false;
     // Clear active snapshot last; let pending IDB writes settle first.
     setTimeout(() => { void clearActiveRecording(); }, 50);
-  }, [recorder, queue, candidateNames, toast]);
+  }, [recorder, queue, candidateNames, candidateIds, toast]);
 
   // Inline name inputs shown in the recovery banner when the snapshot has no
   // typed names yet. Lets the user label the recovered audio before saving so
@@ -425,6 +442,7 @@ export default function BatchSessionPage() {
       : recoverNames.map(n => n.trim());
     queue.addItem({
       candidateNames: namesToUse,
+      candidateIds: recoverHasNames ? (recovered.candidateIds ?? namesToUse.map(() => null)) : namesToUse.map(() => null),
       audioBlob: recovered.audioBlob,
       durationSeconds: recovered.durationSeconds,
     });
@@ -433,6 +451,7 @@ export default function BatchSessionPage() {
     if (recovered.group) setGroup(recovered.group);
     if (recovered.candidateNames.length > 0) {
       setCandidateNames(recovered.candidateNames.map(() => ""));
+      setCandidateIds(recovered.candidateNames.map(() => null));
     }
     setContextLocked(recovered.contextLocked || true);
     setRecovered(null);
@@ -474,6 +493,7 @@ export default function BatchSessionPage() {
         institution={institution}
         group={group}
         candidateNames={reviewItem.candidateNames}
+        candidateIds={reviewItem.candidateIds}
         audioBlob={reviewItem.audioBlob}
         scribeWords={reviewItem.scribeWords}
         draftKey={`batch-${reviewItem.id}`}
@@ -672,7 +692,7 @@ export default function BatchSessionPage() {
                         <Label className="text-xs text-muted-foreground">Candidate {String.fromCharCode(65 + i)}</Label>
                         <CandidatePicker
                           value={name}
-                          onChange={(v) => updateCandidateName(i, v)}
+                          onChange={(v, sid) => updateCandidateName(i, v, sid)}
                           groupId={groupId}
                           placeholder={`e.g. ${i === 0 ? "María García" : i === 1 ? "João Silva" : "Anna Müller"}`}
                           excludeNames={candidateNames}

@@ -100,9 +100,11 @@ export type Database = {
       }
       exams: {
         Row: {
+          archived: boolean
           areas_for_improvement: Json
           audio_expires_at: string | null
           audio_path: string | null
+          candidate_id: string | null
           candidate_name: string | null
           candidates: number | null
           confirmed_at: string | null
@@ -133,9 +135,11 @@ export type Database = {
           words_json: Json | null
         }
         Insert: {
+          archived?: boolean
           areas_for_improvement?: Json
           audio_expires_at?: string | null
           audio_path?: string | null
+          candidate_id?: string | null
           candidate_name?: string | null
           candidates?: number | null
           confirmed_at?: string | null
@@ -166,9 +170,11 @@ export type Database = {
           words_json?: Json | null
         }
         Update: {
+          archived?: boolean
           areas_for_improvement?: Json
           audio_expires_at?: string | null
           audio_path?: string | null
+          candidate_id?: string | null
           candidate_name?: string | null
           candidates?: number | null
           confirmed_at?: string | null
@@ -198,7 +204,15 @@ export type Database = {
           user_id?: string | null
           words_json?: Json | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "exams_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       groups: {
         Row: {

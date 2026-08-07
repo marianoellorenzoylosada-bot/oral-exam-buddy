@@ -17,6 +17,7 @@ export interface ExamDraft {
   institution: string;
   group: string;
   candidateNames: string[];
+  candidateIds?: (string | null)[];
   bookletText: string;
   rubricText: string;
   // Recording

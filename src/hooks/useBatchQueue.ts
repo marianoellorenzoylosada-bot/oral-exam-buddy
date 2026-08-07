@@ -19,6 +19,8 @@ export type BatchItemStatus =
 export interface BatchItem {
   id: string;
   candidateNames: string[];
+  /** Roster student ids aligned with candidateNames (null when free-typed). */
+  candidateIds?: (string | null)[];
   audioBlob: Blob;
   durationSeconds: number;
   recordedAt: number;

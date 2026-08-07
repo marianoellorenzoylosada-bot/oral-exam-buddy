@@ -232,21 +232,30 @@ export default function NewExamPage() {
     toast({ title: "Text extracted", description: `Content extracted from ${file.name}` });
   }, [update, toast]);
 
-  const updateCandidateName = (index: number, value: string) => {
+  const updateCandidateName = (index: number, value: string, studentId?: string | null) => {
     const names = [...exam.candidateNames];
     names[index] = value;
-    update({ candidateNames: names });
+    const ids = [...(exam.candidateIds ?? [])];
+    while (ids.length < names.length) ids.push(null);
+    ids[index] = studentId ?? null;
+    update({ candidateNames: names, candidateIds: ids });
   };
 
   const addCandidate = () => {
     if (exam.candidateNames.length < 3) {
-      update({ candidateNames: [...exam.candidateNames, ""] });
+      update({
+        candidateNames: [...exam.candidateNames, ""],
+        candidateIds: [...(exam.candidateIds ?? []), null],
+      });
     }
   };
 
   const removeCandidate = () => {
     if (exam.candidateNames.length > 2) {
-      update({ candidateNames: exam.candidateNames.slice(0, -1) });
+      update({
+        candidateNames: exam.candidateNames.slice(0, -1),
+        candidateIds: (exam.candidateIds ?? []).slice(0, -1),
+      });
     }
   };
 
@@ -310,7 +319,7 @@ export default function NewExamPage() {
         await saveDraft({
           pendingAnalysis: false,
           title: exam.title, language: exam.language, institution: exam.institution,
-          group: exam.group, candidateNames: exam.candidateNames,
+          group: exam.group, candidateNames: exam.candidateNames, candidateIds: exam.candidateIds,
           bookletText: exam.bookletText, rubricText: exam.rubricText,
           audioBlob: blob, duration: dur,
           liveTranscript, scribeWords: words, phaseMarks, quickTags,
@@ -347,7 +356,7 @@ export default function NewExamPage() {
         await saveDraft({
           pendingAnalysis: true,
           title: exam.title, language: exam.language, institution: exam.institution,
-          group: exam.group, candidateNames: exam.candidateNames,
+          group: exam.group, candidateNames: exam.candidateNames, candidateIds: exam.candidateIds,
           bookletText: exam.bookletText, rubricText: exam.rubricText,
           audioBlob: blob, duration: dur,
           liveTranscript, scribeWords, phaseMarks, quickTags,
@@ -414,7 +423,7 @@ export default function NewExamPage() {
         await saveDraft({
           pendingAnalysis: false,
           title: exam.title, language: exam.language, institution: exam.institution,
-          group: exam.group, candidateNames: exam.candidateNames,
+          group: exam.group, candidateNames: exam.candidateNames, candidateIds: exam.candidateIds,
           bookletText: exam.bookletText, rubricText: exam.rubricText,
           audioBlob: blob, duration: dur,
           liveTranscript, scribeWords, phaseMarks, quickTags,
@@ -495,6 +504,7 @@ export default function NewExamPage() {
       update({
         title: draft.title, language: draft.language, institution: draft.institution,
         group: draft.group, candidateNames: draft.candidateNames,
+        candidateIds: draft.candidateIds ?? draft.candidateNames.map(() => null),
         bookletText: draft.bookletText, rubricText: draft.rubricText,
       });
       setRestoredBlob(draft.audioBlob);
@@ -516,7 +526,7 @@ export default function NewExamPage() {
       saveDraft({
         pendingAnalysis,
         title: exam.title, language: exam.language, institution: exam.institution,
-        group: exam.group, candidateNames: exam.candidateNames,
+        group: exam.group, candidateNames: exam.candidateNames, candidateIds: exam.candidateIds,
         bookletText: exam.bookletText, rubricText: exam.rubricText,
         audioBlob: blob,
         duration: recorder.audioBlob ? recorder.duration : restoredDuration,
@@ -550,6 +560,7 @@ export default function NewExamPage() {
       audioBlob: blob,
       durationSeconds: dur,
       candidateNames: [...exam.candidateNames],
+      candidateIds: [...(exam.candidateIds ?? [])],
       level: exam.title,
       language: exam.language,
       bookletText: exam.bookletText,
@@ -661,6 +672,7 @@ export default function NewExamPage() {
         institution={exam.institution}
         group={exam.group}
         candidateNames={exam.candidateNames}
+        candidateIds={exam.candidateIds}
         audioBlob={recorder.audioBlob}
         scribeWords={scribeWords}
         phaseMarks={phaseMarks}
@@ -764,7 +776,7 @@ export default function NewExamPage() {
                         </Label>
                         <CandidatePicker
                           value={name}
-                          onChange={(v) => updateCandidateName(i, v)}
+                          onChange={(v, sid) => updateCandidateName(i, v, sid)}
                           groupId={groupId}
                           placeholder={`e.g. ${i === 0 ? "María García" : i === 1 ? "João Silva" : "Anna Müller"}`}
                           excludeNames={exam.candidateNames}

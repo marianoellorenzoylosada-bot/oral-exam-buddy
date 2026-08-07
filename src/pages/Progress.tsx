@@ -22,6 +22,7 @@ function useExams() {
       const { data, error } = await supabase
         .from("exams")
         .select("*")
+        .eq("archived", false)
         .order("created_at", { ascending: true });
       if (error) throw error;
       return data ?? [];
@@ -104,10 +105,16 @@ export default function ProgressPage() {
   const [selectedCandidate, setSelectedCandidate] = useState<string>("__all__");
   const [selectedGroup, setSelectedGroup] = useState<string>("__all__");
 
-  const candidateNames = useMemo(() => {
-    const names = new Set<string>();
-    allExams.forEach((e) => { if (e.candidate_name) names.add(e.candidate_name); });
-    return Array.from(names).sort();
+  // Candidates are keyed by their stable roster identity when available, so a
+  // name typed slightly differently no longer splits the history in two.
+  const candidateOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    allExams.forEach((e: any) => {
+      const key = e.candidate_id ? `id:${e.candidate_id}` : e.candidate_name ? `name:${e.candidate_name}` : null;
+      if (!key) return;
+      if (!map.has(key)) map.set(key, e.candidate_name || "Unnamed candidate");
+    });
+    return Array.from(map, ([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
   }, [allExams]);
 
   const groupNames = useMemo(() => {
@@ -119,7 +126,10 @@ export default function ProgressPage() {
   const exams = useMemo(() => {
     return allExams.filter((e) => {
       if (selectedGroup !== "__all__" && e.group !== selectedGroup) return false;
-      if (selectedCandidate !== "__all__" && e.candidate_name !== selectedCandidate) return false;
+      if (selectedCandidate !== "__all__") {
+        const key = (e as any).candidate_id ? `id:${(e as any).candidate_id}` : `name:${e.candidate_name}`;
+        if (key !== selectedCandidate) return false;
+      }
       return true;
     });
   }, [allExams, selectedCandidate, selectedGroup]);
@@ -131,7 +141,9 @@ export default function ProgressPage() {
     if (!stats) return;
     const criteriaAverages = stats.radarData.map((r) => ({ name: r.criterion, average: r.average }));
     generateProgressPdf({
-      candidateName: selectedCandidate === "__all__" ? null : selectedCandidate,
+      candidateName: selectedCandidate === "__all__"
+        ? null
+        : candidateOptions.find((c) => c.value === selectedCandidate)?.label ?? null,
       groupName: isGroupView ? selectedGroup : null,
       totalExams: stats.total,
       avgScore: stats.avg,
@@ -177,7 +189,7 @@ export default function ProgressPage() {
               </SelectContent>
             </Select>
           )}
-          {candidateNames.length > 0 && (
+          {candidateOptions.length > 0 && (
             <Select value={selectedCandidate} onValueChange={setSelectedCandidate}>
               <SelectTrigger className="w-[200px]">
                 <Users className="mr-2 h-4 w-4 text-muted-foreground" />
@@ -185,8 +197,8 @@ export default function ProgressPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all__">All Candidates</SelectItem>
-                {candidateNames.map((name) => (
-                  <SelectItem key={name} value={name}>{name}</SelectItem>
+                {candidateOptions.map((c) => (
+                  <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -210,7 +222,7 @@ export default function ProgressPage() {
             <CardTitle className="font-display mt-4">No Exams Yet</CardTitle>
             <CardDescription>
               {selectedCandidate !== "__all__"
-                ? `No exams found for ${selectedCandidate}.`
+                ? `No exams found for ${candidateOptions.find((c) => c.value === selectedCandidate)?.label ?? "this candidate"}.`
                 : "Complete your first exam to start seeing analytics here."}
             </CardDescription>
           </CardHeader>
