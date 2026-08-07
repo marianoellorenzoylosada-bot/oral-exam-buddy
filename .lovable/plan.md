@@ -4,22 +4,26 @@
 
 ```text
 1. Crear sesión  → nivel + idioma + título
-2. Subir material una sola vez
+2. Elegir modo de transcripción
+     · En vivo (más rápido, consume créditos mientras grabás)
+     · Manual (más económico, por defecto; ideal para pruebas)
+3. Subir material una sola vez
      · foto del set de imágenes a comparar (Parte 2)
      · foto del diagrama (Parte 3)
      · script del examinador (foto, PDF o texto)
    → la IA lee cada foto y devuelve una descripción
    → el examinador la revisa y corrige antes de guardarla
-3. Elegir la pareja/trío del roster (pueden ser de grupos y docentes distintos)
-4. Grabar → detener → "Mandar a la cola"
-5. Volver al paso 3 con la pareja siguiente (sin esperar nada)
-6. Terminada la jornada: abrir la cola ítem por ítem
-     → transcribir → confirmar quién es quién → analizar con IA
+4. Elegir la pareja/trío del roster (pueden ser de grupos y docentes distintos)
+5. Grabar → detener → "Mandar a la cola"
+6. Volver al paso 4 con la pareja siguiente (sin esperar nada)
+7. Terminada la jornada: abrir la cola ítem por ítem
+     · Si el modo es en vivo: solo confirmar quién es quién → analizar con IA
+     · Si el modo es manual: transcribir → confirmar quién es quién → analizar con IA
      → revisar el informe → confirmar y firmar → siguiente
-7. Otro día: reabrir la misma sesión y seguir desde el paso 3
+8. Otro día: reabrir la misma sesión y seguir desde el paso 4
 ```
 
-Nada se procesa por su cuenta mientras estás tomando orales: la cola solo guarda el audio. Transcripción y análisis corren únicamente cuando vos lo pedís.
+Nada se procesa por su cuenta mientras estás tomando orales, **salvo que el modo en vivo esté activado**. En ese caso, la transcripción avanza en paralelo y el ítem entra directamente en el paso de revisión de speakers. El análisis con IA sigue siendo manual y confirmado por vos.
 
 ---
 
