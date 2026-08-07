@@ -333,7 +333,6 @@ export default function SpeakingSessionPage() {
     setTimeout(() => {
       if (audioRef.current) {
         audioRef.current.play().catch(() => undefined);
-        setAudioPlaying(true);
       }
     }, 0);
   };
