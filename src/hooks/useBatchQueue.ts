@@ -6,11 +6,13 @@ import * as db from "@/lib/batchQueueDb";
 import { checkAudioSize, checkAudioDuration, checkContextSize } from "@/lib/uploadGuards";
 import { transcribeBlob, type ScribeWord } from "@/lib/transcribe";
 import { labelTranscriptFromWords, hasClearSpeakerLabels } from "@/lib/labelTranscript";
+import { applySpeakerMap, type SpeakerMap } from "@/lib/applySpeakerMap";
 
 export type BatchItemStatus =
   | "recorded"
   | "queued"
   | "analyzing"
+  | "reviewing_speakers"
   | "done"
   | "failed";
 
@@ -36,6 +38,10 @@ export interface BatchItem {
   bookletText?: string;
   rubricText?: string;
   examNotes?: string;
+  // Speaker review state (Batch Session now requires review before AI scoring).
+  speakerMap?: SpeakerMap;
+  pendingTranscript?: string;
+  pendingWords?: ScribeWord[];
 }
 
 
