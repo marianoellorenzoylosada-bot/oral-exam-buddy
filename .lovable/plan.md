@@ -122,15 +122,17 @@ Academic Year / Enrollments · cambiar el motor de scoring · calibración · ba
 ## Criterios de aceptación
 
 - [ ] Un solo ítem "Speaking Session" en el menú; New Exam y Batch redirigen ahí.
+- [ ] Al crear sesión se puede elegir "Transcripción en vivo" (desactivada por defecto, ideal para pruebas económicas).
 - [ ] Se saca foto del material con el celular, la IA la describe y la descripción se puede editar y guardar.
 - [ ] Los candidatos se eligen del roster y pueden ser de grupos distintos; cada informe queda con el grupo correcto.
-- [ ] Grabar → mandar a la cola no dispara ningún procesamiento.
+- [ ] En modo manual, grabar → mandar a la cola no dispara ningún procesamiento.
+- [ ] En modo en vivo, la transcripción avanza durante la grabación y el ítem va directamente a confirmar speakers.
 - [ ] Se pueden encolar varios orales seguidos sin esperas.
-- [ ] Cada ítem de la cola se procesa a pedido: transcribir → confirmar speakers → analizar.
+- [ ] Cada ítem de la cola se procesa a pedido: confirmar speakers → analizar (con paso de transcripción solo en modo manual).
 - [ ] Al confirmar y firmar, el informe queda congelado y guarda `session_id`, `attempt_id`, `candidate_id` y el audio.
 - [ ] La sesión se puede cerrar y reabrir otro día, con el material intacto.
 - [ ] Los informes archivados anteriores siguen siendo legibles.
-- [ ] Typecheck y build en verde, más una prueba de punta a punta con un audio corto.
+- [ ] Typecheck y build en verde, más una prueba de punta a punta con un audio corto en modo manual.
 
 ---
 
