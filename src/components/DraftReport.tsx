@@ -118,15 +118,42 @@ function ConfidenceBadge({ confidence }: { confidence?: number }) {
 
 const COPYRIGHT_TEXT = "© 2026 Int'l Oral Exam Assistant. Evaluation methodology and AI results are subject to teacher supervision.";
 
-export function DraftReport({ result, level, levelCode, language, institution, group, candidateNames, candidateIds, audioBlob, scribeWords, phaseMarks, draftKey, onReset }: DraftReportProps) {
+export function DraftReport({ result, level, levelCode, language, institution, group, candidateNames, candidateIds, audioBlob, audioPath, sessionId, attemptId, scribeWords, phaseMarks, draftKey, onReset }: DraftReportProps) {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user } = useAuth();
   const [activeCandidate, setActiveCandidate] = useState(0);
   const [saving, setSaving] = useState(false);
   // Shared audio storage path across all candidates in this session (upload once).
-  const [audioStoragePath, setAudioStoragePath] = useState<string | null>(null);
+  const [audioStoragePath, setAudioStoragePath] = useState<string | null>(audioPath ?? null);
   const [audioUploadFailed, setAudioUploadFailed] = useState(false);
+  // Per-candidate group/institution resolved from the roster (pairs can be mixed-group).
+  const [candidateMeta, setCandidateMeta] = useState<Record<string, { group: string; institution: string }>>({});
+
+  useEffect(() => {
+    const ids = (candidateIds ?? []).filter((id): id is string => !!id);
+    if (ids.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("students")
+        .select("id, groups(name, institution)")
+        .in("id", ids);
+      if (error || cancelled || !data) return;
+      const map: Record<string, { group: string; institution: string }> = {};
+      for (const row of data as any[]) {
+        map[row.id] = {
+          group: row.groups?.name ?? "",
+          institution: row.groups?.institution ?? "",
+        };
+      }
+      setCandidateMeta(map);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(candidateIds ?? [])]);
+
+
 
 
   // Try to restore a previously auto-saved draft for this exam.
