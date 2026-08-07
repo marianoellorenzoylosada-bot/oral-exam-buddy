@@ -794,6 +794,11 @@ export default function BatchSessionPage() {
                               {item.stageLabel}
                             </p>
                           )}
+                          {item.status === "reviewing_speakers" && (
+                            <p className="text-xs mt-1 text-purple-700 dark:text-purple-400">
+                              {item.stageLabel || "Waiting for speaker confirmation…"}
+                            </p>
+                          )}
                           {item.error && (
                             <p className={`text-xs mt-1 ${isTooShort ? "text-muted-foreground" : "text-destructive"}`}>
                               {isTooShort ? "Too short to analyze." : item.error}
