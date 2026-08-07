@@ -49,6 +49,8 @@ serve(async (req) => {
 
   const userCheck = await requireUser(req);
   if (userCheck instanceof Response) return userCheck;
+  const { userId } = userCheck;
+
 
   let body: { storagePath?: string; kind?: string; base64?: string; mimeType?: string };
   try {
@@ -71,7 +73,14 @@ serve(async (req) => {
   let mimeType = body.mimeType || "image/jpeg";
 
   if (body.storagePath) {
+    if (!body.storagePath.startsWith(`${userId}/`) || body.storagePath.includes("..")) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     const admin = createClient(
+
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
