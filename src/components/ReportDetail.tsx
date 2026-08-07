@@ -350,8 +350,8 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
               <CheckCircle2 className="h-3 w-3" /> Confirmed
             </Badge>
           )}
-
         </DialogTitle>
+
         <DialogDescription>
           {displayName && <span className="font-medium">{displayName} · </span>}
           {displayInstitution} · {displayGroup} · {new Date(exam.created_at).toLocaleDateString()}
