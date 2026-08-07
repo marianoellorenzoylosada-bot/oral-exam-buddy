@@ -435,6 +435,11 @@ function ExamRow({
       <button onClick={onClick} className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground sm:text-right">
         <Badge variant="secondary">{exam.level_code}</Badge>
         <Badge variant="outline">{langLabel[exam.language] || exam.language}</Badge>
+        {exam.confirmed_at && (
+          <Badge variant="default" className="bg-success hover:bg-success/90 text-success-foreground gap-1 text-xs">
+            <ShieldCheck className="h-3 w-3" /> Confirmed
+          </Badge>
+        )}
         <span className="font-display font-bold text-foreground">{Number(exam.overall_score).toFixed(1)}/5</span>
         <span className="flex items-center gap-1 whitespace-nowrap">
           <Clock className="h-3.5 w-3.5" />
