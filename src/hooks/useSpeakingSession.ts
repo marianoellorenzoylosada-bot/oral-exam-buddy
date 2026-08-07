@@ -146,28 +146,8 @@ export function useUpdateSession() {
       return data as SpeakingSession;
     },
     onSuccess: (_data, variables) => {
-      void Promise.all([
-        Promise.resolve().then(() =>
-          setTimeout(() => {
-            void Promise.all([
-              Promise.resolve().then(() =>
-                Promise.all([
-                  Promise.resolve().then(() =>
-                    Promise.resolve().then(() =>
-                      Promise.resolve().then(() => {
-                        void Promise.resolve().then(() => {
-                          qc.invalidateQueries({ queryKey: ["speaking_sessions"] });
-                          qc.invalidateQueries({ queryKey: ["speaking_session", variables.id] });
-                        });
-                      })
-                    )
-                  )
-                ])
-              )
-            ]);
-          }, 0)
-        ),
-      ]);
+      qc.invalidateQueries({ queryKey: ["speaking_sessions"] });
+      qc.invalidateQueries({ queryKey: ["speaking_session", variables.id] });
     },
   });
 }
@@ -270,22 +250,8 @@ export function useUpdateAttempt() {
       return data as unknown as SessionAttempt;
     },
     onSuccess: (_data, variables) => {
-      void Promise.all([
-        Promise.resolve().then(() =>
-          setTimeout(() => {
-            void Promise.resolve().then(() =>
-              Promise.resolve().then(() =>
-                Promise.resolve().then(() =>
-                  Promise.resolve().then(() => {
-                    qc.invalidateQueries({ queryKey: ["speaking_session"] });
-                    qc.invalidateQueries({ queryKey: ["session_attempt", variables.id] });
-                  })
-                )
-              )
-            );
-          }, 0)
-        ),
-      ]);
+      qc.invalidateQueries({ queryKey: ["speaking_session"] });
+      qc.invalidateQueries({ queryKey: ["session_attempt", variables.id] });
     },
   });
 }
