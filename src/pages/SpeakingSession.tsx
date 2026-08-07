@@ -108,9 +108,14 @@ export default function SpeakingSessionPage() {
     setGroupId(null);
     setLiveTranscript("");
     setLiveWords([]);
+    setLocalAudioUrl(null);
     setActiveSessionId(null);
     setActiveTab("prepare");
   }, []);
+
+  useEffect(() => {
+    if (recorder.audioUrl) setLocalAudioUrl(recorder.audioUrl);
+  }, [recorder.audioUrl]);
 
   // Load existing session into form
   useEffect(() => {
