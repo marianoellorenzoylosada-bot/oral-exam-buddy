@@ -230,21 +230,21 @@ export function useCreateAttempt() {
           id,
           user_id: user.id,
           session_id: input.sessionId,
-          candidate_names: input.candidateNames,
-          candidate_ids: input.candidateIds,
+          candidate_names: input.candidateNames as any,
+          candidate_ids: input.candidateIds as any,
           audio_path: audioPath,
           duration_seconds: input.durationSeconds,
           transcription_mode: input.transcriptionMode,
           status: "recorded",
           transcript: "",
           live_transcript: input.liveTranscript ?? "",
-          live_words: input.liveWords ?? null,
+          live_words: (input.liveWords ?? null) as any,
           recorded_at: new Date().toISOString(),
         })
         .select()
         .single();
       if (error) throw error;
-      return data as SessionAttempt;
+      return data as unknown as SessionAttempt;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["speaking_session"] }),
   });
@@ -253,15 +253,21 @@ export function useCreateAttempt() {
 export function useUpdateAttempt() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...patch }: Partial<SessionAttempt> & { id: string }) => {
+    mutationFn: async (patch: Partial<SessionAttempt> & { id: string }) => {
+      const { id, ...rest } = patch;
+      const updatePayload: any = { ...rest };
+      if (rest.candidate_names) updatePayload.candidate_names = rest.candidate_names as any;
+      if (rest.candidate_ids) updatePayload.candidate_ids = rest.candidate_ids as any;
+      if (rest.live_words) updatePayload.live_words = rest.live_words as any;
+      if (rest.speaker_map) updatePayload.speaker_map = rest.speaker_map as any;
       const { data, error } = await supabase
         .from("session_attempts")
-        .update(patch)
+        .update(updatePayload)
         .eq("id", id)
         .select()
         .single();
       if (error) throw error;
-      return data as SessionAttempt;
+      return data as unknown as SessionAttempt;
     },
     onSuccess: (_data, variables) => {
       void Promise.all([
