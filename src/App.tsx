@@ -51,6 +51,7 @@ const App = () => (
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
                 <Route path="/" element={<Index />} />
+                <Route path="/speaking-session" element={<RoleGate role="educator"><SpeakingSession /></RoleGate>} />
                 <Route path="/new-exam" element={<RoleGate role="educator"><NewExam /></RoleGate>} />
                 <Route path="/batch-session" element={<RoleGate role="educator"><BatchSession /></RoleGate>} />
                 <Route path="/calibration" element={<RoleGate role="educator"><Calibration /></RoleGate>} />
