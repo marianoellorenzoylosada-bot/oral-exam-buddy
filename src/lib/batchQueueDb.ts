@@ -76,8 +76,21 @@ export async function loadQueue(): Promise<BatchItem[]> {
         const items = (req.result as BatchItem[]) || [];
         items.sort((a, b) => a.recordedAt - b.recordedAt);
         for (const item of items) {
-          if (item.status === "analyzing") item.status = "failed";
+          // On reload, any item that was left "analyzing" should be marked as
+          // failed unless analysis finished recently. We use the time analysis
+          // started (not recording age) to decide. Legacy items without the
+          // field fall back to recordedAt, but with a shorter grace window.
+          if (item.status === "analyzing") {
+            const started = item.analysisStartedAt ?? item.recordedAt;
+            const elapsed = Date.now() - started;
+            const staleMs = item.analysisStartedAt ? 5 * 60 * 1000 : 2 * 60 * 1000;
+            if (elapsed > staleMs) {
+              item.status = "failed";
+              item.error = "Analysis interrupted — tap Retry.";
+            }
+          }
         }
+
         resolve(items);
       };
       req.onerror = () => reject(req.error);

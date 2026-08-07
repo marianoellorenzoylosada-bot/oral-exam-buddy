@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Mic, Square, Pause, Play, Upload, FileText, BookOpen, Trash2, Clock, Users,
   Loader2, Plus, X, CheckCircle2, AlertTriangle, ListChecks, PlayCircle, Sparkles, ChevronRight,
-  LifeBuoy, Download,
+  LifeBuoy, Download, ShieldCheck,
 } from "lucide-react";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { useBatchQueue, type BatchItem } from "@/hooks/useBatchQueue";
@@ -28,6 +28,8 @@ import {
   type ActiveRecordingSnapshot,
 } from "@/lib/batchQueueDb";
 import { PhaseTimer } from "@/components/PhaseTimer";
+import { applySpeakerMap, speakerStats, type SpeakerMap, type SpeakerRole } from "@/lib/applySpeakerMap";
+
 
 const LANGUAGES = SUPPORTED_LANGUAGES;
 
@@ -109,6 +111,7 @@ function StatusBadge({ status }: { status: BatchItem["status"] }) {
     recorded:  { label: "Recorded",  className: "border-muted-foreground/30 bg-muted text-muted-foreground", icon: Mic },
     queued:    { label: "Queued",    className: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400", icon: ListChecks },
     analyzing: { label: "Analyzing", className: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400", icon: Loader2 },
+    reviewing_speakers: { label: "Review speakers", className: "border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-400", icon: Users },
     done:      { label: "Done",      className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400", icon: CheckCircle2 },
     failed:    { label: "Failed",    className: "border-destructive/30 bg-destructive/10 text-destructive", icon: AlertTriangle },
   };
@@ -118,6 +121,87 @@ function StatusBadge({ status }: { status: BatchItem["status"] }) {
     <Badge variant="outline" className={`gap-1 ${v.className}`}>
       <Icon className={`h-3 w-3 ${status === "analyzing" ? "animate-spin" : ""}`} /> {v.label}
     </Badge>
+  );
+}
+
+const ROLES: SpeakerRole[] = ["Examiner", "Candidate A", "Candidate B", "Candidate C", "Speaker unclear"];
+
+function fmtTs(s: number) {
+  const m = Math.floor(s / 60), r = Math.floor(s % 60);
+  return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+}
+
+function SpeakerReviewPanel({
+  item,
+  onConfirm,
+}: {
+  item: BatchItem;
+  onConfirm: (map: SpeakerMap) => void;
+}) {
+  const stats = useMemo(() => speakerStats(item.pendingWords || item.scribeWords), [item]);
+  const [map, setMap] = useState<SpeakerMap>(() => {
+    const m: SpeakerMap = {};
+    for (const s of stats) {
+      m[s.id] = item.speakerMap?.[s.id] ?? "Speaker unclear";
+    }
+    return m;
+  });
+
+  if (stats.length === 0) {
+    return (
+      <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+        No diarized speakers detected. You can still confirm to score with the raw transcript.
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border bg-card p-3 space-y-3 mt-2">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="font-display font-semibold text-sm flex items-center gap-1.5">
+          <ShieldCheck className="h-4 w-4 text-primary" /> Confirm speakers
+        </h3>
+        <span className="text-[11px] text-muted-foreground">{stats.length} speaker{stats.length === 1 ? "" : "s"} detected</span>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Verify who is who before the AI scores. This prevents the wrong candidate being graded if diarization is off.
+      </p>
+      <ul className="space-y-2">
+        {stats.map((s) => (
+          <li key={s.id} className="rounded-md border bg-muted/20 p-2.5">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 min-w-0">
+                <Badge variant="outline" className="font-mono text-[10px]">{s.id}</Badge>
+                <span className="text-[11px] text-muted-foreground tabular-nums">
+                  {fmtTs(s.totalSeconds)} · {(s.share * 100).toFixed(0)}%
+                </span>
+              </div>
+              <Select
+                value={map[s.id] ?? "Speaker unclear"}
+                onValueChange={(v) => setMap((m) => ({ ...m, [s.id]: v as SpeakerRole }))}
+              >
+                <SelectTrigger className="h-8 w-[180px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ROLES.map((r) => (
+                    <SelectItem key={r} value={r} className="text-xs">{r}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {s.sampleText && (
+              <p className="mt-2 line-clamp-2 text-xs text-muted-foreground italic">"{s.sampleText}…"</p>
+            )}
+          </li>
+        ))}
+      </ul>
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => onConfirm(map)} className="gap-2">
+          <Sparkles className="h-3.5 w-3.5" /> Confirm & score
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -710,6 +794,11 @@ export default function BatchSessionPage() {
                               {item.stageLabel}
                             </p>
                           )}
+                          {item.status === "reviewing_speakers" && (
+                            <p className="text-xs mt-1 text-purple-700 dark:text-purple-400">
+                              {item.stageLabel || "Waiting for speaker confirmation…"}
+                            </p>
+                          )}
                           {item.error && (
                             <p className={`text-xs mt-1 ${isTooShort ? "text-muted-foreground" : "text-destructive"}`}>
                               {isTooShort ? "Too short to analyze." : item.error}
@@ -729,13 +818,13 @@ export default function BatchSessionPage() {
                           <Button size="sm" variant="default" className="gap-1" onClick={() => setReviewItemId(item.id)}>
                             <PlayCircle className="h-3.5 w-3.5" /> Review report
                           </Button>
-                        ) : isTooShort ? null : (
+                        ) : item.status === "reviewing_speakers" ? null : isTooShort ? null : (
                           <Button
                             size="sm"
                             variant="outline"
                             className="gap-1"
                             disabled={item.status === "analyzing" || queue.analyzingAll}
-                            onClick={() => queue.analyzeOne(item, { level, language: langLabel, bookletText, rubricText })}
+                            onClick={() => queue.startAnalysis(item, { level, language: langLabel, bookletText, rubricText })}
                           >
                             {item.status === "analyzing" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
                             {item.status === "failed" ? "Retry" : "Analyze"}
@@ -755,12 +844,18 @@ export default function BatchSessionPage() {
                           size="sm"
                           variant="ghost"
                           className="gap-1 text-muted-foreground hover:text-destructive"
-                          disabled={item.status === "analyzing"}
+                          disabled={item.status === "analyzing" || item.status === "reviewing_speakers"}
                           onClick={() => queue.removeItem(item.id)}
                         >
                           <Trash2 className="h-3.5 w-3.5" /> Remove
                         </Button>
                       </div>
+                      {item.status === "reviewing_speakers" && (
+                        <SpeakerReviewPanel
+                          item={item}
+                          onConfirm={(map) => queue.confirmSpeakersAndAnalyze(item.id, map, { level, language: langLabel, bookletText, rubricText })}
+                        />
+                      )}
                     </li>
                   );
                 })}

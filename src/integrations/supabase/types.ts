@@ -105,6 +105,7 @@ export type Database = {
           audio_path: string | null
           candidate_name: string | null
           candidates: number | null
+          confirmed_at: string | null
           created_at: string
           criteria: Json
           exam_context: Json
@@ -121,6 +122,8 @@ export type Database = {
           phase_marks: Json | null
           previous_analyses: Json
           regrade_count: number
+          revision: number
+          revision_reason: string | null
           speaker_map: Json | null
           status: string
           strengths: Json
@@ -135,6 +138,7 @@ export type Database = {
           audio_path?: string | null
           candidate_name?: string | null
           candidates?: number | null
+          confirmed_at?: string | null
           created_at?: string
           criteria?: Json
           exam_context?: Json
@@ -151,6 +155,8 @@ export type Database = {
           phase_marks?: Json | null
           previous_analyses?: Json
           regrade_count?: number
+          revision?: number
+          revision_reason?: string | null
           speaker_map?: Json | null
           status?: string
           strengths?: Json
@@ -165,6 +171,7 @@ export type Database = {
           audio_path?: string | null
           candidate_name?: string | null
           candidates?: number | null
+          confirmed_at?: string | null
           created_at?: string
           criteria?: Json
           exam_context?: Json
@@ -181,6 +188,8 @@ export type Database = {
           phase_marks?: Json | null
           previous_analyses?: Json
           regrade_count?: number
+          revision?: number
+          revision_reason?: string | null
           speaker_map?: Json | null
           status?: string
           strengths?: Json

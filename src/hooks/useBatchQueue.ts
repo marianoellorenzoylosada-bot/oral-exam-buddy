@@ -6,11 +6,13 @@ import * as db from "@/lib/batchQueueDb";
 import { checkAudioSize, checkAudioDuration, checkContextSize } from "@/lib/uploadGuards";
 import { transcribeBlob, type ScribeWord } from "@/lib/transcribe";
 import { labelTranscriptFromWords, hasClearSpeakerLabels } from "@/lib/labelTranscript";
+import { applySpeakerMap, type SpeakerMap } from "@/lib/applySpeakerMap";
 
 export type BatchItemStatus =
   | "recorded"
   | "queued"
   | "analyzing"
+  | "reviewing_speakers"
   | "done"
   | "failed";
 
@@ -25,6 +27,9 @@ export interface BatchItem {
   scribeWords?: ScribeWord[];
   error?: string;
   stageLabel?: string;
+  // Timestamp when this item actually started analysis (not recording age).
+  // Used by the watchdog to detect stuck analysis runs.
+  analysisStartedAt?: number;
   // Optional per-item context (populated by the New Exam flow so queued items
   // carry their own level / materials instead of relying on the Batch Session
   // shared context).
@@ -33,7 +38,18 @@ export interface BatchItem {
   bookletText?: string;
   rubricText?: string;
   examNotes?: string;
+  // Speaker review state (Batch Session now requires review before AI scoring).
+  speakerMap?: SpeakerMap;
+  pendingTranscript?: string;
+  pendingWords?: ScribeWord[];
 }
+
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  return "Analysis failed";
+}
+
 
 interface AnalyzeContext {
   level: string;
@@ -103,44 +119,78 @@ export function useBatchQueue() {
     });
   }, [persistItem]);
 
-  const analyzeOne = useCallback(async (item: BatchItem, ctx: AnalyzeContext) => {
-    // Pre-flight guards: fail fast with a clear reason
+  const preFlightChecks = useCallback((item: BatchItem, ctx: AnalyzeContext) => {
     const sizeCheck = checkAudioSize(item.audioBlob);
     if (!sizeCheck.ok) {
       updateItem(item.id, { status: "failed", error: sizeCheck.reason });
-      return;
+      return sizeCheck.reason;
     }
     const durCheck = checkAudioDuration(item.durationSeconds);
     if (!durCheck.ok) {
       updateItem(item.id, { status: "failed", error: durCheck.reason });
-      return;
+      return durCheck.reason;
     }
     const ctxCheck = checkContextSize(ctx.bookletText, ctx.rubricText);
     if (!ctxCheck.ok) {
       updateItem(item.id, { status: "failed", error: ctxCheck.reason });
-      return;
+      return ctxCheck.reason;
     }
+    return null;
+  }, [updateItem]);
 
-    updateItem(item.id, { status: "analyzing", error: undefined, stageLabel: "Starting…" });
+  const startAnalysis = useCallback(async (item: BatchItem, ctx: AnalyzeContext) => {
+    const preFlight = preFlightChecks(item, ctx);
+    if (preFlight) return;
 
-    // Use the item's stored context when available, otherwise fall back to the
-    // shared context from the Batch Session page.
-    const level = item.level ?? ctx.level;
-    const language = item.language ?? ctx.language;
-    const bookletText = item.bookletText ?? ctx.bookletText;
-    const rubricText = item.rubricText ?? ctx.rubricText;
+    updateItem(item.id, { status: "analyzing", error: undefined, stageLabel: "Transcribing…", analysisStartedAt: Date.now() });
 
     try {
-      // Step 1: Scribe transcription (always — gives us speaker diarization + word timing)
       const { transcript, words } = await transcribeBlob(item.audioBlob, (stage) =>
         updateItem(item.id, { stageLabel: stage })
       );
       if (transcript.trim().split(/\s+/).filter(Boolean).length < 30) {
         throw new Error("Not enough speech detected in this recording.");
       }
-      updateItem(item.id, { stageLabel: "Scoring with AI…" });
+      updateItem(item.id, {
+        status: "reviewing_speakers",
+        stageLabel: "Waiting for speaker confirmation…",
+        pendingTranscript: transcript,
+        pendingWords: words,
+        scribeWords: words,
+      });
+    } catch (err) {
+      updateItem(item.id, {
+        status: "failed",
+        error: getErrorMessage(err),
+        stageLabel: undefined,
+      });
+    }
+  }, [updateItem, preFlightChecks]);
 
-      // Build exam context from stored materials (mirrors NewExam runScoring).
+  const confirmSpeakersAndAnalyze = useCallback(async (itemId: string, map: SpeakerMap, ctx: AnalyzeContext) => {
+    const item = itemsRef.current.find(i => i.id === itemId);
+    if (!item) return;
+
+    const words = item.pendingWords ?? item.scribeWords;
+    if (!words || words.length === 0) {
+      updateItem(item.id, { status: "failed", error: "No transcription available to apply speaker mapping." });
+      return;
+    }
+
+    const level = item.level ?? ctx.level;
+    const language = item.language ?? ctx.language;
+    const bookletText = item.bookletText ?? ctx.bookletText;
+    const rubricText = item.rubricText ?? ctx.rubricText;
+
+    updateItem(item.id, {
+      status: "analyzing",
+      error: undefined,
+      stageLabel: "Scoring with AI…",
+      speakerMap: map,
+      analysisStartedAt: Date.now(),
+    });
+
+    try {
       const examContext: Array<{ kind: string; title: string; text: string }> = [];
       if (bookletText?.trim()) {
         examContext.push({ kind: "candidate_prompt", title: "Candidate prompt / booklet", text: bookletText });
@@ -152,8 +202,7 @@ export function useBatchQueue() {
         examContext.push({ kind: "notes", title: "Mock-specific notes", text: item.examNotes });
       }
 
-      // Step 2: AI scoring on transcript — with 120 s timeout so the item never
-      // hangs forever if the network drops or the function stalls.
+      const transcript = applySpeakerMap(words, map);
       const data = await callEdgeFunction<MultiCandidateResult & { transcript?: string; error?: string }>(
         "analyze-exam",
         {
@@ -169,29 +218,44 @@ export function useBatchQueue() {
           timeoutMs: 120_000,
         },
       );
-      // Prefer the AI-labelled transcript when it already contains clear
-      // speaker labels; otherwise rebuild labels from Scribe word-level
-      // diarization; otherwise fall back to the raw verbatim transcript.
-      const aiTranscript = (data as any)?.transcript as string | undefined;
+      const aiTranscript = data?.transcript;
       const displayTranscript =
         aiTranscript && hasClearSpeakerLabels(aiTranscript)
           ? aiTranscript
-          : labelTranscriptFromWords(transcript, words);
-      const enriched = { ...(data as MultiCandidateResult), transcript: displayTranscript };
-      updateItem(item.id, { status: "done", result: enriched, scribeWords: words, stageLabel: undefined });
-    } catch (err: any) {
+          : transcript;
+      const enriched = { ...data, transcript: displayTranscript };
+      updateItem(item.id, {
+        status: "done",
+        result: enriched,
+        scribeWords: words,
+        stageLabel: undefined,
+      });
+    } catch (err) {
       updateItem(item.id, {
         status: "failed",
-        error: err?.message ?? "Analysis failed",
+        error: getErrorMessage(err),
         stageLabel: undefined,
       });
     }
-
   }, [updateItem]);
 
+  /**
+   * Backwards-compatible single-item analysis. When called without a pre-
+   * confirmed speaker map, it starts with transcription and pauses at the
+   * speaker-review stage. When called with a map, it proceeds directly to AI
+   * scoring.
+   */
+  const analyzeOne = useCallback(async (item: BatchItem, ctx: AnalyzeContext, preConfirmedMap?: SpeakerMap) => {
+    if (preConfirmedMap) {
+      await confirmSpeakersAndAnalyze(item.id, preConfirmedMap, ctx);
+    } else {
+      await startAnalysis(item, ctx);
+    }
+  }, [startAnalysis, confirmSpeakersAndAnalyze]);
+
   // Watchdog: same-session reclassification of items stuck in "analyzing" for
-  // more than 5 minutes (e.g. user navigated away mid-analyze). loadQueue()
-  // already handles this on fresh hydration; this covers in-session navigation.
+  // more than 5 minutes of *processing* time (not recording age). This covers
+  // in-session navigation; loadQueue() handles the fresh-hydration case.
   useEffect(() => {
     const STALE_MS = 5 * 60 * 1000;
     const tick = () => {
@@ -199,7 +263,9 @@ export function useBatchQueue() {
       setItems(prev => {
         let changed = false;
         const next = prev.map(i => {
-          if (i.status === "analyzing" && now - i.recordedAt > STALE_MS) {
+          if (i.status !== "analyzing") return i;
+          const started = i.analysisStartedAt ?? i.recordedAt;
+          if (now - started > STALE_MS) {
             changed = true;
             const updated: BatchItem = {
               ...i,
@@ -218,6 +284,7 @@ export function useBatchQueue() {
     tick();
     return () => clearInterval(id);
   }, []);
+
 
   const analyzeAll = useCallback(async (ctx: AnalyzeContext) => {
     setAnalyzingAll(true);
@@ -253,6 +320,8 @@ export function useBatchQueue() {
     updateItem,
     analyzeOne,
     analyzeAll,
+    startAnalysis,
+    confirmSpeakersAndAnalyze,
     analyzingAll,
     hydrated,
   };

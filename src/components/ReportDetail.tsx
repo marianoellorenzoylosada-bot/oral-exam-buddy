@@ -70,7 +70,14 @@ export type Exam = {
   speaker_map?: any;
   part_feedback?: any;
   overall_summary?: string | null;
+  confirmed_at?: string | null;
+  revision?: number | null;
+  revision_reason?: string | null;
+  user_id?: string | null;
+  phase_marks?: any;
 };
+
+
 
 interface Props {
   exam: Exam;
@@ -102,7 +109,9 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
   const [editTranscript, setEditTranscript] = useState(exam.transcript ?? "");
   const [editNotes, setEditNotes] = useState(exam.examiner_notes ?? "");
   const [extraObservation, setExtraObservation] = useState("");
+  const [correctionReason, setCorrectionReason] = useState("");
   const [viewingPrevIdx, setViewingPrevIdx] = useState<number | null>(null);
+
 
   const previousAnalyses: any[] = Array.isArray(exam.previous_analyses) ? exam.previous_analyses : [];
 
@@ -206,29 +215,18 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
       toast({ title: "Transcript too short", description: "Need at least 30 words to re-analyze.", variant: "destructive" });
       return;
     }
+    if (exam.confirmed_at && !correctionReason.trim()) {
+      toast({ title: "Correction reason required", description: "Please explain why you are creating a new version of a confirmed report.", variant: "destructive" });
+      return;
+    }
     setRegrading(true);
     try {
-      // 1. Snapshot current analysis
-      const snapshot = {
-        regraded_at: new Date().toISOString(),
-        overall_band: exam.overall_band,
-        overall_score: exam.overall_score,
-        criteria: exam.criteria,
-        strengths: exam.strengths,
-        areas_for_improvement: exam.areas_for_improvement,
-        examiner_notes: exam.examiner_notes,
-        transcript: exam.transcript,
-        part_feedback: exam.part_feedback ?? null,
-        overall_summary: exam.overall_summary ?? null,
-      };
-      const newHistory = [snapshot, ...previousAnalyses];
-
-      // 2. Build optional examiner tag from extra observation
+      // Build optional examiner tag from extra observation
       const tags = extraObservation.trim()
         ? [{ atSec: 0, candidate: "?", label: extraObservation.trim() }]
         : [];
 
-      // 3. Re-invoke analysis
+      // Re-invoke analysis
       const { data, error } = await supabase.functions.invoke("analyze-exam", {
         body: {
           level: exam.level_code,
@@ -241,33 +239,80 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
 
-      // analyze-exam returns { candidates: [...], examinerNotes }. Use first candidate.
       const first = (data as any).candidates?.[0];
       if (!first) throw new Error("No analysis returned.");
 
-      const { error: updErr } = await supabase
-        .from("exams")
-        .update({
+      if (exam.confirmed_at) {
+        // Confirmed reports are frozen: create a new revision instead of editing.
+        const revisionNote = `Corrected version of ${exam.title} (${exam.id}).\nReason: ${correctionReason.trim()}${extraObservation.trim() ? "\nObservation: " + extraObservation.trim() : ""}`;
+        const { error: insertErr } = await supabase.from("exams").insert({
+          title: exam.title,
+          level_code: exam.level_code,
+          language: exam.language,
+          institution: exam.institution,
+          group: exam.group,
+          candidate_name: exam.candidate_name,
+          candidates: exam.candidates,
           overall_band: first.overallBand,
           overall_score: first.overallScore,
           criteria: first.criteria,
           strengths: first.strengths,
           areas_for_improvement: first.areasForImprovement,
           transcript: editTranscript,
-          examiner_notes: editNotes,
-          previous_analyses: newHistory as any,
-          regrade_count: (exam.regrade_count ?? 0) + 1,
-          part_feedback: Array.isArray(first.partFeedback) && first.partFeedback.length > 0
-            ? (first.partFeedback as any)
-            : null,
+          examiner_notes: editNotes + "\n\n--- Correction ---\n" + revisionNote,
+          status: "completed",
+          user_id: exam.user_id,
+          words_json: exam.words_json,
+          phase_marks: exam.phase_marks,
+          audio_path: exam.audio_path,
+          audio_expires_at: exam.audio_expires_at,
+          part_feedback: Array.isArray(first.partFeedback) && first.partFeedback.length > 0 ? (first.partFeedback as any) : null,
           overall_summary: typeof first.overallSummary === "string" ? first.overallSummary : null,
-        })
-        .eq("id", exam.id);
-      if (updErr) throw updErr;
+          revision: (exam.revision ?? 0) + 1,
+          revision_reason: correctionReason.trim(),
+        });
+        if (insertErr) throw insertErr;
+        toast({ title: "Corrected version created", description: "The original report remains unchanged and the new version is in your records." });
+      } else {
+        // Unconfirmed reports can be updated in place.
+        const snapshot = {
+          regraded_at: new Date().toISOString(),
+          overall_band: exam.overall_band,
+          overall_score: exam.overall_score,
+          criteria: exam.criteria,
+          strengths: exam.strengths,
+          areas_for_improvement: exam.areas_for_improvement,
+          examiner_notes: exam.examiner_notes,
+          transcript: exam.transcript,
+          part_feedback: exam.part_feedback ?? null,
+          overall_summary: exam.overall_summary ?? null,
+        };
+        const newHistory = [snapshot, ...previousAnalyses];
+        const { error: updErr } = await supabase
+          .from("exams")
+          .update({
+            overall_band: first.overallBand,
+            overall_score: first.overallScore,
+            criteria: first.criteria,
+            strengths: first.strengths,
+            areas_for_improvement: first.areasForImprovement,
+            transcript: editTranscript,
+            examiner_notes: editNotes,
+            previous_analyses: newHistory as any,
+            regrade_count: (exam.regrade_count ?? 0) + 1,
+            part_feedback: Array.isArray(first.partFeedback) && first.partFeedback.length > 0
+              ? (first.partFeedback as any)
+              : null,
+            overall_summary: typeof first.overallSummary === "string" ? first.overallSummary : null,
+          })
+          .eq("id", exam.id);
+        if (updErr) throw updErr;
+        toast({ title: "Re-analysis complete", description: "Previous version saved to history." });
+      }
 
-      toast({ title: "Re-analysis complete", description: "Previous version saved to history." });
       setRegradeOpen(false);
       setExtraObservation("");
+      setCorrectionReason("");
       queryClient.invalidateQueries({ queryKey: ["exams-reports"] });
       onClose();
     } catch (err: any) {
@@ -276,6 +321,7 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
       setRegrading(false);
     }
   };
+
 
   // Approve current scores as a senior calibration reference.
   // Uses the earliest AI-produced criteria (from previous_analyses) as
@@ -339,7 +385,13 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
               <RefreshCw className="h-3 w-3" /> Re-graded {exam.regrade_count}×
             </Badge>
           )}
+          {exam.confirmed_at && (
+            <Badge variant="outline" className="gap-1 text-xs border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+              <CheckCircle2 className="h-3 w-3" /> Confirmed
+            </Badge>
+          )}
         </DialogTitle>
+
         <DialogDescription>
           {displayName && <span className="font-medium">{displayName} · </span>}
           {displayInstitution} · {displayGroup} · {new Date(exam.created_at).toLocaleDateString()}
@@ -672,8 +724,9 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
 
           <div className="flex gap-2 flex-wrap justify-end">
             <Button variant="outline" size="sm" onClick={() => { setEditTranscript(exam.transcript ?? ""); setEditNotes(exam.examiner_notes ?? ""); setRegradeOpen(true); }} className="gap-2" disabled={viewing != null}>
-              <RefreshCw className="h-4 w-4" /> Re-analyze
+              <RefreshCw className="h-4 w-4" /> {exam.confirmed_at ? "Corrected version" : "Re-analyze"}
             </Button>
+
             <Button variant="outline" size="sm" onClick={() => generateReportPdf({
               title: exam.title,
               candidateName: anonymize ? "Anonymous" : (exam.candidate_name || ""),
@@ -728,10 +781,12 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle className="font-display flex items-center gap-2">
-              <RefreshCw className="h-5 w-5 text-primary" /> Re-analyze Exam
+              <RefreshCw className="h-5 w-5 text-primary" /> {exam.confirmed_at ? "Create corrected version" : "Re-analyze Exam"}
             </DialogTitle>
             <DialogDescription>
-              Edit the transcript, add notes or extra observations, then run the AI again. The current scores will be saved to version history.
+              {exam.confirmed_at
+                ? "This report is confirmed and frozen. You can create a new corrected version; the original will remain unchanged."
+                : "Edit the transcript, add notes or extra observations, then run the AI again. The current scores will be saved to version history."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -747,15 +802,23 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
               <Label htmlFor="rg-extra" className="text-xs">Additional observation (optional)</Label>
               <Textarea id="rg-extra" value={extraObservation} onChange={(e) => setExtraObservation(e.target.value)} placeholder="e.g. Candidate was very nervous in the first minute and self-corrected several times" className="min-h-[50px] text-xs" />
             </div>
+            {exam.confirmed_at && (
+              <div className="space-y-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
+                <Label htmlFor="rg-reason" className="text-xs text-amber-700 dark:text-amber-400">Reason for correction *</Label>
+                <Textarea id="rg-reason" value={correctionReason} onChange={(e) => setCorrectionReason(e.target.value)} placeholder="e.g. I noticed I missed a candidate turn, so the Interaction score was too low." className="min-h-[50px] text-xs bg-background" />
+                <p className="text-[11px] text-amber-700 dark:text-amber-400">A reason is required to create a new version of a confirmed report.</p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRegradeOpen(false)} disabled={regrading}>Cancel</Button>
             <Button onClick={handleRegrade} disabled={regrading} className="gap-2">
-              {regrading ? <><Loader2 className="h-4 w-4 animate-spin" /> Re-analyzing…</> : <><RefreshCw className="h-4 w-4" /> Run analysis</>}
+              {regrading ? <><Loader2 className="h-4 w-4 animate-spin" /> Re-analyzing…</> : <><RefreshCw className="h-4 w-4" /> {exam.confirmed_at ? "Create corrected version" : "Run analysis"}</>}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
     </DialogContent>
   );
 }

@@ -113,8 +113,13 @@ const COPYRIGHT_TEXT = "© 2026 Int'l Oral Exam Assistant. Evaluation methodolog
 export function DraftReport({ result, level, levelCode, language, institution, group, candidateNames, audioBlob, scribeWords, phaseMarks, draftKey, onReset }: DraftReportProps) {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [activeCandidate, setActiveCandidate] = useState(0);
   const [saving, setSaving] = useState(false);
+  // Shared audio storage path across all candidates in this session (upload once).
+  const [audioStoragePath, setAudioStoragePath] = useState<string | null>(null);
+  const [audioUploadFailed, setAudioUploadFailed] = useState(false);
+
 
   // Try to restore a previously auto-saved draft for this exam.
   const persisted = useMemo<PersistedDraft | null>(() => {
@@ -255,8 +260,29 @@ export function DraftReport({ result, level, levelCode, language, institution, g
       return;
     }
 
+    if (!user) {
+      toast({ title: "Authentication required", description: "Sign in to save reports.", variant: "destructive" });
+      return;
+    }
+
     setSaving(true);
     try {
+      // Upload audio first, once, before creating the exam record.
+      let uploadPath = audioStoragePath;
+      if (audioBlob && !uploadPath) {
+        const path = `${user.id}/${crypto.randomUUID()}.webm`;
+        const { error: uploadError } = await supabase.storage
+          .from("exam-audio")
+          .upload(path, audioBlob, { contentType: audioBlob.type || "audio/webm", upsert: true });
+        if (uploadError) {
+          console.warn("Audio upload failed:", uploadError.message);
+          setAudioUploadFailed(true);
+          throw new Error(`Audio upload failed: ${uploadError.message}. Report not saved — audio is required evidence.`);
+        }
+        uploadPath = path;
+        setAudioStoragePath(path);
+      }
+
       const finalStrengths = draft.strengths.filter((_, i) => acceptedStrengths[i]);
       const finalImprovements = draft.areasForImprovement.filter((_, i) => acceptedImprovements[i]);
 
@@ -274,8 +300,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
       const candidateName = draft.candidateName || candidateNames[activeCandidate] || `Candidate ${String.fromCharCode(65 + activeCandidate)}`;
       const examTitle = `${levelCode} ${language} Oral — ${candidateName}`;
 
-      const audioPath = audioBlob ? `${crypto.randomUUID()}.webm` : null;
-      const { data: insertData, error } = await supabase.from("exams").insert({
+      const { error } = await supabase.from("exams").insert({
         title: examTitle,
         level_code: levelCode,
         language,
@@ -291,25 +316,17 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         transcript: sharedDraft.transcript,
         examiner_notes: finalNotes,
         status: "completed",
-        user_id: (await supabase.auth.getUser()).data.user?.id,
+        user_id: user.id,
         words_json: scribeWords && scribeWords.length > 0 ? (scribeWords as any) : null,
         phase_marks: phaseMarks && phaseMarks.length > 0 ? (phaseMarks as any) : null,
-        audio_path: audioPath,
-        audio_expires_at: audioPath ? new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString() : null,
+        audio_path: uploadPath,
+        audio_expires_at: uploadPath ? new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString() : null,
         part_feedback: draft.partFeedback && draft.partFeedback.length > 0 ? (draft.partFeedback as any) : null,
         overall_summary: draft.overallSummary || null,
-      }).select("id").single();
-      if (error) throw error;
+        confirmed_at: new Date().toISOString(),
+      });
 
-      // Upload audio to storage if available (only for the first candidate to avoid duplicates)
-      if (audioBlob && audioPath && !officialStatus.some(Boolean)) {
-        const { error: uploadError } = await supabase.storage
-          .from("exam-audio")
-          .upload(audioPath, audioBlob, { contentType: audioBlob.type || "audio/webm", upsert: true });
-        if (uploadError) {
-          console.warn("Audio upload failed:", uploadError.message);
-        }
-      }
+      if (error) throw error;
 
       setOfficialStatus(prev => {
         const next = prev.map((v, i) => i === activeCandidate ? true : v);
@@ -333,6 +350,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
       setSaving(false);
     }
   };
+
 
   const handlePrint = () => window.print();
 
