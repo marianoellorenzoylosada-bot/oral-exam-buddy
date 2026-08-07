@@ -90,6 +90,8 @@ export default function SpeakingSessionPage() {
   const [processing, setProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState("");
   const [lastError, setLastError] = useState<string | null>(null);
+  const [reviewAttemptId, setReviewAttemptId] = useState<string | null>(null);
+
   const [signedAudioUrl, setSignedAudioUrl] = useState<string | null>(null);
   const [localAudioUrl, setLocalAudioUrl] = useState<string | null>(null);
   const [localAudioPlaying, setLocalAudioPlaying] = useState(false);
