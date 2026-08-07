@@ -24,7 +24,7 @@ import { SUPPORTED_LANGUAGES, getExamLevels } from "@/lib/examLevels";
 import {
   useSessions, useSession, useCreateSession, useUpdateSession, useCloseSession,
   useCreateAttempt, useUpdateAttempt, useDeleteAttempt, useStudentGroups,
-  type SessionWithDetails, type SessionAttempt, type TranscriptionMode,
+  type SessionWithDetails, type SessionAttempt, type TranscriptionMode, type AttemptStatus,
 } from "@/hooks/useSpeakingSession";
 import { SessionMaterialPanel } from "@/components/session/SessionMaterialPanel";
 import { SpeakerMappingPanel } from "@/components/SpeakerMappingPanel";
