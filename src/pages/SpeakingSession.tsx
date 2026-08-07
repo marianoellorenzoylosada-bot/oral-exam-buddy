@@ -400,6 +400,11 @@ export default function SpeakingSessionPage() {
           <p className="text-muted-foreground">
             Prepare materials, record attempts, and process them when ready.
           </p>
+          {session && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Status: <span className={session.status === "open" ? "text-emerald-600" : "text-amber-600"}>{session.status === "open" ? "Open — ready for recording" : "Finished — can be reopened"}</span>
+            </p>
+          )}
         </div>
         {existingSessions && existingSessions.length > 0 && (
           <Select
