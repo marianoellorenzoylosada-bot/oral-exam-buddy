@@ -241,16 +241,17 @@ export function SessionMaterialPanel({ sessionId, materials }: SessionMaterialPa
             <div className="space-y-2">
               <Label>Add</Label>
               <div className="flex gap-2">
-                <input ref={fileInputRef} type="file" accept={kind === "script" ? "application/pdf,text/plain" : "image/*"} className="hidden" onChange={handleFileInput} />
+                <input ref={fileInputRef} type="file" accept={kind === "examiner_script" ? "application/pdf,text/plain" : "image/*"} className="hidden" onChange={handleFileInput} />
                 <Button variant="outline" className="flex-1 justify-start overflow-hidden" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
                   {uploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4 shrink-0" />}
                   <span className="truncate">{uploading ? "Uploading…" : "Choose file"}</span>
                 </Button>
-                {kind !== "script" && (
+                {kind !== "examiner_script" && (
                   <Button variant="outline" onClick={() => setCameraOpen(true)} disabled={uploading} title="Take a photo">
                     <Camera className="h-4 w-4" />
                   </Button>
                 )}
+
               </div>
               {uploadError && (
                 <p className="text-xs text-destructive">{uploadError}. Try again or use the camera.</p>
