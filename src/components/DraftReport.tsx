@@ -23,6 +23,7 @@ import { generateReportPdf } from "@/lib/generateReportPdf";
 import { useAuth } from "@/hooks/useAuth";
 import { computeWeightedSpeakingScore } from "@/lib/speakingScore";
 import type { PartFeedback } from "@/lib/partFeedback";
+import { toTextList } from "@/lib/toText";
 
 export interface AssessmentResult {
   overallBand: string;
