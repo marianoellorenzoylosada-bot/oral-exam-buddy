@@ -747,7 +747,7 @@ export default function SpeakingSessionPage() {
 
             <div className="flex justify-between">
               <Button variant="outline" onClick={() => setActiveTab("record")}><ChevronLeft className="mr-2 h-4 w-4" /> Back to record</Button>
-              <Button variant="secondary" onClick={handleCloseSession}>Close session</Button>
+              <Button variant="secondary" onClick={handleFinishSession}>Finish for today</Button>
             </div>
           </TabsContent>
         </Tabs>
