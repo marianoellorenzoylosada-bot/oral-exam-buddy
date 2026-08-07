@@ -375,6 +375,32 @@ export default function SpeakingSessionPage() {
   const showCreateForm = !activeSessionId;
   const showSession = !!activeSessionId && !!session;
 
+  const reviewAttempt = session?.attempts.find((a) => a.id === reviewAttemptId) ?? null;
+  const reviewResult: MultiCandidateResult | null = (() => {
+    if (!reviewAttempt?.analysis_result) return null;
+    const raw = reviewAttempt.analysis_result as any;
+    const list: any[] = Array.isArray(raw?.candidates) ? raw.candidates : [raw];
+    return {
+      candidates: reviewAttempt.candidate_names.map((name, i) => {
+        const c = list[i] ?? list[0] ?? {};
+        return {
+          candidateName: c.candidateName || name || `Candidate ${String.fromCharCode(65 + i)}`,
+          overallBand: c.overallBand ?? "",
+          overallScore: c.overallScore ?? 0,
+          criteria: c.criteria ?? [],
+          strengths: c.strengths ?? [],
+          areasForImprovement: c.areasForImprovement ?? [],
+          partFeedback: c.partFeedback ?? undefined,
+          overallSummary: c.overallSummary ?? undefined,
+        };
+      }),
+      transcript: reviewAttempt.transcript || "",
+      examinerNotes: raw?.examinerNotes ?? "",
+    };
+  })();
+
+
+
   return (
     <div className="mx-auto max-w-5xl space-y-6 py-6">
       <div className="flex items-center justify-between gap-4">
