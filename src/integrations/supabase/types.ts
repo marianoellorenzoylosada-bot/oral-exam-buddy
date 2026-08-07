@@ -293,6 +293,7 @@ export type Database = {
       }
       session_attempts: {
         Row: {
+          analysis_result: Json | null
           audio_path: string
           candidate_ids: Json
           candidate_names: Json
@@ -311,6 +312,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          analysis_result?: Json | null
           audio_path?: string
           candidate_ids?: Json
           candidate_names?: Json
@@ -329,6 +331,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          analysis_result?: Json | null
           audio_path?: string
           candidate_ids?: Json
           candidate_names?: Json

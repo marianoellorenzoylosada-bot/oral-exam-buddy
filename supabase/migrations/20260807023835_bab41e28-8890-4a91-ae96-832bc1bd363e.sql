@@ -1,0 +1,1 @@
+ALTER TABLE public.session_attempts ADD COLUMN IF NOT EXISTS analysis_result jsonb;
