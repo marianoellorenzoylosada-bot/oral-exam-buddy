@@ -1,0 +1,1 @@
+DELETE FROM public.session_materials WHERE id = '4d0bc222-a3cd-4ccf-b826-116d2d415338';

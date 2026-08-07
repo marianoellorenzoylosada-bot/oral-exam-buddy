@@ -92,7 +92,7 @@ export function useSession(sessionId?: string | null) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("speaking_sessions")
-        .select("*, session_materials(*), session_attempts(*)")
+        .select("*, materials:session_materials(*), attempts:session_attempts(*)")
         .eq("id", sessionId!)
         .single();
       if (error) throw error;
@@ -352,6 +352,27 @@ export function useDescribeMaterial() {
     return data.description;
   }, []);
 }
+
+export function useMaterialSignedUrls(imagePaths: string[]) {
+  const paths = imagePaths.filter(Boolean);
+  return useQuery({
+    queryKey: ["session_materials_urls", paths],
+    enabled: paths.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase.storage
+        .from("exam-context")
+        .createSignedUrls(paths, 60 * 60);
+      if (error) throw error;
+      const map: Record<string, string> = {};
+      data?.forEach((item) => {
+        if (item.signedUrl) map[item.path] = item.signedUrl;
+      });
+      return map;
+    },
+    staleTime: 1000 * 60 * 30,
+  });
+}
+
 
 export function useStudentGroups(studentIds: (string | null)[]) {
   const ids = studentIds.filter(Boolean) as string[];
