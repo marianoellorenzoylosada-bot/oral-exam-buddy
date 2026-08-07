@@ -39,12 +39,16 @@ Nada se procesa por su cuenta mientras estás tomando orales, **salvo que el mod
 ## Cómo se verá
 
 1. En el menú, un solo ítem: **Speaking Session**. Ya no hay New Exam ni Batch Session.
-2. Pantalla de sesiones: las sesiones abiertas con su material, nivel y cuántos orales tienen tomados. Botón "Retomar" y botón "Cerrar sesión".
-3. Dentro de la sesión, tres zonas:
+2. Crear sesión: título + nivel + idioma + interruptor "Transcripción en vivo" (desactivado por defecto).
+3. Pantalla de sesiones: las sesiones abiertas con su material, nivel, modo de transcripción y cuántos orales tienen tomados. Botón "Retomar" y botón "Cerrar sesión".
+4. Dentro de la sesión, tres zonas:
    - **Material** (colapsable una vez cargado): fotos + descripciones editables + script.
    - **Grabar**: elegir candidatos del roster → grabar → mandar a la cola.
-   - **Cola**: cada ítem con sus candidatos y su estado, y el botón para procesarlo.
-4. Al procesar un ítem: transcribir → confirmar speakers → analizar → informe → confirmar y firmar (queda congelado, como en Fase 0).
+   - **Cola**: cada ítem con sus candidatos, su estado, y el botón para procesarlo.
+5. Al procesar un ítem:
+   - Modo manual: transcribir → confirmar speakers → analizar.
+   - Modo en vivo: confirmar speakers → analizar.
+   - Luego: informe → confirmar y firmar (queda congelado, como en Fase 0).
 
 ---
 
