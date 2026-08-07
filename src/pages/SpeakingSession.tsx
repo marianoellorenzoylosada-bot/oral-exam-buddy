@@ -409,9 +409,15 @@ export default function SpeakingSessionPage() {
         {existingSessions && existingSessions.length > 0 && (
           <Select
             value={activeSessionId ?? "__new__"}
-            onValueChange={(v) => {
+            onValueChange={async (v) => {
               if (v === "__new__") resetForm();
-              else setActiveSessionId(v);
+              else {
+                const selected = existingSessions.find((s) => s.id === v);
+                setActiveSessionId(v);
+                if (selected && selected.status === "closed") {
+                  await updateSession.mutateAsync({ id: v, status: "open" });
+                }
+              }
             }}
           >
             <SelectTrigger className="w-[220px]">
