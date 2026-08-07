@@ -73,7 +73,6 @@ export function useSessions() {
       const { data, error } = await supabase
         .from("speaking_sessions")
         .select("*")
-        .eq("status", "open")
         .order("updated_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as SpeakingSession[];
