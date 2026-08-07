@@ -113,8 +113,13 @@ const COPYRIGHT_TEXT = "© 2026 Int'l Oral Exam Assistant. Evaluation methodolog
 export function DraftReport({ result, level, levelCode, language, institution, group, candidateNames, audioBlob, scribeWords, phaseMarks, draftKey, onReset }: DraftReportProps) {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [activeCandidate, setActiveCandidate] = useState(0);
   const [saving, setSaving] = useState(false);
+  // Shared audio storage path across all candidates in this session (upload once).
+  const [audioStoragePath, setAudioStoragePath] = useState<string | null>(null);
+  const [audioUploadFailed, setAudioUploadFailed] = useState(false);
+
 
   // Try to restore a previously auto-saved draft for this exam.
   const persisted = useMemo<PersistedDraft | null>(() => {
