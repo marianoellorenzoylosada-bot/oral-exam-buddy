@@ -212,29 +212,18 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
       toast({ title: "Transcript too short", description: "Need at least 30 words to re-analyze.", variant: "destructive" });
       return;
     }
+    if (exam.confirmed_at && !correctionReason.trim()) {
+      toast({ title: "Correction reason required", description: "Please explain why you are creating a new version of a confirmed report.", variant: "destructive" });
+      return;
+    }
     setRegrading(true);
     try {
-      // 1. Snapshot current analysis
-      const snapshot = {
-        regraded_at: new Date().toISOString(),
-        overall_band: exam.overall_band,
-        overall_score: exam.overall_score,
-        criteria: exam.criteria,
-        strengths: exam.strengths,
-        areas_for_improvement: exam.areas_for_improvement,
-        examiner_notes: exam.examiner_notes,
-        transcript: exam.transcript,
-        part_feedback: exam.part_feedback ?? null,
-        overall_summary: exam.overall_summary ?? null,
-      };
-      const newHistory = [snapshot, ...previousAnalyses];
-
-      // 2. Build optional examiner tag from extra observation
+      // Build optional examiner tag from extra observation
       const tags = extraObservation.trim()
         ? [{ atSec: 0, candidate: "?", label: extraObservation.trim() }]
         : [];
 
-      // 3. Re-invoke analysis
+      // Re-invoke analysis
       const { data, error } = await supabase.functions.invoke("analyze-exam", {
         body: {
           level: exam.level_code,
@@ -247,33 +236,80 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
 
-      // analyze-exam returns { candidates: [...], examinerNotes }. Use first candidate.
       const first = (data as any).candidates?.[0];
       if (!first) throw new Error("No analysis returned.");
 
-      const { error: updErr } = await supabase
-        .from("exams")
-        .update({
+      if (exam.confirmed_at) {
+        // Confirmed reports are frozen: create a new revision instead of editing.
+        const revisionNote = `Corrected version of ${exam.title} (${exam.id}).\nReason: ${correctionReason.trim()}${extraObservation.trim() ? "\nObservation: " + extraObservation.trim() : ""}`;
+        const { error: insertErr } = await supabase.from("exams").insert({
+          title: exam.title,
+          level_code: exam.level_code,
+          language: exam.language,
+          institution: exam.institution,
+          group: exam.group,
+          candidate_name: exam.candidate_name,
+          candidates: exam.candidates,
           overall_band: first.overallBand,
           overall_score: first.overallScore,
           criteria: first.criteria,
           strengths: first.strengths,
           areas_for_improvement: first.areasForImprovement,
           transcript: editTranscript,
-          examiner_notes: editNotes,
-          previous_analyses: newHistory as any,
-          regrade_count: (exam.regrade_count ?? 0) + 1,
-          part_feedback: Array.isArray(first.partFeedback) && first.partFeedback.length > 0
-            ? (first.partFeedback as any)
-            : null,
+          examiner_notes: editNotes + "\n\n--- Correction ---\n" + revisionNote,
+          status: "completed",
+          user_id: exam.user_id,
+          words_json: exam.words_json,
+          phase_marks: exam.phase_marks,
+          audio_path: exam.audio_path,
+          audio_expires_at: exam.audio_expires_at,
+          part_feedback: Array.isArray(first.partFeedback) && first.partFeedback.length > 0 ? (first.partFeedback as any) : null,
           overall_summary: typeof first.overallSummary === "string" ? first.overallSummary : null,
-        })
-        .eq("id", exam.id);
-      if (updErr) throw updErr;
+          revision: (exam.revision ?? 0) + 1,
+          revision_reason: correctionReason.trim(),
+        });
+        if (insertErr) throw insertErr;
+        toast({ title: "Corrected version created", description: "The original report remains unchanged and the new version is in your records." });
+      } else {
+        // Unconfirmed reports can be updated in place.
+        const snapshot = {
+          regraded_at: new Date().toISOString(),
+          overall_band: exam.overall_band,
+          overall_score: exam.overall_score,
+          criteria: exam.criteria,
+          strengths: exam.strengths,
+          areas_for_improvement: exam.areas_for_improvement,
+          examiner_notes: exam.examiner_notes,
+          transcript: exam.transcript,
+          part_feedback: exam.part_feedback ?? null,
+          overall_summary: exam.overall_summary ?? null,
+        };
+        const newHistory = [snapshot, ...previousAnalyses];
+        const { error: updErr } = await supabase
+          .from("exams")
+          .update({
+            overall_band: first.overallBand,
+            overall_score: first.overallScore,
+            criteria: first.criteria,
+            strengths: first.strengths,
+            areas_for_improvement: first.areasForImprovement,
+            transcript: editTranscript,
+            examiner_notes: editNotes,
+            previous_analyses: newHistory as any,
+            regrade_count: (exam.regrade_count ?? 0) + 1,
+            part_feedback: Array.isArray(first.partFeedback) && first.partFeedback.length > 0
+              ? (first.partFeedback as any)
+              : null,
+            overall_summary: typeof first.overallSummary === "string" ? first.overallSummary : null,
+          })
+          .eq("id", exam.id);
+        if (updErr) throw updErr;
+        toast({ title: "Re-analysis complete", description: "Previous version saved to history." });
+      }
 
-      toast({ title: "Re-analysis complete", description: "Previous version saved to history." });
       setRegradeOpen(false);
       setExtraObservation("");
+      setCorrectionReason("");
       queryClient.invalidateQueries({ queryKey: ["exams-reports"] });
       onClose();
     } catch (err: any) {
@@ -282,6 +318,7 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
       setRegrading(false);
     }
   };
+
 
   // Approve current scores as a senior calibration reference.
   // Uses the earliest AI-produced criteria (from previous_analyses) as
