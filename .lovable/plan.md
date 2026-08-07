@@ -59,6 +59,7 @@ Nada se procesa por su cuenta mientras estás tomando orales, **salvo que el mod
 ```text
 public.speaking_sessions
   id, user_id, title, level_code, language,
+  transcription_mode ('live' | 'manual') default 'manual',
   status ('open' | 'closed'), notes,
   created_at, updated_at
   RLS: solo el dueño. GRANT authenticated + service_role.
@@ -75,7 +76,8 @@ public.session_materials
 public.session_attempts
   id, session_id, user_id, audio_path, transcript, speaker_map,
   candidate_ids jsonb, candidate_names jsonb,
-  duration_seconds, status, recorded_at, created_at, updated_at
+  duration_seconds, status, recorded_at, created_at, updated_at,
+  live_transcript text, live_words jsonb, transcription_mode text
   RLS: solo el dueño. GRANT authenticated + service_role.
 
 exams (columnas nuevas, nullable)
@@ -93,6 +95,13 @@ Las fotos van al bucket privado `exam-context` bajo `${user.id}/sessions/${sessi
 - Modelo: `google/gemini-3.6-flash` vía Lovable AI Gateway.
 - La respuesta se guarda en `ai_description`; el textarea editable escribe en `description`.
 - `analyze-exam` recibe esas descripciones dentro de `examContext` con `kind: "candidate_prompt"` / `"examiner_script"`. La firma del function no cambia.
+
+### Transcripción en vivo
+
+- Si `transcription_mode = 'live'`, durante la grabación el cliente se conecta a ElevenLabs Scribe realtime usando el endpoint de token existente (`elevenlabs-scribe-token`) y la SDK de `@elevenlabs/react`.
+- Las palabras se acumulan en `session_attempts.live_words` y se guardan en IndexedDB como respaldo. El audio sigue grabándose y subiéndose a `exam-audio` para resguardar el original.
+- Cuando se detiene la grabación, el ítem pasa a estado "reviewing_speakers" directamente (sin esperar a transcripción batch).
+- Si el modo es manual, el flujo sigue siendo el actual: el audio se encola y se transcribe cuando el usuario lo pide.
 
 ### Frontend
 
