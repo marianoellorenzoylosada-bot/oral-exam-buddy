@@ -291,10 +291,11 @@ export default function SpeakingSessionPage() {
       if (data?.error) throw new Error(data.error);
 
       // Persist as a confirmed exam record linked to candidates
+      const candidates = data?.candidates ?? [data];
       for (let i = 0; i < attempt.candidate_names.length; i++) {
         const candidateId = attempt.candidate_ids[i];
         if (!candidateId) continue;
-        const candidateResult = data?.results?.[i] || data;
+        const candidateResult = candidates[i] ?? candidates[0] ?? {};
         await supabase.from("exams").insert({
           user_id: user?.id,
           candidate_id: candidateId,
@@ -304,13 +305,13 @@ export default function SpeakingSessionPage() {
           language,
           transcript: attempt.transcript,
           audio_path: attempt.audio_path,
-          overall_score: candidateResult.overall_score ?? 0,
-          overall_band: candidateResult.overall_band ?? "",
+          overall_score: candidateResult.overallScore ?? 0,
+          overall_band: candidateResult.overallBand ?? "",
           criteria: candidateResult.criteria ?? [],
           strengths: candidateResult.strengths ?? [],
-          areas_for_improvement: candidateResult.areas_for_improvement ?? [],
-          part_feedback: candidateResult.part_feedback ?? null,
-          overall_summary: candidateResult.overall_summary ?? "",
+          areas_for_improvement: candidateResult.areasForImprovement ?? [],
+          part_feedback: candidateResult.partFeedback ?? null,
+          overall_summary: candidateResult.overallSummary ?? "",
           status: "completed",
           confirmed_at: new Date().toISOString(),
         } as any);
