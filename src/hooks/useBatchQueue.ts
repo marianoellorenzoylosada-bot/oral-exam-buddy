@@ -218,22 +218,22 @@ export function useBatchQueue() {
           timeoutMs: 120_000,
         },
       );
-      const aiTranscript = (data as any)?.transcript as string | undefined;
+      const aiTranscript = data?.transcript;
       const displayTranscript =
         aiTranscript && hasClearSpeakerLabels(aiTranscript)
           ? aiTranscript
           : transcript;
-      const enriched = { ...(data as MultiCandidateResult), transcript: displayTranscript };
+      const enriched = { ...data, transcript: displayTranscript };
       updateItem(item.id, {
         status: "done",
         result: enriched,
         scribeWords: words,
         stageLabel: undefined,
       });
-    } catch (err: any) {
+    } catch (err) {
       updateItem(item.id, {
         status: "failed",
-        error: err?.message ?? "Analysis failed",
+        error: getErrorMessage(err),
         stageLabel: undefined,
       });
     }
