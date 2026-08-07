@@ -53,10 +53,16 @@ interface DraftReportProps {
   /** Roster student ids aligned with candidateNames (null when free-typed). */
   candidateIds?: (string | null)[];
   audioBlob?: Blob | null;
+  /** Already-uploaded audio path (session attempts upload audio before review). */
+  audioPath?: string | null;
+  /** Speaking session traceability. */
+  sessionId?: string | null;
+  attemptId?: string | null;
   scribeWords?: { text: string; start: number; end: number; speaker?: string | null }[];
   phaseMarks?: { phaseIndex: number; startedAtSec: number }[];
   /** Stable id used to autosave draft edits to localStorage (e.g. batch item id). */
   draftKey?: string;
+
   onReset: () => void;
 }
 
