@@ -123,7 +123,7 @@ export function SessionMaterialPanel({ sessionId, materials }: SessionMaterialPa
         description: "",
         aiDescription: "",
       });
-      if (material.kind !== "script" && material.image_path) {
+      if (material.kind !== "examiner_script" && material.image_path) {
         runAiDescription(material);
       }
     } catch (e: any) {
