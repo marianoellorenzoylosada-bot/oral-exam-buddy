@@ -35,6 +35,16 @@ La varita trabaja sobre el archivo ya subido (no sobre uno temporal). Si la IA f
 ### 5. Estado visible de cada material
 Indicador por material: "Subiendo…" → "Guardado" → miniatura + descripción. Sin ambigüedad sobre si algo se registró.
 
+### 6. Permanencia de la sesión y control de costo
+Hoy la sesión (`speaking_sessions`) y sus materiales (`session_materials`) **no tienen fecha de caducidad** y se guardan con la misma permanencia que los reportes. El audio (`exam-audio`) sí caduca a los 15 días, pero las fotos y scripts de la sesión **se quedan indefinidamente** salvo que la cierres o elimines.
+
+Para que esto no sea costoso a largo plazo:
+- **Cerrar sesión ("Close session")** ya existe y se deja como mecanismo natural: la sesión pasa a `status = "closed"` y ahí podría ofrecerse "Borrar material" en un solo paso. Si la cerrás pero no borrás, los datos siguen guardados para reabrir.
+- **No se borra nada automáticamente** con este plan: las fotos de material son chicas (KB), no audio largo, por lo que el costo real es bajo. Aun así, agregar un botón "Borrar todo el material de esta sesión" permite limpiar de una vez cuando ya no se necesita.
+- **Al crear una nueva sesión** se copia el material opcionalmente? No, para no duplicar archivos. La sesión se reabre y reutiliza. Si se quiere un material distinto, se borra el anterior o se crea una nueva sesión.
+- **Reabrir más tarde**: queda como hoy, con el botón de sesiones recientes. La URL con `?id=...` sigue siendo el mecanismo para volver a la misma sesión desde marcador o historial.
+
+
 ## Detalles técnicos
 
 - `src/components/session/SessionMaterialPanel.tsx`: reemplazar el flujo `file → botón Upload` por subida en el `onChange` del input; quitar el estado `file`/`uploading` como bloqueo del botón; agregar componente de cámara con `getUserMedia` + `canvas.toBlob` y subida directa.
