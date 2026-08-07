@@ -721,12 +721,19 @@ export default function SpeakingSessionPage() {
                       </div>
                     )}
 
+                    {attempt.status === "reviewing_report" && (
+                      <Button size="sm" onClick={() => setReviewAttemptId(attempt.id)}>
+                        <FileText className="mr-2 h-4 w-4" /> Review &amp; sign report
+                      </Button>
+                    )}
+
                     {(attempt.status === "analyzing" || attempt.status === "done" || attempt.status === "failed") && (
                       <Button size="sm" onClick={() => handleAnalyze(attempt)} disabled={processing || workingAttemptId === attempt.id || attempt.status === "done"}>
                         {workingAttemptId === attempt.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
                         {attempt.status === "done" ? "Analyzed" : "Analyze"}
                       </Button>
                     )}
+
 
                     {workingAttemptId === attempt.id && processingStep && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
