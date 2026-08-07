@@ -120,3 +120,30 @@ export async function transcribeBlob(
     void supabase.storage.from("exam-audio").remove([audioPath]).catch(() => undefined);
   }
 }
+
+/**
+ * Transcribe an audio already stored in the `exam-audio` bucket.
+ * The source file is NOT deleted; useful for session attempts where the audio
+ * must remain linked to the database record.
+ */
+export async function transcribeStoragePath(
+  audioPath: string,
+  mimeType?: string,
+  onStage?: (stage: string) => void,
+): Promise<{ transcript: string; words: ScribeWord[] }> {
+  onStage?.("Contacting transcription service…");
+  let data: { transcript?: string; words?: ScribeWord[] };
+  try {
+    data = await callEdgeFunction<{ transcript?: string; words?: ScribeWord[] }>(
+      "transcribe-audio",
+      { body: { audioPath, mimeType: mimeType || "audio/webm" }, timeoutMs: 180_000 },
+    );
+  } catch (err: any) {
+    const classified = classifyTranscriptionError(err);
+    throw new TranscriptionError(classified.message, classified.code, classified.retryable, classified.userMessage);
+  }
+  return {
+    transcript: data?.transcript ?? "",
+    words: data?.words ?? [],
+  };
+}
