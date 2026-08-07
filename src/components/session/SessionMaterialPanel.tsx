@@ -28,7 +28,10 @@ export function SessionMaterialPanel({ sessionId, materials }: SessionMaterialPa
   const [file, setFile] = useState<File | null>(null);
   const [description, setDescription] = useState("");
   const [aiDescription, setAiDescription] = useState("");
+  const [describeError, setDescribeError] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [describing, setDescribing] = useState(false);
+
   const [uploading, setUploading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDescription, setEditDescription] = useState("");
@@ -42,28 +45,42 @@ export function SessionMaterialPanel({ sessionId, materials }: SessionMaterialPa
   const handleFile = (f: File) => {
     setFile(f);
     setAiDescription("");
+    setDescribeError(null);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(f.type.startsWith("image/") ? URL.createObjectURL(f) : null);
   };
 
   const handleDescribe = async () => {
     if (!file) return;
     setDescribing(true);
+    setDescribeError(null);
     try {
-      // Upload first so the edge function can read from storage.
+      const { data: auth } = await supabase.auth.getUser();
+      const userId = auth.user?.id;
+      if (!userId) throw new Error("You are signed out. Sign in again and retry.");
+      // Temp path must live under the caller's own folder to satisfy storage policies
+      // and the ownership check in the describe-material function.
       const ext = file.name.split(".").pop() ?? "jpg";
-      const imagePath = `${crypto.randomUUID()}-tmp.${ext}`;
+      const imagePath = `${userId}/${sessionId}/tmp-${crypto.randomUUID()}.${ext}`;
       const { error: uploadError } = await supabase.storage
         .from("exam-context")
         .upload(imagePath, file, { contentType: file.type, upsert: true });
       if (uploadError) throw uploadError;
-      const description = await describeMaterial(imagePath, kind);
-      setAiDescription(description);
-      await supabase.storage.from("exam-context").remove([imagePath]).catch(() => undefined);
+      try {
+        const description = await describeMaterial(imagePath, kind);
+        setAiDescription(description);
+      } finally {
+        await supabase.storage.from("exam-context").remove([imagePath]);
+      }
     } catch (e: any) {
-      toast({ title: "Could not describe image", description: e.message, variant: "destructive" });
+      const msg = e?.message || String(e);
+      setDescribeError(msg);
+      toast({ title: "Could not describe image", description: msg, variant: "destructive" });
     } finally {
       setDescribing(false);
     }
   };
+
 
   const handleUpload = async () => {
     if (!file || !kind) {
@@ -80,10 +97,14 @@ export function SessionMaterialPanel({ sessionId, materials }: SessionMaterialPa
         aiDescription,
       });
       setFile(null);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+      setDescribeError(null);
       setDescription("");
       setAiDescription("");
       setKind("photo");
       toast({ title: "Material added" });
+
     } catch (e: any) {
       toast({ title: "Upload failed", description: e.message, variant: "destructive" });
     } finally {
@@ -132,17 +153,28 @@ export function SessionMaterialPanel({ sessionId, materials }: SessionMaterialPa
             <div className="flex gap-2">
               <input ref={inputRef} type="file" accept="image/*,application/pdf,text/plain" className="hidden" onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])} />
               <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])} />
-              <Button variant="outline" className="flex-1" onClick={() => inputRef.current?.click()}>
-                <Upload className="mr-2 h-4 w-4" /> {file ? file.name : "Choose file"}
+              <Button variant="outline" className="flex-1 justify-start overflow-hidden" onClick={() => inputRef.current?.click()}>
+                <Upload className="mr-2 h-4 w-4 shrink-0" />
+                <span className="truncate">{file ? file.name : "Choose file"}</span>
               </Button>
               {kind !== "script" && (
-                <Button variant="outline" onClick={() => cameraRef.current?.click()} className="sm:hidden">
+                <Button variant="outline" onClick={() => cameraRef.current?.click()} title="Take a photo">
                   <Camera className="h-4 w-4" />
                 </Button>
               )}
             </div>
           </div>
         </div>
+
+        {previewUrl && (
+          <div className="flex items-center gap-3 rounded-md border p-2">
+            <img src={previewUrl} alt="Selected material preview" className="h-20 w-20 rounded object-cover" />
+            <div className="min-w-0 text-xs text-muted-foreground">
+              <p className="truncate font-medium text-foreground">{file?.name}</p>
+              <p>Photo selected. Add a description and upload it.</p>
+            </div>
+          </div>
+        )}
 
         {file && kind !== "script" && (
           <div className="space-y-2">
@@ -158,9 +190,16 @@ export function SessionMaterialPanel({ sessionId, materials }: SessionMaterialPa
                 {describing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground">Tap the wand to auto-generate a description, then edit it.</p>
+            {describeError ? (
+              <p className="text-xs text-destructive">
+                AI description failed: {describeError}. You can still type the description yourself and upload the material.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">Tap the wand to auto-generate a description, then edit it.</p>
+            )}
           </div>
         )}
+
 
         <div className="space-y-2">
           <Label>Your description / script</Label>

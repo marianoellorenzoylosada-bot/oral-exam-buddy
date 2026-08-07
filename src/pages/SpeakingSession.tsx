@@ -51,16 +51,24 @@ function readError(err: any): string {
 
 export default function SpeakingSessionPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const initialSessionId = searchParams.get("id");
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const { toast } = useToast();
   const online = useOnlineStatus();
   const qc = useQueryClient();
   const recorder = useAudioRecorder();
 
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(initialSessionId);
+  // The active session id lives in the URL so that returning from the camera /
+  // file picker (which can reload the tab on mobile) keeps the session open.
+  const activeSessionId = searchParams.get("id");
+  const setActiveSessionId = useCallback(
+    (id: string | null) => {
+      setSearchParams(id ? { id } : {}, { replace: true });
+    },
+    [setSearchParams]
+  );
   const [activeTab, setActiveTab] = useState("prepare");
+
 
   // Setup form
   const [title, setTitle] = useState("");
@@ -115,7 +123,7 @@ export default function SpeakingSessionPage() {
     setLocalAudioUrl(null);
     setActiveSessionId(null);
     setActiveTab("prepare");
-  }, []);
+  }, [setActiveSessionId]);
 
   useEffect(() => {
     if (recorder.audioUrl) setLocalAudioUrl(recorder.audioUrl);
@@ -563,7 +571,12 @@ export default function SpeakingSessionPage() {
             <TabsTrigger value="queue"><FileText className="mr-2 h-4 w-4" /> Queue ({session.attempts.length})</TabsTrigger>
           </TabsList>
 
+          <p className="mt-3 text-xs text-muted-foreground">
+            Order of work: <strong>Prepare</strong> the materials → <strong>Record</strong> each pair or trio → process the <strong>Queue</strong> when you finish for the day.
+          </p>
+
           <TabsContent value="prepare" className="space-y-4">
+
             <Card>
               <CardHeader>
                 <CardTitle className="font-display text-lg">Session setup</CardTitle>
@@ -612,7 +625,12 @@ export default function SpeakingSessionPage() {
               </CardContent>
             </Card>
 
+            <div className="rounded-md border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+              You can upload all the material before knowing which candidates are coming — candidates are chosen later, in the Record tab. The same material stays available for every recording in this session, on any day, until you close it.
+            </div>
+
             <SessionMaterialPanel sessionId={session.id} materials={session.materials} />
+
 
             <div className="flex justify-end">
               <Button onClick={() => setActiveTab("record")}>

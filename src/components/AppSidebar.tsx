@@ -1,7 +1,5 @@
 import {
   LayoutDashboard,
-  Plus,
-  Layers,
   BookOpen,
   FileText,
   TrendingUp,
@@ -11,6 +9,7 @@ import {
   Users,
   Scale,
 } from "lucide-react";
+
 import { NavLink } from "@/components/NavLink";
 import {
   Sidebar,
@@ -32,12 +31,11 @@ import { flags } from "@/lib/featureFlags";
 const mainNav = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Speaking Session", url: "/speaking-session", icon: Mic },
-  { title: "New Exam", url: "/new-exam", icon: Plus },
-  { title: "Batch Session", url: "/batch-session", icon: Layers },
   { title: "Class Roster", url: "/roster", icon: Users },
   ...(flags.showQuestionBank ? [{ title: "Question Bank", url: "/question-bank", icon: BookOpen }] : []),
   ...(flags.showCalibration ? [{ title: "Calibration", url: "/calibration", icon: Scale }] : []),
 ];
+
 
 const reviewNav = [
   { title: "Reports", url: "/reports", icon: FileText },
