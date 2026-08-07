@@ -70,7 +70,11 @@ export type Exam = {
   speaker_map?: any;
   part_feedback?: any;
   overall_summary?: string | null;
+  confirmed_at?: string | null;
+  revision?: number | null;
+  revision_reason?: string | null;
 };
+
 
 interface Props {
   exam: Exam;
