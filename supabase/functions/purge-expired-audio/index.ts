@@ -58,7 +58,7 @@ serve(async (req) => {
       else deleted++;
     }
 
-    return new Response(JSON.stringify({ deleted, scanned: rows?.length ?? 0 }), {
+    return new Response(JSON.stringify({ deleted, skipped, scanned: rows?.length ?? 0 }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
