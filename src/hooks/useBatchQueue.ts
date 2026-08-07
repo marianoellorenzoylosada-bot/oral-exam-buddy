@@ -44,6 +44,12 @@ export interface BatchItem {
   pendingWords?: ScribeWord[];
 }
 
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  return "Analysis failed";
+}
+
 
 interface AnalyzeContext {
   level: string;
