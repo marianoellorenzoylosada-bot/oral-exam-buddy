@@ -18,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 
 interface CandidatePickerProps {
   value: string;
-  onChange: (name: string) => void;
+  onChange: (name: string, studentId?: string | null) => void;
   groupId?: string | null;
   placeholder?: string;
   excludeNames?: string[];
@@ -58,7 +58,7 @@ export function CandidatePicker({
       <Input
         placeholder={placeholder}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange(e.target.value, null)}
       />
     );
   }
@@ -67,8 +67,8 @@ export function CandidatePicker({
     const name = search.trim();
     if (!name) return;
     try {
-      await createStudent.mutateAsync({ group_id: groupId, full_name: name });
-      onChange(name);
+      const created = await createStudent.mutateAsync({ group_id: groupId, full_name: name });
+      onChange(name, created?.id ?? null);
       setOpen(false);
       setSearch("");
       toast({ title: "Student added", description: `${name} added to the roster.` });
@@ -128,7 +128,7 @@ export function CandidatePicker({
                         key={s.id}
                         value={s.full_name}
                         onSelect={() => {
-                          onChange(s.full_name);
+                          onChange(s.full_name, s.id);
                           setOpen(false);
                           setSearch("");
                         }}
