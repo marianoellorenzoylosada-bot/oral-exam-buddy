@@ -12,16 +12,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 const MATERIAL_KINDS = [
-  { value: "photo", label: "Visual material (photo for Part 2/3)" },
-  { value: "diagram", label: "Diagram / collaborative task (Part 3)" },
-  { value: "script", label: "Examiner script / prompt" },
+  { value: "part2_pictures", label: "Visual material (photo for Part 2/3)" },
+  { value: "part3_diagram", label: "Diagram / collaborative task (Part 3)" },
+  { value: "examiner_script", label: "Examiner script / prompt" },
 ];
 
 const AI_KIND_MAP: Record<string, string> = {
-  photo: "part2_pictures",
-  diagram: "part3_diagram",
-  script: "examiner_script",
+  part2_pictures: "part2_pictures",
+  part3_diagram: "part3_diagram",
+  examiner_script: "examiner_script",
 };
+
 
 interface SessionMaterialPanelProps {
   sessionId: string;
