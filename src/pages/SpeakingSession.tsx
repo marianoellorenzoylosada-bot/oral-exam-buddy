@@ -599,7 +599,7 @@ export default function SpeakingSessionPage() {
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="flex items-center justify-center gap-4 py-6">
-                  {!recorder.isRecording ? (
+                  {recorder.state !== "recording" ? (
                     <Button size="lg" onClick={handleStartRecording} className="gap-2">
                       <Mic className="h-5 w-5" /> Start recording
                     </Button>
@@ -610,23 +610,44 @@ export default function SpeakingSessionPage() {
                   )}
                 </div>
 
-                {recorder.audioBlob && !recorder.isRecording && (
-                  <div className="flex items-center justify-center gap-3">
-                    <Button variant="outline" onClick={() => recorder.togglePlayback()} className="gap-2">
-                      {recorder.isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                      {recorder.isPlaying ? "Pause" : "Play back"}
-                    </Button>
-                    <Button variant="outline" onClick={recorder.reset} className="gap-2"><Trash2 className="h-4 w-4" /> Discard</Button>
-                    <Button onClick={handleSaveAttempt} disabled={createAttempt.isPending} className="gap-2">
-                      {createAttempt.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                      Save attempt
-                    </Button>
+                {recorder.audioBlob && recorder.state !== "recording" && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-center gap-3">
+                      <Button variant="outline" onClick={() => {
+                        if (localAudioRef.current) {
+                          if (localAudioPlaying) {
+                            localAudioRef.current.pause();
+                          } else {
+                            localAudioRef.current.play().catch(() => undefined);
+                          }
+                        }
+                      }} className="gap-2">
+                        {localAudioPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                        {localAudioPlaying ? "Pause" : "Play back"}
+                      </Button>
+                      <Button variant="outline" onClick={recorder.reset} className="gap-2"><Trash2 className="h-4 w-4" /> Discard</Button>
+                      <Button onClick={handleSaveAttempt} disabled={createAttempt.isPending} className="gap-2">
+                        {createAttempt.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                        Save attempt
+                      </Button>
+                    </div>
+                    {localAudioUrl && (
+                      <audio
+                        ref={localAudioRef}
+                        src={localAudioUrl}
+                        onEnded={() => setLocalAudioPlaying(false)}
+                        onPause={() => setLocalAudioPlaying(false)}
+                        onPlay={() => setLocalAudioPlaying(true)}
+                        controls
+                        className="w-full"
+                      />
+                    )}
                   </div>
                 )}
 
                 {transcriptionMode === "live" && (
                   <LiveTranscript
-                    isRecording={recorder.isRecording}
+                    isRecording={recorder.state === "recording"}
                     onTranscriptUpdate={(t) => setLiveTranscript(t)}
                     enabled={transcriptionMode === "live"}
                   />
