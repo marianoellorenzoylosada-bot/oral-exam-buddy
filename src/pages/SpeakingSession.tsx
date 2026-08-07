@@ -343,15 +343,25 @@ export default function SpeakingSessionPage() {
     }, 0);
   };
 
-  const handleCloseSession = async () => {
+  const handleFinishSession = async () => {
     if (!activeSessionId) return;
     try {
       await closeSession.mutateAsync(activeSessionId);
-      toast({ title: "Session closed", description: "Open sessions can be reused later." });
+      toast({ title: "Session finished for today", description: "You can reopen it later from the dropdown to keep using the same materials." });
       resetForm();
       navigate("/speaking-session");
     } catch (e: any) {
-      toast({ title: "Could not close session", description: e.message, variant: "destructive" });
+      toast({ title: "Could not finish session", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const handleReopenSession = async () => {
+    if (!activeSessionId) return;
+    try {
+      await updateSession.mutateAsync({ id: activeSessionId, status: "open" });
+      toast({ title: "Session reopened", description: "Materials are ready for reuse." });
+    } catch (e: any) {
+      toast({ title: "Could not reopen session", description: e.message, variant: "destructive" });
     }
   };
 
