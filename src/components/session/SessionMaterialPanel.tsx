@@ -183,10 +183,11 @@ export function SessionMaterialPanel({ sessionId, materials }: SessionMaterialPa
     }
   };
 
-  const photos = materials.filter((m) => m.kind === "photo" || m.kind === "diagram");
-  const scripts = materials.filter((m) => m.kind === "script");
+  const photos = materials.filter((m) => m.kind === "part2_pictures" || m.kind === "part3_diagram");
+  const scripts = materials.filter((m) => m.kind === "examiner_script");
 
-  const isImage = (m: SessionMaterial) => m.kind === "photo" || m.kind === "diagram";
+  const isImage = (m: SessionMaterial) => m.kind === "part2_pictures" || m.kind === "part3_diagram";
+
 
   return (
     <Card>
