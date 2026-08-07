@@ -31,7 +31,7 @@ interface SessionMaterialPanelProps {
 
 export function SessionMaterialPanel({ sessionId, materials }: SessionMaterialPanelProps) {
   const { toast } = useToast();
-  const [kind, setKind] = useState("photo");
+  const [kind, setKind] = useState("part2_pictures");
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
