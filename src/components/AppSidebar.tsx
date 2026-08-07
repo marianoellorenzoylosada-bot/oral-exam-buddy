@@ -1,7 +1,5 @@
 import {
   LayoutDashboard,
-  Plus,
-  Layers,
   BookOpen,
   FileText,
   TrendingUp,
@@ -11,6 +9,7 @@ import {
   Users,
   Scale,
 } from "lucide-react";
+
 import { NavLink } from "@/components/NavLink";
 import {
   Sidebar,
