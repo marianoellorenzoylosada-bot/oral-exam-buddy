@@ -153,8 +153,17 @@ export function DraftReport({ result, level, levelCode, language, institution, g
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(candidateIds ?? [])]);
 
-
-
+  // The AI occasionally returns objects inside the evidence lists; coerce to text
+  // so nothing ever renders as "(object) (object)".
+  const normalizedCandidates = useMemo(
+    () =>
+      result.candidates.map((c) => ({
+        ...c,
+        strengths: toTextList(c.strengths),
+        areasForImprovement: toTextList(c.areasForImprovement),
+      })),
+    [result]
+  );
 
   // Try to restore a previously auto-saved draft for this exam.
   const persisted = useMemo<PersistedDraft | null>(() => {
@@ -170,7 +179,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
 
   // Per-candidate draft state
   const [drafts, setDrafts] = useState<MultiCandidateResult["candidates"]>(() =>
-    persisted?.drafts ?? JSON.parse(JSON.stringify(result.candidates))
+    persisted?.drafts ?? JSON.parse(JSON.stringify(normalizedCandidates))
   );
   const [sharedDraft, setSharedDraft] = useState(() =>
     persisted?.sharedDraft ?? {
@@ -181,21 +190,21 @@ export function DraftReport({ result, level, levelCode, language, institution, g
 
   // Per-candidate overrides
   const [allOverrides, setAllOverrides] = useState<Record<number, Record<number, string>>>(() =>
-    persisted?.allOverrides ?? Object.fromEntries(result.candidates.map((_, i) => [i, {}]))
+    persisted?.allOverrides ?? Object.fromEntries(normalizedCandidates.map((_, i) => [i, {}]))
   );
 
   // Per-candidate original scores (always from the AI response, never persisted)
   const allOriginalScores = useMemo(() =>
-    result.candidates.map(c => c.criteria.map(cr => cr.score)),
-    [result]
+    normalizedCandidates.map(c => c.criteria.map(cr => cr.score)),
+    [normalizedCandidates]
   );
 
   // Per-candidate accepted evidence
   const [allAcceptedStrengths, setAllAcceptedStrengths] = useState<boolean[][]>(() =>
-    persisted?.allAcceptedStrengths ?? result.candidates.map(c => c.strengths.map(() => true))
+    persisted?.allAcceptedStrengths ?? normalizedCandidates.map(c => c.strengths.map(() => true))
   );
   const [allAcceptedImprovements, setAllAcceptedImprovements] = useState<boolean[][]>(() =>
-    persisted?.allAcceptedImprovements ?? result.candidates.map(c => c.areasForImprovement.map(() => true))
+    persisted?.allAcceptedImprovements ?? normalizedCandidates.map(c => c.areasForImprovement.map(() => true))
   );
 
   // Per-candidate official status
