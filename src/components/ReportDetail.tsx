@@ -73,7 +73,10 @@ export type Exam = {
   confirmed_at?: string | null;
   revision?: number | null;
   revision_reason?: string | null;
+  user_id?: string | null;
+  phase_marks?: any;
 };
+
 
 
 interface Props {
