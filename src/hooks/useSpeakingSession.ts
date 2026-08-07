@@ -56,7 +56,10 @@ export interface SessionAttempt {
   live_transcript: string;
   live_words: ScribeWord[] | null;
   speaker_map: SpeakerMap | null;
+  /** AI analysis awaiting examiner review (not a confirmed report yet). */
+  analysis_result: any | null;
   recorded_at: string;
+
   created_at: string;
   updated_at: string;
 }
