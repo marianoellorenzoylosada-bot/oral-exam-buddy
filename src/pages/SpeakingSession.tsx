@@ -529,7 +529,33 @@ export default function SpeakingSessionPage() {
         </Card>
       )}
 
-      {showSession && session && (
+      {reviewAttempt && reviewResult && (
+        <div className="space-y-4">
+          <Button variant="outline" size="sm" onClick={() => setReviewAttemptId(null)}>
+            <ChevronLeft className="mr-2 h-4 w-4" /> Back to queue
+          </Button>
+          <DraftReport
+            result={reviewResult}
+            level={levelCode}
+            levelCode={levelCode}
+            language={selectedLang?.label ?? "English"}
+            candidateNames={reviewAttempt.candidate_names}
+            candidateIds={reviewAttempt.candidate_ids}
+            audioPath={reviewAttempt.audio_path}
+            sessionId={reviewAttempt.session_id}
+            attemptId={reviewAttempt.id}
+            scribeWords={(reviewAttempt.live_words ?? []) as ScribeWord[]}
+            draftKey={`session-attempt-${reviewAttempt.id}`}
+            onReset={async () => {
+              await updateAttempt.mutateAsync({ id: reviewAttempt.id, status: "done" }).catch(() => undefined);
+              setReviewAttemptId(null);
+            }}
+          />
+        </div>
+      )}
+
+      {showSession && session && !reviewAttempt && (
+
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="prepare"><Upload className="mr-2 h-4 w-4" /> Prepare</TabsTrigger>
