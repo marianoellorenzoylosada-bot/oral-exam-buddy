@@ -28,7 +28,10 @@ export function SessionMaterialPanel({ sessionId, materials }: SessionMaterialPa
   const [file, setFile] = useState<File | null>(null);
   const [description, setDescription] = useState("");
   const [aiDescription, setAiDescription] = useState("");
+  const [describeError, setDescribeError] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [describing, setDescribing] = useState(false);
+
   const [uploading, setUploading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDescription, setEditDescription] = useState("");
