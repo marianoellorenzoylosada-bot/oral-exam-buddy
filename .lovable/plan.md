@@ -4,22 +4,26 @@
 
 ```text
 1. Crear sesión  → nivel + idioma + título
-2. Subir material una sola vez
+2. Elegir modo de transcripción
+     · En vivo (más rápido, consume créditos mientras grabás)
+     · Manual (más económico, por defecto; ideal para pruebas)
+3. Subir material una sola vez
      · foto del set de imágenes a comparar (Parte 2)
      · foto del diagrama (Parte 3)
      · script del examinador (foto, PDF o texto)
    → la IA lee cada foto y devuelve una descripción
    → el examinador la revisa y corrige antes de guardarla
-3. Elegir la pareja/trío del roster (pueden ser de grupos y docentes distintos)
-4. Grabar → detener → "Mandar a la cola"
-5. Volver al paso 3 con la pareja siguiente (sin esperar nada)
-6. Terminada la jornada: abrir la cola ítem por ítem
-     → transcribir → confirmar quién es quién → analizar con IA
+4. Elegir la pareja/trío del roster (pueden ser de grupos y docentes distintos)
+5. Grabar → detener → "Mandar a la cola"
+6. Volver al paso 4 con la pareja siguiente (sin esperar nada)
+7. Terminada la jornada: abrir la cola ítem por ítem
+     · Si el modo es en vivo: solo confirmar quién es quién → analizar con IA
+     · Si el modo es manual: transcribir → confirmar quién es quién → analizar con IA
      → revisar el informe → confirmar y firmar → siguiente
-7. Otro día: reabrir la misma sesión y seguir desde el paso 3
+8. Otro día: reabrir la misma sesión y seguir desde el paso 4
 ```
 
-Nada se procesa por su cuenta mientras estás tomando orales: la cola solo guarda el audio. Transcripción y análisis corren únicamente cuando vos lo pedís.
+Nada se procesa por su cuenta mientras estás tomando orales, **salvo que el modo en vivo esté activado**. En ese caso, la transcripción avanza en paralelo y el ítem entra directamente en el paso de revisión de speakers. El análisis con IA sigue siendo manual y confirmado por vos.
 
 ---
 
@@ -28,19 +32,23 @@ Nada se procesa por su cuenta mientras estás tomando orales: la cola solo guard
 - **Material por foto**: la IA la interpreta y genera la descripción; vos podés editarla antes de guardar. Esa descripción editada es lo que recibe el análisis, así que el examen sabe qué mostraba la imagen.
 - **Grupos mixtos**: la sesión no tiene un grupo único. Cada candidato se elige del roster y su evaluación queda con su propio grupo, su docente y su institución. Una pareja de dos grupos distintos produce dos informes con grupos distintos.
 - **Reutilizar material**: la sesión se reabre. Queda abierta hasta que la cierres, y el material sube una sola vez para todos los días que la uses.
-- **Procesamiento**: manual, cuando lo pidas.
+- **Procesamiento**: manual por defecto, con opción de transcripción en vivo que se puede activar por sesión. El análisis con IA siempre es manual y requiere confirmación.
 
 ---
 
 ## Cómo se verá
 
 1. En el menú, un solo ítem: **Speaking Session**. Ya no hay New Exam ni Batch Session.
-2. Pantalla de sesiones: las sesiones abiertas con su material, nivel y cuántos orales tienen tomados. Botón "Retomar" y botón "Cerrar sesión".
-3. Dentro de la sesión, tres zonas:
+2. Crear sesión: título + nivel + idioma + interruptor "Transcripción en vivo" (desactivado por defecto).
+3. Pantalla de sesiones: las sesiones abiertas con su material, nivel, modo de transcripción y cuántos orales tienen tomados. Botón "Retomar" y botón "Cerrar sesión".
+4. Dentro de la sesión, tres zonas:
    - **Material** (colapsable una vez cargado): fotos + descripciones editables + script.
    - **Grabar**: elegir candidatos del roster → grabar → mandar a la cola.
-   - **Cola**: cada ítem con sus candidatos y su estado, y el botón para procesarlo.
-4. Al procesar un ítem: transcribir → confirmar speakers → analizar → informe → confirmar y firmar (queda congelado, como en Fase 0).
+   - **Cola**: cada ítem con sus candidatos, su estado, y el botón para procesarlo.
+5. Al procesar un ítem:
+   - Modo manual: transcribir → confirmar speakers → analizar.
+   - Modo en vivo: confirmar speakers → analizar.
+   - Luego: informe → confirmar y firmar (queda congelado, como en Fase 0).
 
 ---
 
@@ -51,6 +59,7 @@ Nada se procesa por su cuenta mientras estás tomando orales: la cola solo guard
 ```text
 public.speaking_sessions
   id, user_id, title, level_code, language,
+  transcription_mode ('live' | 'manual') default 'manual',
   status ('open' | 'closed'), notes,
   created_at, updated_at
   RLS: solo el dueño. GRANT authenticated + service_role.
@@ -67,7 +76,8 @@ public.session_materials
 public.session_attempts
   id, session_id, user_id, audio_path, transcript, speaker_map,
   candidate_ids jsonb, candidate_names jsonb,
-  duration_seconds, status, recorded_at, created_at, updated_at
+  duration_seconds, status, recorded_at, created_at, updated_at,
+  live_transcript text, live_words jsonb, transcription_mode text
   RLS: solo el dueño. GRANT authenticated + service_role.
 
 exams (columnas nuevas, nullable)
@@ -85,6 +95,13 @@ Las fotos van al bucket privado `exam-context` bajo `${user.id}/sessions/${sessi
 - Modelo: `google/gemini-3.6-flash` vía Lovable AI Gateway.
 - La respuesta se guarda en `ai_description`; el textarea editable escribe en `description`.
 - `analyze-exam` recibe esas descripciones dentro de `examContext` con `kind: "candidate_prompt"` / `"examiner_script"`. La firma del function no cambia.
+
+### Transcripción en vivo
+
+- Si `transcription_mode = 'live'`, durante la grabación el cliente se conecta a ElevenLabs Scribe realtime usando el endpoint de token existente (`elevenlabs-scribe-token`) y la SDK de `@elevenlabs/react`.
+- Las palabras se acumulan en `session_attempts.live_words` y se guardan en IndexedDB como respaldo. El audio sigue grabándose y subiéndose a `exam-audio` para resguardar el original.
+- Cuando se detiene la grabación, el ítem pasa a estado "reviewing_speakers" directamente (sin esperar a transcripción batch).
+- Si el modo es manual, el flujo sigue siendo el actual: el audio se encola y se transcribe cuando el usuario lo pide.
 
 ### Frontend
 
@@ -105,15 +122,17 @@ Academic Year / Enrollments · cambiar el motor de scoring · calibración · ba
 ## Criterios de aceptación
 
 - [ ] Un solo ítem "Speaking Session" en el menú; New Exam y Batch redirigen ahí.
+- [ ] Al crear sesión se puede elegir "Transcripción en vivo" (desactivada por defecto, ideal para pruebas económicas).
 - [ ] Se saca foto del material con el celular, la IA la describe y la descripción se puede editar y guardar.
 - [ ] Los candidatos se eligen del roster y pueden ser de grupos distintos; cada informe queda con el grupo correcto.
-- [ ] Grabar → mandar a la cola no dispara ningún procesamiento.
+- [ ] En modo manual, grabar → mandar a la cola no dispara ningún procesamiento.
+- [ ] En modo en vivo, la transcripción avanza durante la grabación y el ítem va directamente a confirmar speakers.
 - [ ] Se pueden encolar varios orales seguidos sin esperas.
-- [ ] Cada ítem de la cola se procesa a pedido: transcribir → confirmar speakers → analizar.
+- [ ] Cada ítem de la cola se procesa a pedido: confirmar speakers → analizar (con paso de transcripción solo en modo manual).
 - [ ] Al confirmar y firmar, el informe queda congelado y guarda `session_id`, `attempt_id`, `candidate_id` y el audio.
 - [ ] La sesión se puede cerrar y reabrir otro día, con el material intacto.
 - [ ] Los informes archivados anteriores siguen siendo legibles.
-- [ ] Typecheck y build en verde, más una prueba de punta a punta con un audio corto.
+- [ ] Typecheck y build en verde, más una prueba de punta a punta con un audio corto en modo manual.
 
 ---
 
@@ -121,7 +140,8 @@ Academic Year / Enrollments · cambiar el motor de scoring · calibración · ba
 
 - **Foto ilegible o mal interpretada** → por eso la descripción es editable; además queda a la vista la versión original de la IA.
 - **Cambio de navegación** → New Exam y Batch se redirigen, no se borran.
-- **Consumo de IA** → describir una foto es una llamada barata y ocurre una vez por sesión; el análisis sigue siendo manual y los informes confirmados no se pueden re-analizar.
+- **Consumo de IA** → describir una foto es una llamada barata y ocurre una vez por sesión; el análisis sigue siendo manual y los informes confirmados no se pueden re-analizar. La transcripción en vivo consume créditos durante la grabación, por eso viene desactivada por defecto.
+- **Transcripción en vivo en móvil** → la conexión WebSocket puede interrumpirse; el audio siempre se guarda por separado, así que se puede volver a transcribir en modo manual si falla.
 
 ---
 
