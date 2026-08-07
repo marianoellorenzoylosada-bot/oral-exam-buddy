@@ -401,9 +401,14 @@ export default function SpeakingSessionPage() {
             Prepare materials, record attempts, and process them when ready.
           </p>
           {session && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Status: <span className={session.status === "open" ? "text-emerald-600" : "text-amber-600"}>{session.status === "open" ? "Open — ready for recording" : "Finished — can be reopened"}</span>
-            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">
+                Status: <span className={session.status === "open" ? "text-emerald-600" : "text-amber-600"}>{session.status === "open" ? "Open — ready for recording" : "Finished — can be reopened"}</span>
+              </span>
+              {session.status === "closed" && (
+                <Button size="sm" variant="outline" onClick={handleReopenSession} disabled={updateSession.isPending}>Reopen</Button>
+              )}
+            </div>
           )}
         </div>
         {existingSessions && existingSessions.length > 0 && (
