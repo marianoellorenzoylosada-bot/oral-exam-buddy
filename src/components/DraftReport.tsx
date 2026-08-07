@@ -323,7 +323,9 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         audio_expires_at: uploadPath ? new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString() : null,
         part_feedback: draft.partFeedback && draft.partFeedback.length > 0 ? (draft.partFeedback as any) : null,
         overall_summary: draft.overallSummary || null,
+        confirmed_at: new Date().toISOString(),
       });
+
       if (error) throw error;
 
       setOfficialStatus(prev => {
