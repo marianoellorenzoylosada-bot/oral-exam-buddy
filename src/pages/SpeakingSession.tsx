@@ -1,0 +1,782 @@
+import { useState, useRef, useCallback, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
+import {
+  Mic, Square, Plus, Save, Loader2, AlertCircle, RefreshCw, Play, Pause, Trash2,
+  Upload, Users, FileText, Image, ChevronLeft, Headphones, CheckCircle2, ArrowRight,
+} from "lucide-react";
+import { useAudioRecorder } from "@/hooks/useAudioRecorder";
+import { useToast } from "@/hooks/use-toast";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { LiveTranscript } from "@/components/LiveTranscript";
+import { CandidatePicker } from "@/components/CandidatePicker";
+import { GroupPicker } from "@/components/GroupPicker";
+import { SUPPORTED_LANGUAGES, getExamLevels } from "@/lib/examLevels";
+import {
+  useSessions, useSession, useCreateSession, useUpdateSession, useCloseSession,
+  useCreateAttempt, useUpdateAttempt, useDeleteAttempt, useStudentGroups,
+  type SessionWithDetails, type SessionAttempt, type TranscriptionMode, type AttemptStatus,
+} from "@/hooks/useSpeakingSession";
+import { SessionMaterialPanel } from "@/components/session/SessionMaterialPanel";
+import { SpeakerMappingPanel } from "@/components/SpeakerMappingPanel";
+import { transcribeStoragePath, TranscriptionError, type ScribeWord } from "@/lib/transcribe";
+import { applySpeakerMap, speakerStats, type SpeakerMap, type SpeakerRole } from "@/lib/applySpeakerMap";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { useQueryClient } from "@tanstack/react-query";
+import { getSignedAudioUrl } from "@/lib/audioStorage";
+
+const LANGUAGES = SUPPORTED_LANGUAGES;
+
+function formatTime(seconds: number) {
+  const m = Math.floor(seconds / 60).toString().padStart(2, "0");
+  const s = (seconds % 60).toString().padStart(2, "0");
+  return `${m}:${s}`;
+}
+
+function readError(err: any): string {
+  return err?.message || String(err);
+}
+
+export default function SpeakingSessionPage() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialSessionId = searchParams.get("id");
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const online = useOnlineStatus();
+  const qc = useQueryClient();
+  const recorder = useAudioRecorder();
+
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(initialSessionId);
+  const [activeTab, setActiveTab] = useState("prepare");
+
+  // Setup form
+  const [title, setTitle] = useState("");
+  const [levelCode, setLevelCode] = useState("");
+  const [language, setLanguage] = useState("en");
+  const [notes, setNotes] = useState("");
+  const [transcriptionMode, setTranscriptionMode] = useState<TranscriptionMode>("manual");
+
+  // Candidates
+  const [candidateNames, setCandidateNames] = useState<string[]>(["", ""]);
+  const [candidateIds, setCandidateIds] = useState<(string | null)[]>([null, null]);
+  const [groupId, setGroupId] = useState<string | null>(null);
+
+  // Live transcription
+  const [liveTranscript, setLiveTranscript] = useState("");
+  const [liveWords, setLiveWords] = useState<ScribeWord[]>([]);
+
+  const { data: existingSessions } = useSessions();
+  const { data: session } = useSession(activeSessionId);
+  const createSession = useCreateSession();
+  const updateSession = useUpdateSession();
+  const closeSession = useCloseSession();
+  const createAttempt = useCreateAttempt();
+  const updateAttempt = useUpdateAttempt();
+  const deleteAttempt = useDeleteAttempt();
+  const studentGroups = useStudentGroups(candidateIds);
+
+  const [workingAttemptId, setWorkingAttemptId] = useState<string | null>(null);
+  const [processing, setProcessing] = useState(false);
+  const [processingStep, setProcessingStep] = useState("");
+  const [lastError, setLastError] = useState<string | null>(null);
+  const [signedAudioUrl, setSignedAudioUrl] = useState<string | null>(null);
+  const [localAudioUrl, setLocalAudioUrl] = useState<string | null>(null);
+  const [localAudioPlaying, setLocalAudioPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const localAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Reset form when creating a new session
+  const resetForm = useCallback(() => {
+    setTitle("");
+    setLevelCode("");
+    setLanguage("en");
+    setNotes("");
+    setTranscriptionMode("manual");
+    setCandidateNames(["", ""]);
+    setCandidateIds([null, null]);
+    setGroupId(null);
+    setLiveTranscript("");
+    setLiveWords([]);
+    setLocalAudioUrl(null);
+    setActiveSessionId(null);
+    setActiveTab("prepare");
+  }, []);
+
+  useEffect(() => {
+    if (recorder.audioUrl) setLocalAudioUrl(recorder.audioUrl);
+  }, [recorder.audioUrl]);
+
+  // Load existing session into form
+  useEffect(() => {
+    if (!session) return;
+    setTitle(session.title);
+    setLevelCode(session.level_code);
+    setLanguage(session.language);
+    setNotes(session.notes);
+    setTranscriptionMode(session.transcription_mode);
+  }, [session]);
+
+  const examLevels = getExamLevels(language);
+  const selectedLang = LANGUAGES.find((l) => l.value === language);
+
+  const handleCreateSession = async () => {
+    if (!title.trim() || !levelCode) {
+      toast({ title: "Missing fields", description: "Enter a title and select a level.", variant: "destructive" });
+      return;
+    }
+    try {
+      const s = await createSession.mutateAsync({
+        title: title.trim(),
+        level_code: levelCode,
+        language,
+        notes,
+        transcription_mode: transcriptionMode,
+      });
+      setActiveSessionId(s.id);
+      toast({ title: "Session created", description: "Now add materials and candidates." });
+    } catch (e: any) {
+      toast({ title: "Could not create session", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const handleStartRecording = async () => {
+    if (!activeSessionId) {
+      await handleCreateSession();
+    }
+    if (candidateNames.filter(Boolean).length < 2) {
+      toast({ title: "Missing candidates", description: "Select at least two candidates.", variant: "destructive" });
+      return;
+    }
+    try {
+      await recorder.start();
+      setLiveTranscript("");
+      setLiveWords([]);
+      setLastError(null);
+    } catch (e: any) {
+      toast({ title: "Microphone error", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const handleStopRecording = async () => {
+    try {
+      await recorder.stop();
+    } catch (e: any) {
+      toast({ title: "Recording error", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const handleSaveAttempt = async () => {
+    const blob = recorder.audioBlob;
+    if (!blob || !activeSessionId) {
+      toast({ title: "No recording", description: "Record audio before saving.", variant: "destructive" });
+      return;
+    }
+    if (candidateNames.filter(Boolean).length < 2) {
+      toast({ title: "Missing candidates", description: "Select at least two candidates.", variant: "destructive" });
+      return;
+    }
+    try {
+      await createAttempt.mutateAsync({
+        sessionId: activeSessionId,
+        candidateNames: candidateNames.filter((n) => n.trim()),
+        candidateIds,
+        audioBlob: blob,
+        durationSeconds: recorder.duration,
+        transcriptionMode: transcriptionMode,
+        liveTranscript: transcriptionMode === "live" ? liveTranscript : undefined,
+        liveWords: transcriptionMode === "live" ? liveWords : undefined,
+      });
+      recorder.reset();
+      setLiveTranscript("");
+      setLiveWords([]);
+      toast({ title: "Attempt saved", description: "It was added to the queue for this session." });
+      setActiveTab("queue");
+    } catch (e: any) {
+      toast({ title: "Could not save attempt", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const handleTranscribe = async (attempt: SessionAttempt) => {
+    setWorkingAttemptId(attempt.id);
+    setProcessing(true);
+    setProcessingStep("Transcribing…");
+    setLastError(null);
+    try {
+      await updateAttempt.mutateAsync({ id: attempt.id, status: "transcribing" });
+      const out = await transcribeStoragePath(attempt.audio_path, "audio/webm");
+      const stats = speakerStats(out.words);
+      let status: AttemptStatus = "reviewing_speakers";
+      let speakerMap: SpeakerMap | null = null;
+      if (stats.length < 2) {
+        status = "analyzing";
+      } else {
+        const byShare = [...stats].sort((a, b) => b.totalSeconds - a.totalSeconds);
+        const roles: SpeakerRole[] = ["Examiner", "Candidate A", "Candidate B", "Candidate C"];
+        speakerMap = {};
+        byShare.forEach((s, i) => { speakerMap![s.id] = roles[i] ?? "Speaker unclear"; });
+      }
+      await updateAttempt.mutateAsync({
+        id: attempt.id,
+        status,
+        transcript: out.transcript,
+        speaker_map: speakerMap,
+      });
+      toast({ title: "Transcription ready", description: "Review speakers or run analysis." });
+    } catch (e: any) {
+      const msg = e instanceof TranscriptionError ? e.userMessage : readError(e);
+      setLastError(msg);
+      await updateAttempt.mutateAsync({ id: attempt.id, status: "failed" }).catch(() => undefined);
+      toast({ title: "Transcription failed", description: msg, variant: "destructive" });
+    } finally {
+      setProcessing(false);
+      setWorkingAttemptId(null);
+    }
+  };
+
+  const handleApplySpeakerMap = async (attempt: SessionAttempt, map: SpeakerMap) => {
+    if (!attempt.transcript) return;
+    const words = attempt.live_words && attempt.live_words.length > 0
+      ? attempt.live_words
+      : [];
+    // If no stored words, we can't rebuild; keep transcript as-is.
+    const rebuilt = words.length > 0 ? applySpeakerMap(words, map) : attempt.transcript;
+    await updateAttempt.mutateAsync({
+      id: attempt.id,
+      speaker_map: map,
+      transcript: rebuilt,
+      status: "analyzing",
+    });
+    toast({ title: "Speaker mapping applied", description: "Run analysis next." });
+  };
+
+  const handleAnalyze = async (attempt: SessionAttempt) => {
+    setWorkingAttemptId(attempt.id);
+    setProcessing(true);
+    setProcessingStep("Analyzing…");
+    setLastError(null);
+    try {
+      await updateAttempt.mutateAsync({ id: attempt.id, status: "analyzing" });
+      const materials = session?.materials ?? [];
+      const examContext = materials.map((m) => ({
+        kind: m.kind,
+        title: m.kind === "photo" ? "Visual material" : "Examiner script",
+        text: m.description || m.ai_description || "",
+      }));
+      if (notes.trim()) {
+        examContext.push({ kind: "notes", title: "Session notes", text: notes.trim() });
+      }
+
+      const { data, error } = await supabase.functions.invoke("analyze-exam", {
+        body: {
+          level: levelCode,
+          language: selectedLang?.label ?? "English",
+          candidateNames: attempt.candidate_names,
+          candidateIds: attempt.candidate_ids,
+          transcript: attempt.transcript,
+          examContext,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      // Persist as a confirmed exam record linked to candidates
+      const candidates = data?.candidates ?? [data];
+      for (let i = 0; i < attempt.candidate_names.length; i++) {
+        const candidateId = attempt.candidate_ids[i];
+        if (!candidateId) continue;
+        const candidateResult = candidates[i] ?? candidates[0] ?? {};
+        await supabase.from("exams").insert({
+          user_id: user?.id,
+          candidate_id: candidateId,
+          candidate_name: attempt.candidate_names[i],
+          title: levelCode,
+          level_code: levelCode,
+          language,
+          transcript: attempt.transcript,
+          audio_path: attempt.audio_path,
+          overall_score: candidateResult.overallScore ?? 0,
+          overall_band: candidateResult.overallBand ?? "",
+          criteria: candidateResult.criteria ?? [],
+          strengths: candidateResult.strengths ?? [],
+          areas_for_improvement: candidateResult.areasForImprovement ?? [],
+          part_feedback: candidateResult.partFeedback ?? null,
+          overall_summary: candidateResult.overallSummary ?? "",
+          status: "completed",
+          confirmed_at: new Date().toISOString(),
+        } as any);
+      }
+      await updateAttempt.mutateAsync({ id: attempt.id, status: "done" });
+      toast({ title: "Analysis complete", description: "Reports are available in the Reports page." });
+    } catch (e: any) {
+      const msg = readError(e);
+      setLastError(msg);
+      await updateAttempt.mutateAsync({ id: attempt.id, status: "failed" }).catch(() => undefined);
+      toast({ title: "Analysis failed", description: msg, variant: "destructive" });
+    } finally {
+      setProcessing(false);
+      setWorkingAttemptId(null);
+    }
+  };
+
+  const handlePlayAudio = async (attempt: SessionAttempt) => {
+    const url = await getSignedAudioUrl(attempt.audio_path);
+    if (!url) {
+      toast({ title: "Audio unavailable", description: "Could not load the recording.", variant: "destructive" });
+      return;
+    }
+    setSignedAudioUrl(url);
+    setTimeout(() => {
+      if (audioRef.current) {
+        audioRef.current.play().catch(() => undefined);
+      }
+    }, 0);
+  };
+
+  const handleFinishSession = async () => {
+    if (!activeSessionId) return;
+    try {
+      await closeSession.mutateAsync(activeSessionId);
+      toast({ title: "Session finished for today", description: "You can reopen it later from the dropdown to keep using the same materials." });
+      resetForm();
+      navigate("/speaking-session");
+    } catch (e: any) {
+      toast({ title: "Could not finish session", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const handleReopenSession = async () => {
+    if (!activeSessionId) return;
+    try {
+      await updateSession.mutateAsync({ id: activeSessionId, status: "open" });
+      toast({ title: "Session reopened", description: "Materials are ready for reuse." });
+    } catch (e: any) {
+      toast({ title: "Could not reopen session", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const updateCandidate = (index: number, name: string, id?: string | null) => {
+    const names = [...candidateNames];
+    names[index] = name;
+    const ids = [...candidateIds];
+    ids[index] = id ?? null;
+    setCandidateNames(names);
+    setCandidateIds(ids);
+  };
+
+  const addCandidate = () => {
+    if (candidateNames.length < 3) {
+      setCandidateNames([...candidateNames, ""]);
+      setCandidateIds([...candidateIds, null]);
+    }
+  };
+
+  const removeCandidate = () => {
+    if (candidateNames.length > 2) {
+      setCandidateNames(candidateNames.slice(0, -1));
+      setCandidateIds(candidateIds.slice(0, -1));
+    }
+  };
+
+  // Show selected session or create form
+  const showCreateForm = !activeSessionId;
+  const showSession = !!activeSessionId && !!session;
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-6 py-6">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="font-display text-3xl font-bold tracking-tight">Speaking Session</h1>
+          <p className="text-muted-foreground">
+            Prepare materials, record attempts, and process them when ready.
+          </p>
+          {session && (
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">
+                Status: <span className={session.status === "open" ? "text-emerald-600" : "text-amber-600"}>{session.status === "open" ? "Open — ready for recording" : "Finished — can be reopened"}</span>
+              </span>
+              {session.status === "closed" && (
+                <Button size="sm" variant="outline" onClick={handleReopenSession} disabled={updateSession.isPending}>Reopen</Button>
+              )}
+            </div>
+          )}
+        </div>
+        {existingSessions && existingSessions.length > 0 && (
+          <Select
+            value={activeSessionId ?? "__new__"}
+            onValueChange={async (v) => {
+              if (v === "__new__") resetForm();
+              else {
+                const selected = existingSessions.find((s) => s.id === v);
+                setActiveSessionId(v);
+                if (selected && selected.status === "closed") {
+                  await updateSession.mutateAsync({ id: v, status: "open" });
+                }
+              }
+            }}
+          >
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="Open a session" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__new__">+ New session</SelectItem>
+              {existingSessions.map((s) => (
+                <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+
+      {!navigator.onLine && (
+        <div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700">
+          <AlertCircle className="h-4 w-4" />
+          You are offline. Recordings can still be captured, but analysis requires a connection.
+        </div>
+      )}
+
+      {showCreateForm && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-display text-lg">Create session</CardTitle>
+            <CardDescription>
+              Set the level and language. The session stays open so you can reuse the materials across different days.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Title</Label>
+                <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. FCE Mock 12A" />
+              </div>
+              <div className="space-y-2">
+                <Label>Level</Label>
+                <Select value={levelCode} onValueChange={setLevelCode}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select CEFR level" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {examLevels.map((l) => (
+                      <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Language</Label>
+                <Select value={language} onValueChange={setLanguage}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LANGUAGES.map((l) => (
+                      <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Transcription mode</Label>
+                <Select
+                  value={transcriptionMode}
+                  onValueChange={(v) => setTranscriptionMode(v as TranscriptionMode)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="manual">Manual (process later)</SelectItem>
+                    <SelectItem value="live">Live captions</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Notes</Label>
+              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Session notes visible to the AI during analysis" />
+            </div>
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                Live captions use ElevenLabs Scribe and consume credits during the recording.
+              </p>
+              <Button onClick={handleCreateSession} disabled={createSession.isPending}>
+                {createSession.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                Create session
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {showSession && session && (
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="prepare"><Upload className="mr-2 h-4 w-4" /> Prepare</TabsTrigger>
+            <TabsTrigger value="record"><Mic className="mr-2 h-4 w-4" /> Record</TabsTrigger>
+            <TabsTrigger value="queue"><FileText className="mr-2 h-4 w-4" /> Queue ({session.attempts.length})</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="prepare" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="font-display text-lg">Session setup</CardTitle>
+                <CardDescription>Level, language, and shared notes.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Title</Label>
+                    <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Level</Label>
+                    <Select value={levelCode} onValueChange={setLevelCode}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {examLevels.map((l) => (
+                          <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Notes</Label>
+                  <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
+                </div>
+                <div className="flex items-center gap-4">
+                  <Switch
+                    id="live-mode"
+                    checked={transcriptionMode === "live"}
+                    onCheckedChange={(v) => setTranscriptionMode(v ? "live" : "manual")}
+                  />
+                  <Label htmlFor="live-mode">Live captions during recording</Label>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => updateSession.mutate({ id: session.id, title, level_code: levelCode, language, notes, transcription_mode: transcriptionMode })}
+                  disabled={updateSession.isPending}
+                >
+                  {updateSession.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Save changes
+                </Button>
+              </CardContent>
+            </Card>
+
+            <SessionMaterialPanel sessionId={session.id} materials={session.materials} />
+
+            <div className="flex justify-end">
+              <Button onClick={() => setActiveTab("record")}>
+                Next: Record <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="record" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="font-display text-lg">Candidates</CardTitle>
+                <CardDescription>
+                  Pick the group and the candidates. Free-form names are allowed if you skip the group picker.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Group</Label>
+                  <GroupPicker value={groupId} onChange={setGroupId} />
+                </div>
+                <div className="space-y-3">
+                  {candidateNames.map((name, i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <Badge variant="outline" className="shrink-0">Candidate {String.fromCharCode(65 + i)}</Badge>
+                      <div className="flex-1">
+                        <CandidatePicker
+                          value={name}
+                          groupId={groupId}
+                          placeholder={`Candidate ${String.fromCharCode(65 + i)}`}
+                          excludeNames={candidateNames.filter((_, idx) => idx !== i)}
+                          onChange={(n, id) => updateCandidate(i, n, id)}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  {candidateNames.length < 3 && (
+                    <Button variant="outline" size="sm" onClick={addCandidate}><Plus className="mr-1 h-4 w-4" /> Add candidate</Button>
+                  )}
+                  {candidateNames.length > 2 && (
+                    <Button variant="outline" size="sm" onClick={removeCandidate}><Trash2 className="mr-1 h-4 w-4" /> Remove last</Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="font-display text-lg">Recording</CardTitle>
+                <CardDescription>Record the full speaking test. The attempt is queued after you stop.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex items-center justify-center gap-4 py-6">
+                  {recorder.state !== "recording" ? (
+                    <Button size="lg" onClick={handleStartRecording} className="gap-2">
+                      <Mic className="h-5 w-5" /> Start recording
+                    </Button>
+                  ) : (
+                    <Button size="lg" variant="destructive" onClick={handleStopRecording} className="gap-2">
+                      <Square className="h-5 w-5" /> Stop ({formatTime(recorder.duration)})
+                    </Button>
+                  )}
+                </div>
+
+                {recorder.audioBlob && recorder.state !== "recording" && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-center gap-3">
+                      <Button variant="outline" onClick={() => {
+                        if (localAudioRef.current) {
+                          if (localAudioPlaying) {
+                            localAudioRef.current.pause();
+                          } else {
+                            localAudioRef.current.play().catch(() => undefined);
+                          }
+                        }
+                      }} className="gap-2">
+                        {localAudioPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                        {localAudioPlaying ? "Pause" : "Play back"}
+                      </Button>
+                      <Button variant="outline" onClick={recorder.reset} className="gap-2"><Trash2 className="h-4 w-4" /> Discard</Button>
+                      <Button onClick={handleSaveAttempt} disabled={createAttempt.isPending} className="gap-2">
+                        {createAttempt.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                        Save attempt
+                      </Button>
+                    </div>
+                    {localAudioUrl && (
+                      <audio
+                        ref={localAudioRef}
+                        src={localAudioUrl}
+                        onEnded={() => setLocalAudioPlaying(false)}
+                        onPause={() => setLocalAudioPlaying(false)}
+                        onPlay={() => setLocalAudioPlaying(true)}
+                        controls
+                        className="w-full"
+                      />
+                    )}
+                  </div>
+                )}
+
+                {transcriptionMode === "live" && (
+                  <LiveTranscript
+                    isRecording={recorder.state === "recording"}
+                    onTranscriptUpdate={(t) => setLiveTranscript(t)}
+                    enabled={transcriptionMode === "live"}
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="queue" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="font-display text-lg">Attempt queue</CardTitle>
+                <CardDescription>
+                  Process recordings when you are ready. Transcription, speaker review, and analysis are done here.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {session.attempts.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No attempts yet. Go to Record to capture one.</p>
+                )}
+                {session.attempts.map((attempt) => (
+                  <div key={attempt.id} className="rounded-lg border p-4 space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-primary" />
+                        <span className="font-medium text-sm">{attempt.candidate_names.join(" & ")}</span>
+                        <Badge variant="outline" className="text-xs">{attempt.status.replace("_", " ")}</Badge>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">{formatTime(attempt.duration_seconds || 0)}</span>
+                        <Button size="sm" variant="ghost" onClick={() => handlePlayAudio(attempt)}><Headphones className="h-4 w-4" /></Button>
+                        <Button size="sm" variant="ghost" className="text-destructive" onClick={() => deleteAttempt.mutate(attempt)}><Trash2 className="h-4 w-4" /></Button>
+                      </div>
+                    </div>
+
+                    {attempt.status === "recorded" && (
+                      <Button size="sm" onClick={() => handleTranscribe(attempt)} disabled={processing || workingAttemptId === attempt.id}>
+                        {workingAttemptId === attempt.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                        Transcribe
+                      </Button>
+                    )}
+
+                    {attempt.status === "reviewing_speakers" && attempt.speaker_map && (
+                      <div className="space-y-3">
+                        <SpeakerMappingPanel
+                          examId={attempt.id}
+                          words={(attempt.live_words ?? []) as ScribeWord[]}
+                          initialMap={attempt.speaker_map}
+                          suggestedMap={attempt.speaker_map}
+                          onSaved={(transcript, map) => handleApplySpeakerMap(attempt, map)}
+                        />
+                        <Button size="sm" variant="outline" onClick={() => handleAnalyze(attempt)} disabled={processing || workingAttemptId === attempt.id}>
+                          {workingAttemptId === attempt.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                          Skip review & analyze
+                        </Button>
+                      </div>
+                    )}
+
+                    {(attempt.status === "analyzing" || attempt.status === "done" || attempt.status === "failed") && (
+                      <Button size="sm" onClick={() => handleAnalyze(attempt)} disabled={processing || workingAttemptId === attempt.id || attempt.status === "done"}>
+                        {workingAttemptId === attempt.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                        {attempt.status === "done" ? "Analyzed" : "Analyze"}
+                      </Button>
+                    )}
+
+                    {workingAttemptId === attempt.id && processingStep && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Loader2 className="h-3 w-3 animate-spin" /> {processingStep}
+                      </p>
+                    )}
+                  </div>
+                ))}
+
+                {lastError && (
+                  <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                    <AlertCircle className="inline h-4 w-4 mr-1" /> {lastError}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <div className="flex justify-between">
+              <Button variant="outline" onClick={() => setActiveTab("record")}><ChevronLeft className="mr-2 h-4 w-4" /> Back to record</Button>
+              <Button variant="secondary" onClick={handleFinishSession}>Finish for today</Button>
+            </div>
+          </TabsContent>
+        </Tabs>
+      )}
+
+      {signedAudioUrl && (
+        <audio
+          ref={audioRef}
+          src={signedAudioUrl}
+          controls
+          className="w-full"
+        />
+      )}
+    </div>
+  );
+}

@@ -31,6 +31,7 @@ import { flags } from "@/lib/featureFlags";
 
 const mainNav = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Speaking Session", url: "/speaking-session", icon: Mic },
   { title: "New Exam", url: "/new-exam", icon: Plus },
   { title: "Batch Session", url: "/batch-session", icon: Layers },
   { title: "Class Roster", url: "/roster", icon: Users },

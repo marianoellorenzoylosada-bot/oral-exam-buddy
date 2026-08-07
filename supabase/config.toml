@@ -11,3 +11,6 @@ verify_jwt = true
 
 [functions.purge-expired-audio]
 verify_jwt = false
+
+[functions.describe-material]
+verify_jwt = true

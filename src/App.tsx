@@ -10,6 +10,7 @@ import { RoleGate } from "@/components/RoleGate";
 import Index from "./pages/Index";
 import NewExam from "./pages/NewExam";
 import BatchSession from "./pages/BatchSession";
+import SpeakingSession from "./pages/SpeakingSession";
 import Roster from "./pages/Roster";
 import CandidateDetail from "./pages/CandidateDetail";
 import QuestionBank from "./pages/QuestionBank";

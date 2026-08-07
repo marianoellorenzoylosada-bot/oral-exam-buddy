@@ -102,6 +102,7 @@ export type Database = {
         Row: {
           archived: boolean
           areas_for_improvement: Json
+          attempt_id: string | null
           audio_expires_at: string | null
           audio_path: string | null
           candidate_id: string | null
@@ -126,6 +127,7 @@ export type Database = {
           regrade_count: number
           revision: number
           revision_reason: string | null
+          session_id: string | null
           speaker_map: Json | null
           status: string
           strengths: Json
@@ -137,6 +139,7 @@ export type Database = {
         Insert: {
           archived?: boolean
           areas_for_improvement?: Json
+          attempt_id?: string | null
           audio_expires_at?: string | null
           audio_path?: string | null
           candidate_id?: string | null
@@ -161,6 +164,7 @@ export type Database = {
           regrade_count?: number
           revision?: number
           revision_reason?: string | null
+          session_id?: string | null
           speaker_map?: Json | null
           status?: string
           strengths?: Json
@@ -172,6 +176,7 @@ export type Database = {
         Update: {
           archived?: boolean
           areas_for_improvement?: Json
+          attempt_id?: string | null
           audio_expires_at?: string | null
           audio_path?: string | null
           candidate_id?: string | null
@@ -196,6 +201,7 @@ export type Database = {
           regrade_count?: number
           revision?: number
           revision_reason?: string | null
+          session_id?: string | null
           speaker_map?: Json | null
           status?: string
           strengths?: Json
@@ -206,10 +212,24 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "exams_attempt_id_fkey"
+            columns: ["attempt_id"]
+            isOneToOne: false
+            referencedRelation: "session_attempts"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "exams_candidate_id_fkey"
             columns: ["candidate_id"]
             isOneToOne: false
             referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exams_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "speaking_sessions"
             referencedColumns: ["id"]
           },
         ]
@@ -268,6 +288,154 @@ export type Database = {
           full_name?: string
           id?: string
           institution?: string
+        }
+        Relationships: []
+      }
+      session_attempts: {
+        Row: {
+          audio_path: string
+          candidate_ids: Json
+          candidate_names: Json
+          created_at: string
+          duration_seconds: number | null
+          id: string
+          live_transcript: string
+          live_words: Json | null
+          recorded_at: string
+          session_id: string
+          speaker_map: Json | null
+          status: string
+          transcript: string
+          transcription_mode: Database["public"]["Enums"]["transcription_mode"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          audio_path?: string
+          candidate_ids?: Json
+          candidate_names?: Json
+          created_at?: string
+          duration_seconds?: number | null
+          id?: string
+          live_transcript?: string
+          live_words?: Json | null
+          recorded_at?: string
+          session_id: string
+          speaker_map?: Json | null
+          status?: string
+          transcript?: string
+          transcription_mode?: Database["public"]["Enums"]["transcription_mode"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          audio_path?: string
+          candidate_ids?: Json
+          candidate_names?: Json
+          created_at?: string
+          duration_seconds?: number | null
+          id?: string
+          live_transcript?: string
+          live_words?: Json | null
+          recorded_at?: string
+          session_id?: string
+          speaker_map?: Json | null
+          status?: string
+          transcript?: string
+          transcription_mode?: Database["public"]["Enums"]["transcription_mode"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_attempts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "speaking_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      session_materials: {
+        Row: {
+          ai_description: string
+          created_at: string
+          description: string
+          id: string
+          image_path: string
+          kind: string
+          session_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ai_description?: string
+          created_at?: string
+          description?: string
+          id?: string
+          image_path?: string
+          kind: string
+          session_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ai_description?: string
+          created_at?: string
+          description?: string
+          id?: string
+          image_path?: string
+          kind?: string
+          session_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_materials_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "speaking_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      speaking_sessions: {
+        Row: {
+          created_at: string
+          id: string
+          language: string
+          level_code: string
+          notes: string
+          status: string
+          title: string
+          transcription_mode: Database["public"]["Enums"]["transcription_mode"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          language?: string
+          level_code: string
+          notes?: string
+          status?: string
+          title: string
+          transcription_mode?: Database["public"]["Enums"]["transcription_mode"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          language?: string
+          level_code?: string
+          notes?: string
+          status?: string
+          title?: string
+          transcription_mode?: Database["public"]["Enums"]["transcription_mode"]
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -345,6 +513,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "educator" | "senior"
+      transcription_mode: "live" | "manual"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -473,6 +642,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "educator", "senior"],
+      transcription_mode: ["live", "manual"],
     },
   },
 } as const
