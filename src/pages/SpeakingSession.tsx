@@ -625,7 +625,12 @@ export default function SpeakingSessionPage() {
               </CardContent>
             </Card>
 
+            <div className="rounded-md border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+              You can upload all the material before knowing which candidates are coming — candidates are chosen later, in the Record tab. The same material stays available for every recording in this session, on any day, until you close it.
+            </div>
+
             <SessionMaterialPanel sessionId={session.id} materials={session.materials} />
+
 
             <div className="flex justify-end">
               <Button onClick={() => setActiveTab("record")}>
