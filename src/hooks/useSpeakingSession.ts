@@ -1,0 +1,398 @@
+import { useCallback } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import type { Database } from "@/integrations/supabase/types";
+import type { ScribeWord } from "@/lib/transcribe";
+import type { SpeakerMap } from "@/lib/applySpeakerMap";
+
+export type TranscriptionMode = Database["public"]["Enums"]["transcription_mode"];
+export type SessionStatus = "open" | "closed";
+export type AttemptStatus =
+  | "recorded"
+  | "transcribing"
+  | "reviewing_speakers"
+  | "analyzing"
+  | "done"
+  | "failed";
+
+export interface SpeakingSession {
+  id: string;
+  title: string;
+  level_code: string;
+  language: string;
+  notes: string;
+  status: SessionStatus;
+  transcription_mode: TranscriptionMode;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SessionMaterial {
+  id: string;
+  session_id: string;
+  kind: string;
+  image_path: string;
+  description: string;
+  ai_description: string;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SessionAttempt {
+  id: string;
+  session_id: string;
+  candidate_names: string[];
+  candidate_ids: (string | null)[];
+  audio_path: string;
+  duration_seconds: number | null;
+  transcription_mode: TranscriptionMode;
+  status: AttemptStatus;
+  transcript: string;
+  live_transcript: string;
+  live_words: ScribeWord[] | null;
+  speaker_map: SpeakerMap | null;
+  recorded_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SessionWithDetails extends SpeakingSession {
+  materials: SessionMaterial[];
+  attempts: SessionAttempt[];
+}
+
+export function useSessions() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ["speaking_sessions", user?.id],
+    enabled: !!user,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("speaking_sessions")
+        .select("*")
+        .eq("status", "open")
+        .order("updated_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as SpeakingSession[];
+    },
+  });
+}
+
+export function useSession(sessionId?: string | null) {
+  return useQuery({
+    queryKey: ["speaking_session", sessionId],
+    enabled: !!sessionId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("speaking_sessions")
+        .select("*, session_materials(*), session_attempts(*)")
+        .eq("id", sessionId!)
+        .single();
+      if (error) throw error;
+      const session = data as unknown as SessionWithDetails;
+      session.materials = session.materials ?? [];
+      session.attempts = session.attempts ?? [];
+      return session;
+    },
+  });
+}
+
+export function useCreateSession() {
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  return useMutation({
+    mutationFn: async (input: {
+      title: string;
+      level_code: string;
+      language: string;
+      notes?: string;
+      transcription_mode?: TranscriptionMode;
+    }) => {
+      if (!user) throw new Error("Not authenticated");
+      const { data, error } = await supabase
+        .from("speaking_sessions")
+        .insert({
+          user_id: user.id,
+          title: input.title,
+          level_code: input.level_code,
+          language: input.language ?? "en",
+          notes: input.notes ?? "",
+          transcription_mode: input.transcription_mode ?? "manual",
+          status: "open",
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      return data as SpeakingSession;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["speaking_sessions"] }),
+  });
+}
+
+export function useUpdateSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...patch }: Partial<SpeakingSession> & { id: string }) => {
+      const { data, error } = await supabase
+        .from("speaking_sessions")
+        .update(patch)
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as SpeakingSession;
+    },
+    onSuccess: (_data, variables) => {
+      void Promise.all([
+        Promise.resolve().then(() =>
+          setTimeout(() => {
+            void Promise.all([
+              Promise.resolve().then(() =>
+                Promise.all([
+                  Promise.resolve().then(() =>
+                    Promise.resolve().then(() =>
+                      Promise.resolve().then(() => {
+                        void Promise.resolve().then(() => {
+                          qc.invalidateQueries({ queryKey: ["speaking_sessions"] });
+                          qc.invalidateQueries({ queryKey: ["speaking_session", variables.id] });
+                        });
+                      })
+                    )
+                  )
+                ])
+              )
+            ]);
+          }, 0)
+        ),
+      ]);
+    },
+  });
+}
+
+export function useCloseSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data, error } = await supabase
+        .from("speaking_sessions")
+        .update({ status: "closed" })
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as SpeakingSession;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["speaking_sessions"] }),
+  });
+}
+
+export function useUploadSessionAudio() {
+  const { user } = useAuth();
+  return useCallback(
+    async (blob: Blob, sessionId: string, attemptId: string) => {
+      if (!user) throw new Error("Not authenticated");
+      const ext = (blob.type || "audio/webm").includes("mp4") ? "mp4" : "webm";
+      const path = `${user.id}/${sessionId}/${attemptId}.${ext}`;
+      const { error } = await supabase.storage
+        .from("exam-audio")
+        .upload(path, blob, { contentType: blob.type || "audio/webm", upsert: true });
+      if (error) throw error;
+      return path;
+    },
+    [user]
+  );
+}
+
+export function useCreateAttempt() {
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  const uploadAudio = useUploadSessionAudio();
+  return useMutation({
+    mutationFn: async (input: {
+      sessionId: string;
+      candidateNames: string[];
+      candidateIds: (string | null)[];
+      audioBlob: Blob;
+      durationSeconds: number;
+      transcriptionMode: TranscriptionMode;
+      liveTranscript?: string;
+      liveWords?: ScribeWord[];
+    }) => {
+      if (!user) throw new Error("Not authenticated");
+      const id = crypto.randomUUID();
+      const audioPath = await uploadAudio(input.audioBlob, input.sessionId, id);
+      const { data, error } = await supabase
+        .from("session_attempts")
+        .insert({
+          id,
+          user_id: user.id,
+          session_id: input.sessionId,
+          candidate_names: input.candidateNames,
+          candidate_ids: input.candidateIds,
+          audio_path: audioPath,
+          duration_seconds: input.durationSeconds,
+          transcription_mode: input.transcriptionMode,
+          status: "recorded",
+          transcript: "",
+          live_transcript: input.liveTranscript ?? "",
+          live_words: input.liveWords ?? null,
+          recorded_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      return data as SessionAttempt;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["speaking_session"] }),
+  });
+}
+
+export function useUpdateAttempt() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...patch }: Partial<SessionAttempt> & { id: string }) => {
+      const { data, error } = await supabase
+        .from("session_attempts")
+        .update(patch)
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as SessionAttempt;
+    },
+    onSuccess: (_data, variables) => {
+      void Promise.all([
+        Promise.resolve().then(() =>
+          setTimeout(() => {
+            void Promise.resolve().then(() =>
+              Promise.resolve().then(() =>
+                Promise.resolve().then(() =>
+                  Promise.resolve().then(() => {
+                    qc.invalidateQueries({ queryKey: ["speaking_session"] });
+                    qc.invalidateQueries({ queryKey: ["session_attempt", variables.id] });
+                  })
+                )
+              )
+            );
+          }, 0)
+        ),
+      ]);
+    },
+  });
+}
+
+export function useDeleteAttempt() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (attempt: SessionAttempt) => {
+      const { error: storageError } = await supabase.storage
+        .from("exam-audio")
+        .remove([attempt.audio_path]);
+      if (storageError) console.warn("[useDeleteAttempt] failed to remove audio:", storageError.message);
+      const { error } = await supabase.from("session_attempts").delete().eq("id", attempt.id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["speaking_session"] }),
+  });
+}
+
+export function useAddMaterial() {
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  return useMutation({
+    mutationFn: async (input: {
+      sessionId: string;
+      file: File;
+      kind: string;
+      description?: string;
+      aiDescription?: string;
+    }) => {
+      if (!user) throw new Error("Not authenticated");
+      const ext = input.file.name.split(".").pop() ?? "jpg";
+      const imagePath = `${user.id}/${input.sessionId}/${crypto.randomUUID()}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from("exam-context")
+        .upload(imagePath, input.file, { contentType: input.file.type, upsert: true });
+      if (uploadError) throw uploadError;
+      const { data, error } = await supabase
+        .from("session_materials")
+        .insert({
+          user_id: user.id,
+          session_id: input.sessionId,
+          kind: input.kind,
+          image_path: imagePath,
+          description: input.description ?? "",
+          ai_description: input.aiDescription ?? "",
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      return data as SessionMaterial;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["speaking_session"] }),
+  });
+}
+
+export function useUpdateMaterial() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...patch }: Partial<SessionMaterial> & { id: string }) => {
+      const { data, error } = await supabase
+        .from("session_materials")
+        .update(patch)
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as SessionMaterial;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["speaking_session"] }),
+  });
+}
+
+export function useDeleteMaterial() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (material: SessionMaterial) => {
+      const { error: storageError } = await supabase.storage.from("exam-context").remove([material.image_path]);
+      if (storageError) console.warn("[useDeleteMaterial] failed to remove image:", storageError.message);
+      const { error } = await supabase.from("session_materials").delete().eq("id", material.id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["speaking_session"] }),
+  });
+}
+
+export function useDescribeMaterial() {
+  return useCallback(async (imagePath: string, kind: string) => {
+    const { data, error } = await supabase.functions.invoke<{ description: string }>("describe-material", {
+      body: { storagePath: imagePath, kind },
+    });
+    if (error) throw error;
+    if (!data?.description) throw new Error("No description returned");
+    return data.description;
+  }, []);
+}
+
+export function useStudentGroups(studentIds: (string | null)[]) {
+  const ids = studentIds.filter(Boolean) as string[];
+  return useQuery({
+    queryKey: ["student-groups", ids],
+    enabled: ids.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("students")
+        .select("id, group_id, groups(institution, name)")
+        .in("id", ids);
+      if (error) throw error;
+      return (data ?? []) as Array<{
+        id: string;
+        group_id: string;
+        groups: { institution: string; name: string };
+      }>;
+    },
+  });
+}
