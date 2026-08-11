@@ -28,7 +28,10 @@ interface StudentReportData {
   partFeedback?: PartFeedback[];
   /** Short synthesis paragraph. */
   overallSummary?: string;
+  /** "save" downloads the file (default); "print" opens the print dialog. */
+  output?: "save" | "print";
 }
+
 
 const BRAND: [number, number, number] = [30, 64, 175];
 const MUTED: [number, number, number] = [100, 116, 139];
