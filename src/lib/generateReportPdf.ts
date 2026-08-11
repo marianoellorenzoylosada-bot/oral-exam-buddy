@@ -393,5 +393,12 @@ export function generateReportPdf(input: ReportData) {
 
   // Save
   const filename = `${data.title.replace(/\s+/g, "_")}_${data.date.replace(/\//g, "-")}.pdf`;
+  if (input.output === "print") {
+    doc.autoPrint();
+    const url = doc.output("bloburl") as unknown as string;
+    window.open(url, "_blank");
+    return;
+  }
   doc.save(filename);
 }
+
