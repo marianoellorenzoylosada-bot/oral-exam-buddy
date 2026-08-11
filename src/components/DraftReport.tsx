@@ -503,11 +503,20 @@ export function DraftReport({ result, level, levelCode, language, institution, g
             </Button>
           )}
           <Button variant="outline" size="sm" onClick={handleDownloadPdf} className="gap-2">
-            <Download className="h-4 w-4" /> PDF
+            <Download className="h-4 w-4" /> Teacher PDF
           </Button>
+          <Button variant="outline" size="sm" onClick={handleDownloadStudentPdf} className="gap-2">
+            <GraduationCap className="h-4 w-4" /> Student PDF
+          </Button>
+          {drafts.length > 1 && (
+            <Button variant="outline" size="sm" onClick={handleDownloadAll} className="gap-2">
+              <Download className="h-4 w-4" /> Download all
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={handlePrint} className="gap-2">
             <Printer className="h-4 w-4" /> Print
           </Button>
+
           {!allOfficial && (
             <Button variant="outline" size="sm" onClick={onReset} className="gap-2">
               <RotateCcw className="h-4 w-4" /> New Exam
