@@ -465,32 +465,70 @@ export default function SpeakingSessionPage() {
             </div>
           )}
         </div>
-        {existingSessions && existingSessions.length > 0 && (
-          <Select
-            value={activeSessionId ?? "__new__"}
-            onValueChange={async (v) => {
-              if (v === "__new__") resetForm();
-              else {
-                const selected = existingSessions.find((s) => s.id === v);
-                setActiveSessionId(v);
-                if (selected && selected.status === "closed") {
-                  await updateSession.mutateAsync({ id: v, status: "open" });
+        <div className="flex items-center gap-2">
+          {existingSessions && existingSessions.length > 0 && (
+            <Select
+              value={activeSessionId ?? "__new__"}
+              onValueChange={async (v) => {
+                if (v === "__new__") resetForm();
+                else {
+                  const selected = existingSessions.find((s) => s.id === v);
+                  setActiveSessionId(v);
+                  if (selected && selected.status === "closed") {
+                    await updateSession.mutateAsync({ id: v, status: "open" });
+                  }
                 }
-              }
-            }}
-          >
-            <SelectTrigger className="w-[220px]">
-              <SelectValue placeholder="Open a session" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__new__">+ New session</SelectItem>
-              {existingSessions.map((s) => (
-                <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+              }}
+            >
+              <SelectTrigger className="w-[220px]">
+                <SelectValue placeholder="Open a session" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__new__">+ New session</SelectItem>
+                {existingSessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {session && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" variant="outline" className="text-destructive">
+                  <Trash2 className="mr-2 h-4 w-4" /> Delete session
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete “{session.title}”?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This permanently removes the session, its uploaded material, its photos and every queued
+                    recording that has not been signed yet. Reports you already confirmed and signed stay in
+                    Reports and are not deleted. This cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={async () => {
+                      try {
+                        await deleteSession.mutateAsync(session.id);
+                        toast({ title: "Session deleted" });
+                        resetForm();
+                      } catch (e: any) {
+                        toast({ title: "Could not delete session", description: e.message, variant: "destructive" });
+                      }
+                    }}
+                  >
+                    Delete session
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+        </div>
       </div>
+
 
       {!navigator.onLine && (
         <div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700">
