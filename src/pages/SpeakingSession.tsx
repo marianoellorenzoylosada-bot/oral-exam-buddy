@@ -242,9 +242,16 @@ export default function SpeakingSessionPage() {
         id: attempt.id,
         status,
         transcript: out.transcript,
+        // Keep the timestamped words so the examiner can review who is who.
+        live_words: out.words,
         speaker_map: speakerMap,
       });
-      toast({ title: "Transcription ready", description: "Review speakers or run analysis." });
+      toast({
+        title: "Transcription ready",
+        description: status === "reviewing_speakers"
+          ? "Confirm who is who before running the analysis."
+          : "Only one speaker was detected — you can analyze directly.",
+      });
     } catch (e: any) {
       const msg = e instanceof TranscriptionError ? e.userMessage : readError(e);
       setLastError(msg);
@@ -258,9 +265,7 @@ export default function SpeakingSessionPage() {
 
   const handleApplySpeakerMap = async (attempt: SessionAttempt, map: SpeakerMap) => {
     if (!attempt.transcript) return;
-    const words = attempt.live_words && attempt.live_words.length > 0
-      ? attempt.live_words
-      : [];
+    const words = (attempt.live_words ?? []) as ScribeWord[];
     // If no stored words, we can't rebuild; keep transcript as-is.
     const rebuilt = words.length > 0 ? applySpeakerMap(words, map) : attempt.transcript;
     await updateAttempt.mutateAsync({
@@ -271,6 +276,7 @@ export default function SpeakingSessionPage() {
     });
     toast({ title: "Speaker mapping applied", description: "Run analysis next." });
   };
+
 
   const handleAnalyze = async (attempt: SessionAttempt) => {
     setWorkingAttemptId(attempt.id);
