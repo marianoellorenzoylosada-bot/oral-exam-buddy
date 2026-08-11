@@ -26,7 +26,7 @@ import { CandidatePicker } from "@/components/CandidatePicker";
 import { GroupPicker } from "@/components/GroupPicker";
 import { SUPPORTED_LANGUAGES, getExamLevels } from "@/lib/examLevels";
 import {
-  useSessions, useSession, useCreateSession, useUpdateSession, useCloseSession,
+  useSessions, useSession, useCreateSession, useUpdateSession, useCloseSession, useDeleteSession,
   useCreateAttempt, useUpdateAttempt, useDeleteAttempt, useStudentGroups,
   type SessionWithDetails, type SessionAttempt, type TranscriptionMode, type AttemptStatus,
 } from "@/hooks/useSpeakingSession";
@@ -98,6 +98,7 @@ export default function SpeakingSessionPage() {
   const createAttempt = useCreateAttempt();
   const updateAttempt = useUpdateAttempt();
   const deleteAttempt = useDeleteAttempt();
+  const deleteSession = useDeleteSession();
   const studentGroups = useStudentGroups(candidateIds);
 
   const [workingAttemptId, setWorkingAttemptId] = useState<string | null>(null);
