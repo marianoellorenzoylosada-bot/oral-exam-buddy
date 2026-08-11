@@ -173,6 +173,42 @@ export function useCloseSession() {
   });
 }
 
+/**
+ * Delete a session with its materials, attempts and stored files.
+ * Signed reports already saved in Reports are NOT affected.
+ */
+export function useDeleteSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (sessionId: string) => {
+      const [{ data: materials }, { data: attempts }] = await Promise.all([
+        supabase.from("session_materials").select("image_path").eq("session_id", sessionId),
+        supabase.from("session_attempts").select("audio_path").eq("session_id", sessionId),
+      ]);
+      const imagePaths = (materials ?? []).map((m) => m.image_path).filter(Boolean) as string[];
+      const audioPaths = (attempts ?? []).map((a) => a.audio_path).filter(Boolean) as string[];
+      if (imagePaths.length > 0) {
+        const { error } = await supabase.storage.from("exam-context").remove(imagePaths);
+        if (error) console.warn("[useDeleteSession] images:", error.message);
+      }
+      if (audioPaths.length > 0) {
+        const { error } = await supabase.storage.from("exam-audio").remove(audioPaths);
+        if (error) console.warn("[useDeleteSession] audio:", error.message);
+      }
+      // Detach signed reports so they survive the session deletion.
+      await supabase.from("exams").update({ session_id: null, attempt_id: null }).eq("session_id", sessionId);
+      await supabase.from("session_materials").delete().eq("session_id", sessionId);
+      await supabase.from("session_attempts").delete().eq("session_id", sessionId);
+      const { error } = await supabase.from("speaking_sessions").delete().eq("id", sessionId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["speaking_sessions"] });
+      qc.invalidateQueries({ queryKey: ["speaking_session"] });
+    },
+  });
+}
+
 export function useUploadSessionAudio() {
   const { user } = useAuth();
   return useCallback(

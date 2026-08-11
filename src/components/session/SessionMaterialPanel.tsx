@@ -71,10 +71,17 @@ export function SessionMaterialPanel({ sessionId, materials }: SessionMaterialPa
         await videoRef.current.play();
       }
     } catch (e: any) {
-      const msg = e?.message || "Could not access the camera.";
+      // Inside the Lovable preview iframe the camera permission is usually blocked.
+      const blocked = e?.name === "NotAllowedError" || e?.name === "SecurityError";
+      const msg = blocked
+        ? "The camera is blocked here (previews run inside a frame). Open the app in its own browser tab and try again, or attach a photo from your gallery."
+        : e?.name === "NotFoundError"
+          ? "No camera was found on this device. Attach a photo instead."
+          : e?.message || "Could not access the camera.";
       setCameraError(msg);
-      toast({ title: "Camera error", description: msg, variant: "destructive" });
+      toast({ title: "Camera unavailable", description: msg, variant: "destructive" });
     }
+
   };
 
   const stopCamera = () => {

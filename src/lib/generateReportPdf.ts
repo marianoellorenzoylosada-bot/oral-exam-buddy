@@ -30,7 +30,10 @@ interface ReportData {
   partFeedback?: PartFeedback[];
   /** Short synthesis paragraph for the whole exam. */
   overallSummary?: string;
+  /** "save" downloads the file (default); "print" opens the print dialog. */
+  output?: "save" | "print";
 }
+
 
 const BRAND_COLOR: [number, number, number] = [30, 64, 175]; // blue-800
 const MUTED: [number, number, number] = [100, 116, 139]; // slate-500
@@ -390,5 +393,12 @@ export function generateReportPdf(input: ReportData) {
 
   // Save
   const filename = `${data.title.replace(/\s+/g, "_")}_${data.date.replace(/\//g, "-")}.pdf`;
+  if (input.output === "print") {
+    doc.autoPrint();
+    const url = doc.output("bloburl") as unknown as string;
+    window.open(url, "_blank");
+    return;
+  }
   doc.save(filename);
 }
+

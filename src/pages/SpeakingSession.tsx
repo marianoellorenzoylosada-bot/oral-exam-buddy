@@ -11,6 +11,10 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   Mic, Square, Plus, Save, Loader2, AlertCircle, RefreshCw, Play, Pause, Trash2,
   Upload, Users, FileText, Image, ChevronLeft, Headphones, CheckCircle2, ArrowRight,
 } from "lucide-react";
@@ -22,7 +26,7 @@ import { CandidatePicker } from "@/components/CandidatePicker";
 import { GroupPicker } from "@/components/GroupPicker";
 import { SUPPORTED_LANGUAGES, getExamLevels } from "@/lib/examLevels";
 import {
-  useSessions, useSession, useCreateSession, useUpdateSession, useCloseSession,
+  useSessions, useSession, useCreateSession, useUpdateSession, useCloseSession, useDeleteSession,
   useCreateAttempt, useUpdateAttempt, useDeleteAttempt, useStudentGroups,
   type SessionWithDetails, type SessionAttempt, type TranscriptionMode, type AttemptStatus,
 } from "@/hooks/useSpeakingSession";
@@ -94,6 +98,7 @@ export default function SpeakingSessionPage() {
   const createAttempt = useCreateAttempt();
   const updateAttempt = useUpdateAttempt();
   const deleteAttempt = useDeleteAttempt();
+  const deleteSession = useDeleteSession();
   const studentGroups = useStudentGroups(candidateIds);
 
   const [workingAttemptId, setWorkingAttemptId] = useState<string | null>(null);
@@ -242,9 +247,16 @@ export default function SpeakingSessionPage() {
         id: attempt.id,
         status,
         transcript: out.transcript,
+        // Keep the timestamped words so the examiner can review who is who.
+        live_words: out.words,
         speaker_map: speakerMap,
       });
-      toast({ title: "Transcription ready", description: "Review speakers or run analysis." });
+      toast({
+        title: "Transcription ready",
+        description: status === "reviewing_speakers"
+          ? "Confirm who is who before running the analysis."
+          : "Only one speaker was detected — you can analyze directly.",
+      });
     } catch (e: any) {
       const msg = e instanceof TranscriptionError ? e.userMessage : readError(e);
       setLastError(msg);
@@ -258,9 +270,7 @@ export default function SpeakingSessionPage() {
 
   const handleApplySpeakerMap = async (attempt: SessionAttempt, map: SpeakerMap) => {
     if (!attempt.transcript) return;
-    const words = attempt.live_words && attempt.live_words.length > 0
-      ? attempt.live_words
-      : [];
+    const words = (attempt.live_words ?? []) as ScribeWord[];
     // If no stored words, we can't rebuild; keep transcript as-is.
     const rebuilt = words.length > 0 ? applySpeakerMap(words, map) : attempt.transcript;
     await updateAttempt.mutateAsync({
@@ -272,6 +282,7 @@ export default function SpeakingSessionPage() {
     toast({ title: "Speaker mapping applied", description: "Run analysis next." });
   };
 
+
   const handleAnalyze = async (attempt: SessionAttempt) => {
     setWorkingAttemptId(attempt.id);
     setProcessing(true);
@@ -282,25 +293,53 @@ export default function SpeakingSessionPage() {
       const materials = session?.materials ?? [];
       const examContext = materials.map((m) => ({
         kind: m.kind,
-        title: m.kind === "photo" ? "Visual material" : "Examiner script",
+        title: m.kind === "examiner_script" ? "Examiner script" : "Visual material",
         text: m.description || m.ai_description || "",
       }));
       if (notes.trim()) {
         examContext.push({ kind: "notes", title: "Session notes", text: notes.trim() });
       }
 
-      const { data, error } = await supabase.functions.invoke("analyze-exam", {
-        body: {
-          level: levelCode,
-          language: selectedLang?.label ?? "English",
-          candidateNames: attempt.candidate_names,
-          candidateIds: attempt.candidate_ids,
-          transcript: attempt.transcript,
-          examContext,
-        },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      const runAnalysis = async (names: string[], ids: (string | null)[]) => {
+        const { data, error } = await supabase.functions.invoke("analyze-exam", {
+          body: {
+            level: levelCode,
+            language: selectedLang?.label ?? "English",
+            candidateNames: names,
+            candidateIds: ids,
+            transcript: attempt.transcript,
+            examContext,
+          },
+        });
+        if (error) throw error;
+        if ((data as any)?.error) throw new Error((data as any).error);
+        return data as any;
+      };
+
+      const data = await runAnalysis(attempt.candidate_names, attempt.candidate_ids);
+
+      // Every candidate of the same recording must get the SAME report shape.
+      // If the model skipped the per-part breakdown for someone, ask again for
+      // that candidate only and merge the result in.
+      const list: any[] = Array.isArray(data?.candidates) ? data.candidates : [data];
+      const hasParts = (c: any) => Array.isArray(c?.partFeedback) && c.partFeedback.length > 0;
+      if (list.length > 1 && list.some(hasParts) && !list.every(hasParts)) {
+        setProcessingStep("Completing the per-part breakdown…");
+        for (let i = 0; i < list.length; i++) {
+          if (hasParts(list[i])) continue;
+          try {
+            const single = await runAnalysis(
+              [attempt.candidate_names[i]],
+              [attempt.candidate_ids?.[i] ?? null]
+            );
+            const fixed = Array.isArray(single?.candidates) ? single.candidates[0] : single;
+            if (hasParts(fixed)) list[i] = { ...list[i], partFeedback: fixed.partFeedback, overallSummary: list[i].overallSummary || fixed.overallSummary };
+          } catch (retryErr) {
+            console.warn("[SpeakingSession] part breakdown retry failed:", retryErr);
+          }
+        }
+        if (Array.isArray(data?.candidates)) data.candidates = list;
+      }
 
       // Hold the analysis for examiner review — reports are only created on sign-off.
       await updateAttempt.mutateAsync({
@@ -310,6 +349,7 @@ export default function SpeakingSessionPage() {
       });
       setReviewAttemptId(attempt.id);
       toast({ title: "Analysis ready", description: "Review the report, then confirm and sign it." });
+
 
     } catch (e: any) {
       const msg = readError(e);
@@ -430,32 +470,70 @@ export default function SpeakingSessionPage() {
             </div>
           )}
         </div>
-        {existingSessions && existingSessions.length > 0 && (
-          <Select
-            value={activeSessionId ?? "__new__"}
-            onValueChange={async (v) => {
-              if (v === "__new__") resetForm();
-              else {
-                const selected = existingSessions.find((s) => s.id === v);
-                setActiveSessionId(v);
-                if (selected && selected.status === "closed") {
-                  await updateSession.mutateAsync({ id: v, status: "open" });
+        <div className="flex items-center gap-2">
+          {existingSessions && existingSessions.length > 0 && (
+            <Select
+              value={activeSessionId ?? "__new__"}
+              onValueChange={async (v) => {
+                if (v === "__new__") resetForm();
+                else {
+                  const selected = existingSessions.find((s) => s.id === v);
+                  setActiveSessionId(v);
+                  if (selected && selected.status === "closed") {
+                    await updateSession.mutateAsync({ id: v, status: "open" });
+                  }
                 }
-              }
-            }}
-          >
-            <SelectTrigger className="w-[220px]">
-              <SelectValue placeholder="Open a session" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__new__">+ New session</SelectItem>
-              {existingSessions.map((s) => (
-                <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+              }}
+            >
+              <SelectTrigger className="w-[220px]">
+                <SelectValue placeholder="Open a session" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__new__">+ New session</SelectItem>
+                {existingSessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {session && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" variant="outline" className="text-destructive">
+                  <Trash2 className="mr-2 h-4 w-4" /> Delete session
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete “{session.title}”?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This permanently removes the session, its uploaded material, its photos and every queued
+                    recording that has not been signed yet. Reports you already confirmed and signed stay in
+                    Reports and are not deleted. This cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={async () => {
+                      try {
+                        await deleteSession.mutateAsync(session.id);
+                        toast({ title: "Session deleted" });
+                        resetForm();
+                      } catch (e: any) {
+                        toast({ title: "Could not delete session", description: e.message, variant: "destructive" });
+                      }
+                    }}
+                  >
+                    Delete session
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+        </div>
       </div>
+
 
       {!navigator.onLine && (
         <div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700">
@@ -779,6 +857,9 @@ export default function SpeakingSessionPage() {
 
                     {attempt.status === "reviewing_speakers" && attempt.speaker_map && (
                       <div className="space-y-3">
+                        <p className="text-xs text-muted-foreground">
+                          Confirm who is who, then save the mapping. The analysis uses the labelled transcript.
+                        </p>
                         <SpeakerMappingPanel
                           examId={attempt.id}
                           words={(attempt.live_words ?? []) as ScribeWord[]}
@@ -786,10 +867,11 @@ export default function SpeakingSessionPage() {
                           suggestedMap={attempt.speaker_map}
                           onSaved={(transcript, map) => handleApplySpeakerMap(attempt, map)}
                         />
-                        <Button size="sm" variant="outline" onClick={() => handleAnalyze(attempt)} disabled={processing || workingAttemptId === attempt.id}>
-                          {workingAttemptId === attempt.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                          Skip review & analyze
+                        <Button size="sm" variant="ghost" className="text-xs text-muted-foreground" onClick={() => handleAnalyze(attempt)} disabled={processing || workingAttemptId === attempt.id}>
+                          {workingAttemptId === attempt.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                          Analyze without confirming speakers
                         </Button>
+
                       </div>
                     )}
 

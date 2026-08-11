@@ -28,7 +28,10 @@ interface StudentReportData {
   partFeedback?: PartFeedback[];
   /** Short synthesis paragraph. */
   overallSummary?: string;
+  /** "save" downloads the file (default); "print" opens the print dialog. */
+  output?: "save" | "print";
 }
+
 
 const BRAND: [number, number, number] = [30, 64, 175];
 const MUTED: [number, number, number] = [100, 116, 139];
@@ -322,5 +325,12 @@ export function generateStudentPdf(input: StudentReportData) {
 
   const safeName = (data.candidateName || "student").replace(/\s+/g, "_");
   const filename = `Student_Feedback_${safeName}_${data.date.replace(/\//g, "-")}.pdf`;
+  if (input.output === "print") {
+    doc.autoPrint();
+    const url = doc.output("bloburl") as unknown as string;
+    window.open(url, "_blank");
+    return;
+  }
   doc.save(filename);
 }
+

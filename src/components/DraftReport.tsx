@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   FileText, CheckCircle2, AlertTriangle, RotateCcw, Printer, ShieldCheck,
-  BookOpen, ExternalLink, Home, Loader2, Download, PenLine, Users, Info,
+  BookOpen, ExternalLink, Home, Loader2, Download, PenLine, Users, Info, GraduationCap,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SpeakerTranscript } from "@/components/SpeakerTranscript";
@@ -20,6 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getRecommendations } from "@/lib/practiceData";
 import { supabase } from "@/integrations/supabase/client";
 import { generateReportPdf } from "@/lib/generateReportPdf";
+import { generateStudentPdf } from "@/lib/generateStudentPdf";
 import { useAuth } from "@/hooks/useAuth";
 import { computeWeightedSpeakingScore } from "@/lib/speakingScore";
 import type { PartFeedback } from "@/lib/partFeedback";
@@ -406,35 +407,75 @@ export function DraftReport({ result, level, levelCode, language, institution, g
   };
 
 
-  const handlePrint = () => window.print();
-
-  const handleDownloadPdf = () => {
-    const finalStrengths = draft.strengths.filter((_, i) => acceptedStrengths[i]);
-    const finalImprovements = draft.areasForImprovement.filter((_, i) => acceptedImprovements[i]);
-    const candidateName = draft.candidateName || candidateNames[activeCandidate] || `Candidate ${String.fromCharCode(65 + activeCandidate)}`;
-    const examTitle = `${levelCode} ${language} Oral — ${candidateName}`;
+  /** Collect the reviewed data of one candidate for the PDF generators. */
+  const buildPdfData = (index: number) => {
+    const d = drafts[index];
+    const accS = allAcceptedStrengths[index] || [];
+    const accI = allAcceptedImprovements[index] || [];
+    const candidateName =
+      d.candidateName || candidateNames[index] || `Candidate ${String.fromCharCode(65 + index)}`;
     // Pairs/trios can mix groups: resolve this candidate's own group + institution.
-    const activeCandidateId = candidateIds?.[activeCandidate] ?? null;
-    const meta = activeCandidateId ? candidateMeta[activeCandidateId] : undefined;
-    generateReportPdf({
-      title: examTitle,
+    const candId = candidateIds?.[index] ?? null;
+    const meta = candId ? candidateMeta[candId] : undefined;
+    return {
+      title: `${levelCode} ${language} Oral — ${candidateName}`,
       candidateName,
       institution: meta?.institution || institutionName,
       group: meta?.group || group || "",
       levelCode,
       language,
-      overallBand: draft.overallBand,
-      overallScore: draft.overallScore,
-      criteria: draft.criteria,
-      strengths: finalStrengths,
-      areasForImprovement: finalImprovements,
+      overallBand: d.overallBand,
+      overallScore: d.overallScore,
+      criteria: d.criteria,
+      strengths: d.strengths.filter((_, i) => accS[i] !== false),
+      areasForImprovement: d.areasForImprovement.filter((_, i) => accI[i] !== false),
       examinerNotes: sharedDraft.examinerNotes,
       transcript: sharedDraft.transcript,
       date: new Date().toLocaleDateString(),
-      partFeedback: draft.partFeedback,
-      overallSummary: draft.overallSummary,
+      partFeedback: d.partFeedback,
+      overallSummary: d.overallSummary,
+    };
+  };
+
+  const teacherPdf = (index: number, output: "save" | "print" = "save") =>
+    generateReportPdf({ ...buildPdfData(index), output });
+
+  const studentPdf = (index: number, output: "save" | "print" = "save") => {
+    const base = buildPdfData(index);
+    generateStudentPdf({
+      title: base.title,
+      candidateName: base.candidateName,
+      levelCode: base.levelCode,
+      language: base.language,
+      overallBand: base.overallBand,
+      overallScore: base.overallScore,
+      criteria: base.criteria,
+      strengths: base.strengths,
+      areasForImprovement: base.areasForImprovement,
+      date: base.date,
+      partFeedback: base.partFeedback,
+      overallSummary: base.overallSummary,
+      output,
     });
   };
+
+  /** Print uses the PDF layout so nothing is clipped by the on-screen cards. */
+  const handlePrint = () => teacherPdf(activeCandidate, "print");
+
+  const handleDownloadPdf = () => teacherPdf(activeCandidate);
+  const handleDownloadStudentPdf = () => studentPdf(activeCandidate);
+
+  const handleDownloadAll = () => {
+    drafts.forEach((_, i) => {
+      teacherPdf(i);
+      studentPdf(i);
+    });
+    toast({
+      title: "Reports downloaded",
+      description: `Teacher and student PDFs generated for ${drafts.length} candidate${drafts.length > 1 ? "s" : ""}.`,
+    });
+  };
+
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 print:space-y-4">
@@ -462,11 +503,20 @@ export function DraftReport({ result, level, levelCode, language, institution, g
             </Button>
           )}
           <Button variant="outline" size="sm" onClick={handleDownloadPdf} className="gap-2">
-            <Download className="h-4 w-4" /> PDF
+            <Download className="h-4 w-4" /> Teacher PDF
           </Button>
+          <Button variant="outline" size="sm" onClick={handleDownloadStudentPdf} className="gap-2">
+            <GraduationCap className="h-4 w-4" /> Student PDF
+          </Button>
+          {drafts.length > 1 && (
+            <Button variant="outline" size="sm" onClick={handleDownloadAll} className="gap-2">
+              <Download className="h-4 w-4" /> Download all
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={handlePrint} className="gap-2">
             <Printer className="h-4 w-4" /> Print
           </Button>
+
           {!allOfficial && (
             <Button variant="outline" size="sm" onClick={onReset} className="gap-2">
               <RotateCcw className="h-4 w-4" /> New Exam
