@@ -322,5 +322,12 @@ export function generateStudentPdf(input: StudentReportData) {
 
   const safeName = (data.candidateName || "student").replace(/\s+/g, "_");
   const filename = `Student_Feedback_${safeName}_${data.date.replace(/\//g, "-")}.pdf`;
+  if (input.output === "print") {
+    doc.autoPrint();
+    const url = doc.output("bloburl") as unknown as string;
+    window.open(url, "_blank");
+    return;
+  }
   doc.save(filename);
 }
+
