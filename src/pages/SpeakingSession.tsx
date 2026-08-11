@@ -857,6 +857,9 @@ export default function SpeakingSessionPage() {
 
                     {attempt.status === "reviewing_speakers" && attempt.speaker_map && (
                       <div className="space-y-3">
+                        <p className="text-xs text-muted-foreground">
+                          Confirm who is who, then save the mapping. The analysis uses the labelled transcript.
+                        </p>
                         <SpeakerMappingPanel
                           examId={attempt.id}
                           words={(attempt.live_words ?? []) as ScribeWord[]}
@@ -864,10 +867,11 @@ export default function SpeakingSessionPage() {
                           suggestedMap={attempt.speaker_map}
                           onSaved={(transcript, map) => handleApplySpeakerMap(attempt, map)}
                         />
-                        <Button size="sm" variant="outline" onClick={() => handleAnalyze(attempt)} disabled={processing || workingAttemptId === attempt.id}>
-                          {workingAttemptId === attempt.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                          Skip review & analyze
+                        <Button size="sm" variant="ghost" className="text-xs text-muted-foreground" onClick={() => handleAnalyze(attempt)} disabled={processing || workingAttemptId === attempt.id}>
+                          {workingAttemptId === attempt.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                          Analyze without confirming speakers
                         </Button>
+
                       </div>
                     )}
 
