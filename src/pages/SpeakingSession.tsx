@@ -288,25 +288,53 @@ export default function SpeakingSessionPage() {
       const materials = session?.materials ?? [];
       const examContext = materials.map((m) => ({
         kind: m.kind,
-        title: m.kind === "photo" ? "Visual material" : "Examiner script",
+        title: m.kind === "examiner_script" ? "Examiner script" : "Visual material",
         text: m.description || m.ai_description || "",
       }));
       if (notes.trim()) {
         examContext.push({ kind: "notes", title: "Session notes", text: notes.trim() });
       }
 
-      const { data, error } = await supabase.functions.invoke("analyze-exam", {
-        body: {
-          level: levelCode,
-          language: selectedLang?.label ?? "English",
-          candidateNames: attempt.candidate_names,
-          candidateIds: attempt.candidate_ids,
-          transcript: attempt.transcript,
-          examContext,
-        },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      const runAnalysis = async (names: string[], ids: (string | null)[]) => {
+        const { data, error } = await supabase.functions.invoke("analyze-exam", {
+          body: {
+            level: levelCode,
+            language: selectedLang?.label ?? "English",
+            candidateNames: names,
+            candidateIds: ids,
+            transcript: attempt.transcript,
+            examContext,
+          },
+        });
+        if (error) throw error;
+        if ((data as any)?.error) throw new Error((data as any).error);
+        return data as any;
+      };
+
+      const data = await runAnalysis(attempt.candidate_names, attempt.candidate_ids);
+
+      // Every candidate of the same recording must get the SAME report shape.
+      // If the model skipped the per-part breakdown for someone, ask again for
+      // that candidate only and merge the result in.
+      const list: any[] = Array.isArray(data?.candidates) ? data.candidates : [data];
+      const hasParts = (c: any) => Array.isArray(c?.partFeedback) && c.partFeedback.length > 0;
+      if (list.length > 1 && list.some(hasParts) && !list.every(hasParts)) {
+        setProcessingStep("Completing the per-part breakdown…");
+        for (let i = 0; i < list.length; i++) {
+          if (hasParts(list[i])) continue;
+          try {
+            const single = await runAnalysis(
+              [attempt.candidate_names[i]],
+              [attempt.candidate_ids?.[i] ?? null]
+            );
+            const fixed = Array.isArray(single?.candidates) ? single.candidates[0] : single;
+            if (hasParts(fixed)) list[i] = { ...list[i], partFeedback: fixed.partFeedback, overallSummary: list[i].overallSummary || fixed.overallSummary };
+          } catch (retryErr) {
+            console.warn("[SpeakingSession] part breakdown retry failed:", retryErr);
+          }
+        }
+        if (Array.isArray(data?.candidates)) data.candidates = list;
+      }
 
       // Hold the analysis for examiner review — reports are only created on sign-off.
       await updateAttempt.mutateAsync({
@@ -316,6 +344,7 @@ export default function SpeakingSessionPage() {
       });
       setReviewAttemptId(attempt.id);
       toast({ title: "Analysis ready", description: "Review the report, then confirm and sign it." });
+
 
     } catch (e: any) {
       const msg = readError(e);
