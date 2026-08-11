@@ -20,6 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getRecommendations } from "@/lib/practiceData";
 import { supabase } from "@/integrations/supabase/client";
 import { generateReportPdf } from "@/lib/generateReportPdf";
+import { generateStudentPdf } from "@/lib/generateStudentPdf";
 import { useAuth } from "@/hooks/useAuth";
 import { computeWeightedSpeakingScore } from "@/lib/speakingScore";
 import type { PartFeedback } from "@/lib/partFeedback";
