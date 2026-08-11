@@ -11,6 +11,10 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   Mic, Square, Plus, Save, Loader2, AlertCircle, RefreshCw, Play, Pause, Trash2,
   Upload, Users, FileText, Image, ChevronLeft, Headphones, CheckCircle2, ArrowRight,
 } from "lucide-react";
