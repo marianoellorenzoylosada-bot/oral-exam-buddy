@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   FileText, CheckCircle2, AlertTriangle, RotateCcw, Printer, ShieldCheck,
-  BookOpen, ExternalLink, Home, Loader2, Download, PenLine, Users, Info,
+  BookOpen, ExternalLink, Home, Loader2, Download, PenLine, Users, Info, GraduationCap,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SpeakerTranscript } from "@/components/SpeakerTranscript";
