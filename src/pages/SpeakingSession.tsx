@@ -317,6 +317,12 @@ export default function SpeakingSessionPage() {
       return;
     }
     try {
+      await clearSessionRecording();
+      setRecovered(null);
+      setRecoveredBlob(null);
+      setRecoveredDuration(0);
+      setRecordingWarning(null);
+      lastSnapshotAtRef.current = 0;
       await recorder.start();
       setLiveTranscript("");
       setLiveWords([]);
@@ -335,7 +341,7 @@ export default function SpeakingSessionPage() {
   };
 
   const handleSaveAttempt = async () => {
-    const blob = recorder.audioBlob;
+    const blob = pendingBlob;
     if (!blob || !activeSessionId) {
       toast({ title: "No recording", description: "Record audio before saving.", variant: "destructive" });
       return;
@@ -350,12 +356,16 @@ export default function SpeakingSessionPage() {
         candidateNames: candidateNames.filter((n) => n.trim()),
         candidateIds,
         audioBlob: blob,
-        durationSeconds: recorder.duration,
+        durationSeconds: pendingDuration,
         transcriptionMode: transcriptionMode,
         liveTranscript: transcriptionMode === "live" ? liveTranscript : undefined,
         liveWords: transcriptionMode === "live" ? liveWords : undefined,
       });
       recorder.reset();
+      await clearSessionRecording();
+      setRecoveredBlob(null);
+      setRecoveredDuration(0);
+      setRecordingWarning(null);
       setLiveTranscript("");
       setLiveWords([]);
       toast({ title: "Attempt saved", description: "It was added to the queue for this session." });
