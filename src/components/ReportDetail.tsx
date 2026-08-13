@@ -770,17 +770,15 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
               This report has no per-part commentary. It can be generated from the stored transcript
               without changing the bands already awarded.
             </p>
-            {exam.confirmed_at ? (
+            {exam.confirmed_at && (
               <p className="text-xs text-muted-foreground">
-                The report is confirmed and frozen — use “Correct report” to issue a new version that
-                includes the per-part commentary.
+                The report stays frozen: only the missing per-part commentary and overall summary are added.
               </p>
-            ) : (
-              <Button size="sm" variant="outline" onClick={handleGeneratePartFeedback} disabled={generatingParts} className="gap-1.5">
-                {generatingParts ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                Generate per-part commentary
-              </Button>
             )}
+            <Button size="sm" variant="outline" onClick={handleGeneratePartFeedback} disabled={generatingParts} className="gap-1.5">
+              {generatingParts ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              Generate per-part commentary
+            </Button>
           </div>
         )}
 
