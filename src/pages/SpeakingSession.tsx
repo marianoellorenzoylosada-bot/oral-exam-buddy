@@ -1205,6 +1205,24 @@ export default function SpeakingSessionPage() {
                       </div>
                     </div>
 
+                    {(() => {
+                      const broken = (incompleteSigned ?? []).filter((e) => e.attempt_id === attempt.id);
+                      if (broken.length === 0) return null;
+                      return (
+                        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 space-y-1">
+                          <p className="text-xs text-amber-700 dark:text-amber-300">
+                            Signed report{broken.length > 1 ? "s" : ""} without per-part feedback:{" "}
+                            {broken.map((e) => e.candidate_name || "candidate").join(", ")}.
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Open it in Reports and use “Generate per-part commentary” to complete it.
+                          </p>
+                        </div>
+                      );
+                    })()}
+
+
+
                     {attempt.status === "recorded" && (
                       <Button size="sm" onClick={() => handleTranscribe(attempt)} disabled={processing || workingAttemptId === attempt.id}>
                         {workingAttemptId === attempt.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
