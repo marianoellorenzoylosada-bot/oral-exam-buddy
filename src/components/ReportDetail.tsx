@@ -255,6 +255,47 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
     }
   };
 
+  const [generatingParts, setGeneratingParts] = useState(false);
+
+  /**
+   * Repair path: some analyses came back without the per-part breakdown.
+   * This re-asks the model for THIS candidate only and stores just the
+   * per-part commentary — bands, scores and criteria are left untouched.
+   */
+  const handleGeneratePartFeedback = async () => {
+    setGeneratingParts(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("analyze-exam", {
+        body: {
+          level: exam.level_code,
+          language: langLabel[exam.language] || exam.language,
+          candidateNames: [exam.candidate_name],
+          transcript: exam.transcript,
+        },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      const first = (data as any).candidates?.[0] ?? data;
+      const parts = Array.isArray(first?.partFeedback) ? first.partFeedback : [];
+      if (parts.length === 0) throw new Error("The model did not return a per-part breakdown. Please try again.");
+      const { error: updErr } = await supabase
+        .from("exams")
+        .update({
+          part_feedback: parts as any,
+          overall_summary: exam.overall_summary ?? (typeof first?.overallSummary === "string" ? first.overallSummary : null),
+        })
+        .eq("id", exam.id);
+      if (updErr) throw updErr;
+      queryClient.invalidateQueries({ queryKey: ["exams-reports"] });
+      toast({ title: "Per-part commentary added", description: "The bands and scores were not changed." });
+    } catch (err: any) {
+      toast({ title: "Could not generate the commentary", description: err.message, variant: "destructive" });
+    } finally {
+      setGeneratingParts(false);
+    }
+  };
+
+
   const handleRegrade = async () => {
     if (editTranscript.trim().split(/\s+/).filter(Boolean).length < 30) {
       toast({ title: "Transcript too short", description: "Need at least 30 words to re-analyze.", variant: "destructive" });
@@ -706,13 +747,32 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
         {Array.isArray(displayedPartFeedback) && hasPartFeedbackContent(
           displayedPartFeedback as PartFeedback[],
           displayedOverallSummary
-        ) && (
+        ) ? (
           <PartFeedbackSection
             levelCode={exam.level_code}
             partFeedback={displayedPartFeedback as PartFeedback[]}
             overallSummary={displayedOverallSummary}
           />
+        ) : (
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 space-y-2">
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              This report has no per-part commentary. It can be generated from the stored transcript
+              without changing the bands already awarded.
+            </p>
+            {exam.confirmed_at ? (
+              <p className="text-xs text-muted-foreground">
+                The report is confirmed and frozen — use “Correct report” to issue a new version that
+                includes the per-part commentary.
+              </p>
+            ) : (
+              <Button size="sm" variant="outline" onClick={handleGeneratePartFeedback} disabled={generatingParts} className="gap-1.5">
+                {generatingParts ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                Generate per-part commentary
+              </Button>
+            )}
+          </div>
         )}
+
 
         {/* Strengths & Improvements */}
         <div className="grid gap-4 sm:grid-cols-2">

@@ -39,7 +39,10 @@ import {
 import { SessionMaterialPanel } from "@/components/session/SessionMaterialPanel";
 import { DraftReport, type MultiCandidateResult } from "@/components/DraftReport";
 
-import { SpeakerMappingPanel } from "@/components/SpeakerMappingPanel";
+import { SpeakerReviewPanel } from "@/components/SpeakerReviewPanel";
+import { MicCheck } from "@/components/MicCheck";
+import { PhaseTimer } from "@/components/PhaseTimer";
+
 import { transcribeStoragePath, TranscriptionError, type ScribeWord } from "@/lib/transcribe";
 import { applySpeakerMap, speakerStats, type SpeakerMap, type SpeakerRole } from "@/lib/applySpeakerMap";
 import { supabase } from "@/integrations/supabase/client";
@@ -419,19 +422,30 @@ export default function SpeakingSessionPage() {
     }
   };
 
-  const handleApplySpeakerMap = async (attempt: SessionAttempt, map: SpeakerMap) => {
+  const handleConfirmSpeakers = async (
+    attempt: SessionAttempt,
+    map: SpeakerMap,
+    rebuiltTranscript: string
+  ) => {
     if (!attempt.transcript) return;
-    const words = (attempt.live_words ?? []) as ScribeWord[];
-    // If no stored words, we can't rebuild; keep transcript as-is.
-    const rebuilt = words.length > 0 ? applySpeakerMap(words, map) : attempt.transcript;
-    await updateAttempt.mutateAsync({
-      id: attempt.id,
-      speaker_map: map,
-      transcript: rebuilt,
-      status: "analyzing",
-    });
-    toast({ title: "Speaker mapping applied", description: "Run analysis next." });
+    const transcript = rebuiltTranscript.trim() || attempt.transcript;
+    setWorkingAttemptId(attempt.id);
+    try {
+      await updateAttempt.mutateAsync({
+        id: attempt.id,
+        speaker_map: map,
+        transcript,
+        status: "analyzing",
+      });
+      toast({ title: "Speakers confirmed", description: "Running the analysis…" });
+      await handleAnalyze({ ...attempt, speaker_map: map, transcript });
+    } catch (e: any) {
+      toast({ title: "Could not confirm speakers", description: readError(e), variant: "destructive" });
+    } finally {
+      setWorkingAttemptId(null);
+    }
   };
+
 
 
   const handleAnalyze = async (attempt: SessionAttempt) => {
@@ -471,10 +485,10 @@ export default function SpeakingSessionPage() {
 
       // Every candidate of the same recording must get the SAME report shape.
       // If the model skipped the per-part breakdown for someone, ask again for
-      // that candidate only and merge the result in.
+      // that candidate only (up to two passes) and merge the result in.
       const list: any[] = Array.isArray(data?.candidates) ? data.candidates : [data];
       const hasParts = (c: any) => Array.isArray(c?.partFeedback) && c.partFeedback.length > 0;
-      if (list.length > 1 && list.some(hasParts) && !list.every(hasParts)) {
+      for (let pass = 0; pass < 2 && !list.every(hasParts); pass++) {
         setProcessingStep("Completing the per-part breakdown…");
         for (let i = 0; i < list.length; i++) {
           if (hasParts(list[i])) continue;
@@ -484,12 +498,25 @@ export default function SpeakingSessionPage() {
               [attempt.candidate_ids?.[i] ?? null]
             );
             const fixed = Array.isArray(single?.candidates) ? single.candidates[0] : single;
-            if (hasParts(fixed)) list[i] = { ...list[i], partFeedback: fixed.partFeedback, overallSummary: list[i].overallSummary || fixed.overallSummary };
+            if (hasParts(fixed)) {
+              list[i] = {
+                ...list[i],
+                partFeedback: fixed.partFeedback,
+                overallSummary: list[i].overallSummary || fixed.overallSummary,
+              };
+            }
           } catch (retryErr) {
             console.warn("[SpeakingSession] part breakdown retry failed:", retryErr);
           }
         }
-        if (Array.isArray(data?.candidates)) data.candidates = list;
+      }
+      if (Array.isArray(data?.candidates)) data.candidates = list;
+
+      const missing = list.filter((c) => !hasParts(c)).length;
+      if (missing > 0) {
+        setLastError(
+          `The per-part breakdown is still missing for ${missing} candidate(s). Use "Complete per-part breakdown" in the queue before signing the reports.`
+        );
       }
 
       // Hold the analysis for examiner review — reports are only created on sign-off.
@@ -498,7 +525,8 @@ export default function SpeakingSessionPage() {
         status: "reviewing_report",
         analysis_result: data,
       });
-      setReviewAttemptId(attempt.id);
+      if (missing === 0) setReviewAttemptId(attempt.id);
+
       toast({ title: "Analysis ready", description: "Review the report, then confirm and sign it." });
 
 
@@ -512,6 +540,63 @@ export default function SpeakingSessionPage() {
       setWorkingAttemptId(null);
     }
   };
+
+  /** Ask the model again only for candidates whose per-part breakdown is empty. */
+  const handleCompleteBreakdown = async (attempt: SessionAttempt) => {
+    const stored: any = attempt.analysis_result;
+    if (!stored) return;
+    const list: any[] = Array.isArray(stored?.candidates) ? [...stored.candidates] : [stored];
+    const hasParts = (c: any) => Array.isArray(c?.partFeedback) && c.partFeedback.length > 0;
+    setWorkingAttemptId(attempt.id);
+    setProcessing(true);
+    setProcessingStep("Completing the per-part breakdown…");
+    setLastError(null);
+    try {
+      const materials = session?.materials ?? [];
+      const examContext = materials.map((m) => ({
+        kind: m.kind,
+        title: m.kind === "examiner_script" ? "Examiner script" : "Visual material",
+        text: m.description || m.ai_description || "",
+      }));
+      for (let i = 0; i < list.length; i++) {
+        if (hasParts(list[i])) continue;
+        const { data, error } = await supabase.functions.invoke("analyze-exam", {
+          body: {
+            level: levelCode,
+            language: selectedLang?.label ?? "English",
+            candidateNames: [attempt.candidate_names[i]],
+            candidateIds: [attempt.candidate_ids?.[i] ?? null],
+            transcript: attempt.transcript,
+            examContext,
+          },
+        });
+        if (error) throw error;
+        const fixed = Array.isArray((data as any)?.candidates) ? (data as any).candidates[0] : data;
+        if (hasParts(fixed)) {
+          list[i] = {
+            ...list[i],
+            partFeedback: fixed.partFeedback,
+            overallSummary: list[i].overallSummary || fixed.overallSummary,
+          };
+        }
+      }
+      const next = Array.isArray(stored?.candidates) ? { ...stored, candidates: list } : list[0];
+      await updateAttempt.mutateAsync({ id: attempt.id, analysis_result: next });
+      const stillMissing = list.filter((c) => !hasParts(c)).length;
+      if (stillMissing > 0) {
+        setLastError(`Still missing the per-part breakdown for ${stillMissing} candidate(s). Try again in a moment.`);
+      } else {
+        toast({ title: "Per-part breakdown completed", description: "You can review and sign the reports now." });
+      }
+    } catch (e: any) {
+      setLastError(readError(e));
+    } finally {
+      setProcessing(false);
+      setWorkingAttemptId(null);
+    }
+  };
+
+
 
   const handlePlayAudio = async (attempt: SessionAttempt) => {
     const url = await getSignedAudioUrl(attempt.audio_path);
@@ -952,6 +1037,12 @@ export default function SpeakingSessionPage() {
                   Keep the app in the foreground and don't lock the phone while recording — the screen is kept awake automatically, but some phones still stop the microphone when locked. A backup copy is saved on this device every few seconds, so an interrupted recording can be recovered here.
                 </div>
 
+                {recorder.state !== "recording" && !pendingBlob && (
+                  <div className="flex justify-center">
+                    <MicCheck />
+                  </div>
+                )}
+
                 <div className="flex items-center justify-center gap-4 py-6">
                   {recorder.state !== "recording" ? (
                     <Button size="lg" onClick={handleStartRecording} className="gap-2">
@@ -963,6 +1054,17 @@ export default function SpeakingSessionPage() {
                     </Button>
                   )}
                 </div>
+
+                {recorder.state === "recording" && (
+                  <div className="flex justify-center">
+                    <PhaseTimer
+                      level={levelCode}
+                      elapsedSeconds={recorder.duration}
+                      isRecording={recorder.state === "recording"}
+                    />
+                  </div>
+                )}
+
 
                 {pendingBlob && recorder.state !== "recording" && (
                   <div className="space-y-4">
@@ -1056,14 +1158,14 @@ export default function SpeakingSessionPage() {
                     {attempt.status === "reviewing_speakers" && attempt.speaker_map && (
                       <div className="space-y-3">
                         <p className="text-xs text-muted-foreground">
-                          Confirm who is who, then save the mapping. The analysis uses the labelled transcript.
+                          Assign each voice, scroll the full script to check the attribution, then confirm.
                         </p>
-                        <SpeakerMappingPanel
-                          examId={attempt.id}
+                        <SpeakerReviewPanel
                           words={(attempt.live_words ?? []) as ScribeWord[]}
                           initialMap={attempt.speaker_map}
                           suggestedMap={attempt.speaker_map}
-                          onSaved={(transcript, map) => handleApplySpeakerMap(attempt, map)}
+                          confirming={workingAttemptId === attempt.id}
+                          onConfirm={(map, transcript) => handleConfirmSpeakers(attempt, map, transcript)}
                         />
                         <Button size="sm" variant="ghost" className="text-xs text-muted-foreground" onClick={() => handleAnalyze(attempt)} disabled={processing || workingAttemptId === attempt.id}>
                           {workingAttemptId === attempt.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
@@ -1073,11 +1175,33 @@ export default function SpeakingSessionPage() {
                       </div>
                     )}
 
-                    {attempt.status === "reviewing_report" && (
-                      <Button size="sm" onClick={() => setReviewAttemptId(attempt.id)}>
-                        <FileText className="mr-2 h-4 w-4" /> Review &amp; sign report
-                      </Button>
-                    )}
+                    {attempt.status === "reviewing_report" && (() => {
+                      const stored: any = attempt.analysis_result;
+                      const list: any[] = Array.isArray(stored?.candidates) ? stored.candidates : stored ? [stored] : [];
+                      const missing = list.filter(
+                        (c) => !Array.isArray(c?.partFeedback) || c.partFeedback.length === 0
+                      ).length;
+                      return (
+                        <div className="space-y-2">
+                          {missing > 0 && (
+                            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 space-y-2">
+                              <p className="text-xs text-amber-700 dark:text-amber-300">
+                                The per-part commentary is missing for {missing} candidate(s). Complete it so every
+                                report has the same structure.
+                              </p>
+                              <Button size="sm" variant="outline" onClick={() => handleCompleteBreakdown(attempt)} disabled={processing || workingAttemptId === attempt.id}>
+                                {workingAttemptId === attempt.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                                Complete per-part breakdown
+                              </Button>
+                            </div>
+                          )}
+                          <Button size="sm" onClick={() => setReviewAttemptId(attempt.id)}>
+                            <FileText className="mr-2 h-4 w-4" /> Review &amp; sign report
+                          </Button>
+                        </div>
+                      );
+                    })()}
+
 
                     {(attempt.status === "analyzing" || attempt.status === "done" || attempt.status === "failed") && (
                       <Button size="sm" onClick={() => handleAnalyze(attempt)} disabled={processing || workingAttemptId === attempt.id || attempt.status === "done"}>

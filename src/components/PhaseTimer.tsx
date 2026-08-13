@@ -44,25 +44,32 @@ export function PhaseTimer({ level, elapsedSeconds, isRecording, onMarksChange }
     onMarksChange?.(marks);
   }, [marks, onMarksChange]);
 
-  // Chime when target reached for the current phase
+  // Soft chime + automatic advance when the target time for the part is reached.
   useEffect(() => {
     const startOfPhase = marks[marks.length - 1]?.startedAtSec ?? 0;
     const inPhase = elapsedSeconds - startOfPhase;
     const target = phases[currentPhase]?.targetSeconds ?? 0;
-    if (inPhase >= target && !chimedRef.current.has(currentPhase)) {
-      chimedRef.current.add(currentPhase);
-      try {
-        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const o = ctx.createOscillator();
-        const g = ctx.createGain();
-        o.frequency.value = 880;
-        g.gain.value = 0.05;
-        o.connect(g); g.connect(ctx.destination);
-        o.start();
-        setTimeout(() => { o.stop(); ctx.close(); }, 220);
-      } catch { /* ignore */ }
+    if (inPhase < target || chimedRef.current.has(currentPhase)) return;
+    chimedRef.current.add(currentPhase);
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.frequency.value = 660;
+      // Barely audible: the timer is only a guide.
+      g.gain.value = 0.012;
+      o.connect(g); g.connect(ctx.destination);
+      o.start();
+      setTimeout(() => { o.stop(); ctx.close(); }, 160);
+    } catch { /* ignore */ }
+    // Move on to the next part by itself; the examiner can still override.
+    if (currentPhase < phases.length - 1) {
+      const next = currentPhase + 1;
+      setMarks((prev) => [...prev, { phaseIndex: next, startedAtSec: elapsedSeconds }]);
+      setCurrentPhase(next);
     }
   }, [elapsedSeconds, currentPhase, marks, phases]);
+
 
   const advance = () => {
     if (currentPhase >= phases.length - 1) return;
@@ -82,8 +89,6 @@ export function PhaseTimer({ level, elapsedSeconds, isRecording, onMarksChange }
   const target = phases[currentPhase]?.targetSeconds ?? 1;
   const overrun = inPhase > target;
 
-  const totalRemaining = Math.max(0, total - elapsedSeconds);
-
   return (
     <Card className="w-full max-w-md p-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -92,9 +97,10 @@ export function PhaseTimer({ level, elapsedSeconds, isRecording, onMarksChange }
           <span className="font-display text-sm font-semibold">Exam phase timer</span>
         </div>
         <Badge variant="outline" className="text-xs tabular-nums">
-          {fmt(elapsedSeconds)} elapsed · {fmt(totalRemaining)} left
+          {fmt(elapsedSeconds)} elapsed · guide {fmt(total)}
         </Badge>
       </div>
+
 
 
       {/* Segmented bar */}
