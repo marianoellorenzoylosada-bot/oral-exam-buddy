@@ -30,10 +30,11 @@ interface ReportData {
   partFeedback?: PartFeedback[];
   /** Short synthesis paragraph for the whole exam. */
   overallSummary?: string;
-  /** "save" downloads the file (default); "print" opens the print dialog. */
-  output?: "save" | "print";
+  /** "save" downloads the file (default); "print" opens the print dialog; "blob" returns a Blob for sharing. */
+  output?: "save" | "print" | "blob";
 }
 
+export type { ReportData };
 
 const BRAND_COLOR: [number, number, number] = [30, 64, 175]; // blue-800
 const MUTED: [number, number, number] = [100, 116, 139]; // slate-500
@@ -47,7 +48,7 @@ function scoreColor(pct: number): [number, number, number] {
   return DANGER;
 }
 
-export function generateReportPdf(input: ReportData) {
+export function generateReportPdf(input: ReportData): Blob | void {
   // Guard against AI-provided objects rendering as "(object) (object)".
   const data: ReportData = {
     ...input,
@@ -393,6 +394,9 @@ export function generateReportPdf(input: ReportData) {
 
   // Save
   const filename = `${data.title.replace(/\s+/g, "_")}_${data.date.replace(/\//g, "-")}.pdf`;
+  if (input.output === "blob") {
+    return doc.output("blob") as Blob;
+  }
   if (input.output === "print") {
     doc.autoPrint();
     const url = doc.output("bloburl") as unknown as string;
@@ -401,4 +405,5 @@ export function generateReportPdf(input: ReportData) {
   }
   doc.save(filename);
 }
+
 

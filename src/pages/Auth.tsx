@@ -1,14 +1,16 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Mic, Loader2 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Mic, Loader2, ExternalLink, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable";
 import { useToast } from "@/hooks/use-toast";
+
 
 
 export default function Auth() {
@@ -17,8 +19,36 @@ export default function Auth() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [inIframe, setInIframe] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    try {
+      setInIframe(window.self !== window.top);
+    } catch {
+      // Some browsers throw when cross-origin iframe is detected.
+      setInIframe(true);
+    }
+  }, []);
+
+  const openInOwnTab = () => {
+    window.open(window.location.href, "_blank", "noopener,noreferrer");
+  };
+
+  const friendlyOAuthError = (message: string): string => {
+    const m = message.toLowerCase();
+    if (m.includes("state") || m.includes("invalid_request")) {
+      return "The login session was lost. This usually happens when the app is opened inside another page (preview iframe) or when cookies are blocked. Open the app in its own tab and try again.";
+    }
+    if (m.includes("popup") || m.includes("blocked") || m.includes("closed")) {
+      return "The popup or redirect was blocked. Allow popups for this site or use the 'Open in own tab' option.";
+    }
+    if (m.includes("redirect_uri")) {
+      return "This login URL is not authorized. Use the published app link (oralexamassistant.lovable.app) instead of a preview link.";
+    }
+    return message;
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,7 +65,7 @@ export default function Auth() {
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -46,9 +76,32 @@ export default function Auth() {
     setLoading(false);
     if (error) {
       toast({ title: "Signup failed", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Check your email", description: "We've sent you a verification link to confirm your account." });
+      return;
     }
+
+    if (data.session) {
+      // Auto-confirm is enabled; account is ready immediately.
+      toast({ title: "Account created", description: "Welcome! Redirecting you to the app." });
+      navigate("/");
+      return;
+    }
+
+    if (data.user?.identities && data.user.identities.length === 0) {
+      // Supabase returns a placeholder user with no identities when the email already exists.
+      toast({
+        title: "Email already registered",
+        description: "That email already has an account. Sign in below, or reset your password if you forgot it.",
+        variant: "destructive",
+      });
+      setTab("login");
+      return;
+    }
+
+    // Email confirmation is required.
+    toast({
+      title: "Check your email",
+      description: "We sent a confirmation link. If you don't see it, check your spam folder. Contact your colleague for the published app link if the link doesn't open.",
+    });
   };
 
   const handleForgotPassword = async () => {
@@ -69,23 +122,30 @@ export default function Auth() {
   };
 
   const handleGoogle = async () => {
+    if (inIframe) {
+      openInOwnTab();
+      return;
+    }
     setLoading(true);
     try {
       const result = await lovable.auth.signInWithOAuth("google", {
         redirect_uri: window.location.origin,
       });
       if (result.error) {
-        toast({ title: "Google sign-in failed", description: result.error.message ?? "Please try again.", variant: "destructive" });
+        const description = friendlyOAuthError(result.error.message ?? "Please try again.");
+        toast({ title: "Google sign-in failed", description, variant: "destructive" });
         setLoading(false);
         return;
       }
       if (result.redirected) return;
       navigate("/");
     } catch (err: any) {
-      toast({ title: "Google sign-in failed", description: err?.message ?? "Please try again.", variant: "destructive" });
+      const description = friendlyOAuthError(err?.message ?? "Please try again.");
+      toast({ title: "Google sign-in failed", description, variant: "destructive" });
       setLoading(false);
     }
   };
+
 
 
   return (
@@ -97,9 +157,24 @@ export default function Auth() {
           </div>
           <CardTitle className="font-display text-xl">Int'l Oral Exam Assistant</CardTitle>
           <CardDescription>Sign in to manage your oral assessments</CardDescription>
+          {inIframe && (
+            <Alert variant="destructive" className="mt-3 text-left">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                You seem to be inside a preview/editor frame. Google sign-in usually fails here.{" "}
+                <Button type="button" variant="link" className="h-auto p-0 text-xs font-semibold" onClick={openInOwnTab}>
+                  Open in own tab <ExternalLink className="ml-1 h-3 w-3" />
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+          <p className="mt-2 text-xs text-muted-foreground">
+            If a colleague invited you, use the published link: <strong>oralexamassistant.lovable.app</strong>
+          </p>
         </CardHeader>
         <CardContent>
           <Button type="button" variant="outline" className="w-full gap-2" onClick={handleGoogle} disabled={loading}>
+
             <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
               <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.99.66-2.25 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>

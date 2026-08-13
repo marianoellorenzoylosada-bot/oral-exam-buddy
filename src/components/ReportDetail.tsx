@@ -5,6 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   DialogContent, DialogHeader, DialogTitle, DialogDescription,
   Dialog, DialogFooter,
@@ -21,7 +22,8 @@ import {
 import {
   Printer, CheckCircle2, AlertTriangle, ShieldCheck, BookOpen,
   ExternalLink, Download, Trash2, EyeOff, Volume2, Info, Clock, GraduationCap,
-  RefreshCw, History, Loader2,
+  RefreshCw, History, Loader2, Share2, MessageCircle, Mail, Copy, FileText,
+
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getRecommendations } from "@/lib/practiceData";
@@ -34,10 +36,10 @@ import { useRoles } from "@/hooks/useRoles";
 import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { SpeakerTranscript } from "@/components/SpeakerTranscript";
-import { SpeakerMappingPanel } from "@/components/SpeakerMappingPanel";
-import { type SpeakerMap } from "@/lib/applySpeakerMap";
 import { QuotedAudio, type ScribeWord } from "@/components/QuotedAudio";
 import { computeWeightedSpeakingScore } from "@/lib/speakingScore";
+import { createShareablePdfLink, buildShareMessage, openWhatsAppShare, openEmailShare } from "@/lib/shareReport";
+
 
 
 const langLabel: Record<string, string> = {
@@ -112,6 +114,13 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
   const [correctionReason, setCorrectionReason] = useState("");
   const [viewingPrevIdx, setViewingPrevIdx] = useState<number | null>(null);
 
+  // Share state
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareType, setShareType] = useState<"teacher" | "student" | null>(null);
+  const [shareLink, setShareLink] = useState("");
+  const [shareLoading, setShareLoading] = useState(false);
+
+
 
   const previousAnalyses: any[] = Array.isArray(exam.previous_analyses) ? exam.previous_analyses : [];
 
@@ -167,6 +176,42 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
   const displayName = anonymize ? mask(exam.candidate_name) : (exam.candidate_name || null);
   const displayInstitution = anonymize ? mask(exam.institution) : (exam.institution || "—");
   const displayGroup = anonymize ? mask(exam.group) : (exam.group || "—");
+
+  const teacherPdfData = {
+    title: exam.title,
+    candidateName: anonymize ? "Anonymous" : (exam.candidate_name || ""),
+    institution: anonymize ? "Anonymous" : (exam.institution || ""),
+    group: anonymize ? "" : (exam.group || ""),
+    levelCode: exam.level_code,
+    language: exam.language,
+    overallBand: String(displayedBand),
+    overallScore: Number(displayedScore),
+    criteria,
+    strengths,
+    areasForImprovement: improvements,
+    examinerNotes: exam.examiner_notes || "",
+    transcript: anonymize ? "[Anonymized]" : (exam.transcript || ""),
+    date: new Date(exam.created_at).toLocaleDateString(),
+    partFeedback: Array.isArray(displayedPartFeedback) ? (displayedPartFeedback as PartFeedback[]) : undefined,
+    overallSummary: displayedOverallSummary,
+  };
+
+  const studentPdfData = {
+    title: exam.title,
+    candidateName: anonymize ? "Student" : (exam.candidate_name || "Student"),
+    levelCode: exam.level_code,
+    language: langLabel[exam.language] || exam.language,
+    overallBand: String(displayedBand),
+    overallScore: Number(displayedScore),
+    criteria,
+    strengths,
+    areasForImprovement: improvements,
+    date: new Date(exam.created_at).toLocaleDateString(),
+    practice: recommendations.map((r) => ({ title: r.title, url: r.url })),
+    partFeedback: Array.isArray(displayedPartFeedback) ? (displayedPartFeedback as PartFeedback[]) : undefined,
+    overallSummary: displayedOverallSummary,
+  };
+
 
   const expiryNotice = (() => {
     if (!exam.audio_expires_at || audioGone) return null;
@@ -369,7 +414,48 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
     }
   };
 
+  const handleShare = async (type: "teacher" | "student") => {
+    if (!user) {
+      toast({ title: "Sign in required", description: "You must be signed in to share a report.", variant: "destructive" });
+      return;
+    }
+    setShareType(type);
+    setShareLoading(true);
+    setShareLink("");
+    try {
+      const link = await createShareablePdfLink({
+        type,
+        userId: user.id,
+        fileNamePrefix: exam.title || exam.id,
+        pdfData: type === "teacher" ? teacherPdfData : studentPdfData,
+      });
+      setShareLink(link);
+    } catch (err: any) {
+      toast({ title: "Could not create share link", description: err.message, variant: "destructive" });
+      setShareOpen(false);
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(shareLink);
+    toast({ title: "Link copied", description: "Paste it into any chat or email." });
+  };
+
+  const handleWhatsAppShare = () => {
+    const candidateName = anonymize ? "the candidate" : (exam.candidate_name || "the candidate");
+    openWhatsAppShare(buildShareMessage(candidateName, shareLink));
+  };
+
+  const handleEmailShare = () => {
+    const candidateName = anonymize ? "the candidate" : (exam.candidate_name || "the candidate");
+    const subject = `Speaking assessment report — ${exam.title}`;
+    openEmailShare(subject, buildShareMessage(candidateName, shareLink));
+  };
+
   return (
+
     <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="font-display text-xl flex items-center gap-2">
@@ -507,15 +593,19 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
           </div>
         )}
 
-        {/* Teacher Evidence Review — Speaker mapping */}
+        {/* Speaker transcript — read-only in the final report. */}
         {words.length > 0 && (
-          <SpeakerMappingPanel
-            examId={exam.id}
-            words={words}
-            initialMap={(exam.speaker_map ?? null) as SpeakerMap | null}
-            onSeek={audioUrl && !audioGone ? seekAudio : undefined}
-          />
+          <div>
+            <h3 className="font-display font-semibold text-sm mb-2">Speaker transcript</h3>
+            <SpeakerTranscript
+              transcript={exam.transcript || ""}
+              words={words}
+              onSeek={audioUrl && !audioGone ? seekAudio : undefined}
+              maxHeight="16rem"
+            />
+          </div>
         )}
+
 
         {/* Criteria */}
         {criteria.length > 0 && (
@@ -727,54 +817,27 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
               <RefreshCw className="h-4 w-4" /> {exam.confirmed_at ? "Corrected version" : "Re-analyze"}
             </Button>
 
-            <Button variant="outline" size="sm" onClick={() => generateReportPdf({
-              title: exam.title,
-              candidateName: anonymize ? "Anonymous" : (exam.candidate_name || ""),
-              institution: anonymize ? "Anonymous" : (exam.institution || ""),
-              group: anonymize ? "" : (exam.group || ""),
-              levelCode: exam.level_code,
-              language: exam.language,
-              overallBand: Number.isNaN(Number(displayedScore)) ? exam.overall_band : String(displayedBand),
-              overallScore: Number(displayedScore),
-              criteria,
-              strengths,
-              areasForImprovement: improvements,
-              examinerNotes: exam.examiner_notes || "",
-              transcript: anonymize ? "[Anonymized]" : (exam.transcript || ""),
-              date: new Date(exam.created_at).toLocaleDateString(),
-              partFeedback: Array.isArray(displayedPartFeedback) ? (displayedPartFeedback as PartFeedback[]) : undefined,
-              overallSummary: displayedOverallSummary,
-            })} className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => generateReportPdf(teacherPdfData)} className="gap-2">
               <Download className="h-4 w-4" /> PDF
             </Button>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => generateStudentPdf({
-                title: exam.title,
-                candidateName: anonymize ? "Student" : (exam.candidate_name || "Student"),
-                levelCode: exam.level_code,
-                language: langLabel[exam.language] || exam.language,
-                overallBand: String(displayedBand),
-                overallScore: Number(displayedScore),
-                criteria,
-                strengths,
-                areasForImprovement: improvements,
-                date: new Date(exam.created_at).toLocaleDateString(),
-                practice: recommendations.map((r) => ({ title: r.title, url: r.url })),
-                partFeedback: Array.isArray(displayedPartFeedback) ? (displayedPartFeedback as PartFeedback[]) : undefined,
-                overallSummary: displayedOverallSummary,
-              })}
+              onClick={() => generateStudentPdf(studentPdfData)}
               className="gap-2"
             >
               <GraduationCap className="h-4 w-4" /> Student PDF
             </Button>
-            <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => generateReportPdf({ ...teacherPdfData, output: "print" })} className="gap-2">
               <Printer className="h-4 w-4" /> Print
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setShareOpen(true)} className="gap-2">
+              <Share2 className="h-4 w-4" /> Share
             </Button>
           </div>
         </div>
       </div>
+
 
       {/* Re-analyze dialog */}
       <Dialog open={regradeOpen} onOpenChange={setRegradeOpen}>
@@ -819,6 +882,72 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
         </DialogContent>
       </Dialog>
 
+      {/* Share report dialog */}
+      <Dialog open={shareOpen} onOpenChange={(open) => {
+        setShareOpen(open);
+        if (!open) {
+          setShareType(null);
+          setShareLink("");
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <Share2 className="h-5 w-5 text-primary" /> Share report
+            </DialogTitle>
+            <DialogDescription>
+              The PDF is uploaded to a temporary link (valid for 7 days) so you can send it by WhatsApp or email.
+            </DialogDescription>
+          </DialogHeader>
+
+          {!shareType ? (
+            <div className="grid grid-cols-2 gap-3 py-2">
+              <Button variant="outline" className="h-auto flex-col gap-2 py-4" onClick={() => handleShare("teacher")}>
+                <FileText className="h-6 w-6" />
+                <span className="text-xs">Teacher PDF</span>
+              </Button>
+              <Button variant="outline" className="h-auto flex-col gap-2 py-4" onClick={() => handleShare("student")}>
+                <GraduationCap className="h-6 w-6" />
+                <span className="text-xs">Student PDF</span>
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3 py-2">
+              {shareLoading ? (
+                <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Generating secure link…
+                </div>
+              ) : shareLink ? (
+                <>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Secure link</Label>
+                    <div className="flex gap-2">
+                      <Input value={shareLink} readOnly className="text-xs" />
+                      <Button size="icon" variant="outline" onClick={handleCopyLink}>
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">Valid for 7 days. Anyone with the link can download the PDF.</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Button variant="outline" className="gap-2" onClick={handleWhatsAppShare}>
+                      <MessageCircle className="h-4 w-4" /> WhatsApp
+                    </Button>
+                    <Button variant="outline" className="gap-2" onClick={handleEmailShare}>
+                      <Mail className="h-4 w-4" /> Email
+                    </Button>
+                  </div>
+                </>
+              ) : null}
+              <Button variant="ghost" className="w-full text-xs" onClick={() => { setShareType(null); setShareLink(""); }}>
+                Back
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
     </DialogContent>
   );
 }
+
