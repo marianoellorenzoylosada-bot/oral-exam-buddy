@@ -538,6 +538,63 @@ export default function SpeakingSessionPage() {
     }
   };
 
+  /** Ask the model again only for candidates whose per-part breakdown is empty. */
+  const handleCompleteBreakdown = async (attempt: SessionAttempt) => {
+    const stored: any = attempt.analysis_result;
+    if (!stored) return;
+    const list: any[] = Array.isArray(stored?.candidates) ? [...stored.candidates] : [stored];
+    const hasParts = (c: any) => Array.isArray(c?.partFeedback) && c.partFeedback.length > 0;
+    setWorkingAttemptId(attempt.id);
+    setProcessing(true);
+    setProcessingStep("Completing the per-part breakdown…");
+    setLastError(null);
+    try {
+      const materials = session?.materials ?? [];
+      const examContext = materials.map((m) => ({
+        kind: m.kind,
+        title: m.kind === "examiner_script" ? "Examiner script" : "Visual material",
+        text: m.description || m.ai_description || "",
+      }));
+      for (let i = 0; i < list.length; i++) {
+        if (hasParts(list[i])) continue;
+        const { data, error } = await supabase.functions.invoke("analyze-exam", {
+          body: {
+            level: levelCode,
+            language: selectedLang?.label ?? "English",
+            candidateNames: [attempt.candidate_names[i]],
+            candidateIds: [attempt.candidate_ids?.[i] ?? null],
+            transcript: attempt.transcript,
+            examContext,
+          },
+        });
+        if (error) throw error;
+        const fixed = Array.isArray((data as any)?.candidates) ? (data as any).candidates[0] : data;
+        if (hasParts(fixed)) {
+          list[i] = {
+            ...list[i],
+            partFeedback: fixed.partFeedback,
+            overallSummary: list[i].overallSummary || fixed.overallSummary,
+          };
+        }
+      }
+      const next = Array.isArray(stored?.candidates) ? { ...stored, candidates: list } : list[0];
+      await updateAttempt.mutateAsync({ id: attempt.id, analysis_result: next });
+      const stillMissing = list.filter((c) => !hasParts(c)).length;
+      if (stillMissing > 0) {
+        setLastError(`Still missing the per-part breakdown for ${stillMissing} candidate(s). Try again in a moment.`);
+      } else {
+        toast({ title: "Per-part breakdown completed", description: "You can review and sign the reports now." });
+      }
+    } catch (e: any) {
+      setLastError(readError(e));
+    } finally {
+      setProcessing(false);
+      setWorkingAttemptId(null);
+    }
+  };
+
+
+
   const handlePlayAudio = async (attempt: SessionAttempt) => {
     const url = await getSignedAudioUrl(attempt.audio_path);
     if (!url) {
