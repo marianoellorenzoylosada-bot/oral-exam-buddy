@@ -914,6 +914,44 @@ export default function SpeakingSessionPage() {
                 <CardDescription>Record the full speaking test. The attempt is queued after you stop.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+                {recovered && (
+                  <Alert>
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Unsaved recording found</AlertTitle>
+                    <AlertDescription className="space-y-3">
+                      <p>
+                        A recording of {formatTime(recovered.durationSeconds)} was left behind
+                        {recovered.candidateNames.filter(Boolean).length
+                          ? ` (${recovered.candidateNames.filter(Boolean).join(" & ")})`
+                          : ""}. It was backed up automatically on this device.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" onClick={acceptRecovered} className="gap-2">
+                          <RefreshCw className="h-4 w-4" /> Recover
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={downloadRecovered} className="gap-2">
+                          <Download className="h-4 w-4" /> Download audio
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={discardRecovered} className="gap-2">
+                          <Trash2 className="h-4 w-4" /> Discard
+                        </Button>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {recordingWarning && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Recording interrupted</AlertTitle>
+                    <AlertDescription>{recordingWarning}</AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="rounded-md border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+                  Keep the app in the foreground and don't lock the phone while recording — the screen is kept awake automatically, but some phones still stop the microphone when locked. A backup copy is saved on this device every few seconds, so an interrupted recording can be recovered here.
+                </div>
+
                 <div className="flex items-center justify-center gap-4 py-6">
                   {recorder.state !== "recording" ? (
                     <Button size="lg" onClick={handleStartRecording} className="gap-2">
@@ -926,9 +964,9 @@ export default function SpeakingSessionPage() {
                   )}
                 </div>
 
-                {recorder.audioBlob && recorder.state !== "recording" && (
+                {pendingBlob && recorder.state !== "recording" && (
                   <div className="space-y-4">
-                    <div className="flex items-center justify-center gap-3">
+                    <div className="flex flex-wrap items-center justify-center gap-3">
                       <Button variant="outline" onClick={() => {
                         if (localAudioRef.current) {
                           if (localAudioPlaying) {
@@ -941,10 +979,19 @@ export default function SpeakingSessionPage() {
                         {localAudioPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                         {localAudioPlaying ? "Pause" : "Play back"}
                       </Button>
-                      <Button variant="outline" onClick={recorder.reset} className="gap-2"><Trash2 className="h-4 w-4" /> Discard</Button>
+                      <Button variant="outline" onClick={downloadRecovered} className="gap-2">
+                        <Download className="h-4 w-4" /> Download audio
+                      </Button>
+                      <Button variant="outline" onClick={() => {
+                        recorder.reset();
+                        setRecoveredBlob(null);
+                        setRecoveredDuration(0);
+                        setRecordingWarning(null);
+                        void clearSessionRecording();
+                      }} className="gap-2"><Trash2 className="h-4 w-4" /> Discard</Button>
                       <Button onClick={handleSaveAttempt} disabled={createAttempt.isPending} className="gap-2">
                         {createAttempt.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                        Save attempt
+                        Save attempt ({formatTime(pendingDuration)})
                       </Button>
                     </div>
                     {localAudioUrl && (
