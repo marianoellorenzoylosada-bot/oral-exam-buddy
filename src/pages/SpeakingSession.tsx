@@ -17,8 +17,14 @@ import {
 import {
   Mic, Square, Plus, Save, Loader2, AlertCircle, RefreshCw, Play, Pause, Trash2,
   Upload, Users, FileText, Image, ChevronLeft, Headphones, CheckCircle2, ArrowRight,
+  Download, AlertTriangle,
 } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
+import {
+  saveSessionRecording, loadSessionRecording, clearSessionRecording,
+  type SessionRecordingSnapshot,
+} from "@/lib/sessionRecordingDb";
 import { useToast } from "@/hooks/use-toast";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { LiveTranscript } from "@/components/LiveTranscript";
