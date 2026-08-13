@@ -419,19 +419,30 @@ export default function SpeakingSessionPage() {
     }
   };
 
-  const handleApplySpeakerMap = async (attempt: SessionAttempt, map: SpeakerMap) => {
+  const handleConfirmSpeakers = async (
+    attempt: SessionAttempt,
+    map: SpeakerMap,
+    rebuiltTranscript: string
+  ) => {
     if (!attempt.transcript) return;
-    const words = (attempt.live_words ?? []) as ScribeWord[];
-    // If no stored words, we can't rebuild; keep transcript as-is.
-    const rebuilt = words.length > 0 ? applySpeakerMap(words, map) : attempt.transcript;
-    await updateAttempt.mutateAsync({
-      id: attempt.id,
-      speaker_map: map,
-      transcript: rebuilt,
-      status: "analyzing",
-    });
-    toast({ title: "Speaker mapping applied", description: "Run analysis next." });
+    const transcript = rebuiltTranscript.trim() || attempt.transcript;
+    setWorkingAttemptId(attempt.id);
+    try {
+      await updateAttempt.mutateAsync({
+        id: attempt.id,
+        speaker_map: map,
+        transcript,
+        status: "analyzing",
+      });
+      toast({ title: "Speakers confirmed", description: "Running the analysis…" });
+      await handleAnalyze({ ...attempt, speaker_map: map, transcript });
+    } catch (e: any) {
+      toast({ title: "Could not confirm speakers", description: readError(e), variant: "destructive" });
+    } finally {
+      setWorkingAttemptId(null);
+    }
   };
+
 
 
   const handleAnalyze = async (attempt: SessionAttempt) => {
