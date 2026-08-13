@@ -28,10 +28,11 @@ interface StudentReportData {
   partFeedback?: PartFeedback[];
   /** Short synthesis paragraph. */
   overallSummary?: string;
-  /** "save" downloads the file (default); "print" opens the print dialog. */
-  output?: "save" | "print";
+  /** "save" downloads the file (default); "print" opens the print dialog; "blob" returns a Blob for sharing. */
+  output?: "save" | "print" | "blob";
 }
 
+export type { StudentReportData };
 
 const BRAND: [number, number, number] = [30, 64, 175];
 const MUTED: [number, number, number] = [100, 116, 139];
@@ -43,7 +44,7 @@ const WARNING: [number, number, number] = [217, 119, 6];
  * confidence scores; rephrases tone in second person; keeps the score,
  * key takeaways and practice suggestions.
  */
-export function generateStudentPdf(input: StudentReportData) {
+export function generateStudentPdf(input: StudentReportData): Blob | void {
   // Guard against AI-provided objects rendering as "(object) (object)".
   const data: StudentReportData = {
     ...input,
@@ -325,6 +326,9 @@ export function generateStudentPdf(input: StudentReportData) {
 
   const safeName = (data.candidateName || "student").replace(/\s+/g, "_");
   const filename = `Student_Feedback_${safeName}_${data.date.replace(/\//g, "-")}.pdf`;
+  if (input.output === "blob") {
+    return doc.output("blob") as Blob;
+  }
   if (input.output === "print") {
     doc.autoPrint();
     const url = doc.output("bloburl") as unknown as string;
@@ -333,4 +337,5 @@ export function generateStudentPdf(input: StudentReportData) {
   }
   doc.save(filename);
 }
+
 
