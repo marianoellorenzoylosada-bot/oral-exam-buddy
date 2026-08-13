@@ -1037,6 +1037,12 @@ export default function SpeakingSessionPage() {
                   Keep the app in the foreground and don't lock the phone while recording — the screen is kept awake automatically, but some phones still stop the microphone when locked. A backup copy is saved on this device every few seconds, so an interrupted recording can be recovered here.
                 </div>
 
+                {recorder.state !== "recording" && !pendingBlob && (
+                  <div className="flex justify-center">
+                    <MicCheck />
+                  </div>
+                )}
+
                 <div className="flex items-center justify-center gap-4 py-6">
                   {recorder.state !== "recording" ? (
                     <Button size="lg" onClick={handleStartRecording} className="gap-2">
@@ -1048,6 +1054,17 @@ export default function SpeakingSessionPage() {
                     </Button>
                   )}
                 </div>
+
+                {recorder.state === "recording" && (
+                  <div className="flex justify-center">
+                    <PhaseTimer
+                      level={levelCode}
+                      elapsedSeconds={recorder.duration}
+                      isRecording={recorder.state === "recording"}
+                    />
+                  </div>
+                )}
+
 
                 {pendingBlob && recorder.state !== "recording" && (
                   <div className="space-y-4">
