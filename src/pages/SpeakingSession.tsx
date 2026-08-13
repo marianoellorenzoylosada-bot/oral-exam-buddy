@@ -119,6 +119,141 @@ export default function SpeakingSessionPage() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const localAudioRef = useRef<HTMLAudioElement | null>(null);
 
+  // ── Crash / screen-lock protection ────────────────────────────────────────
+  // The recorder keeps audio in memory only, so we mirror it into IndexedDB
+  // while recording. A screen lock, tab kill or reload can then be recovered.
+  const [recovered, setRecovered] = useState<SessionRecordingSnapshot | null>(null);
+  const [recoveredBlob, setRecoveredBlob] = useState<Blob | null>(null);
+  const [recoveredDuration, setRecoveredDuration] = useState(0);
+  const [recordingWarning, setRecordingWarning] = useState<string | null>(null);
+
+  // Latest context the snapshot should be stored with (ref so the recorder
+  // callbacks stay stable).
+  const snapshotCtxRef = useRef({
+    sessionId: activeSessionId,
+    candidateNames,
+    candidateIds,
+    transcriptionMode,
+    liveTranscript,
+  });
+  useEffect(() => {
+    snapshotCtxRef.current = { sessionId: activeSessionId, candidateNames, candidateIds, transcriptionMode, liveTranscript };
+  }, [activeSessionId, candidateNames, candidateIds, transcriptionMode, liveTranscript]);
+
+  const lastSnapshotAtRef = useRef(0);
+  const recorder = useAudioRecorder({
+    onChunk: (blob, durationSeconds) => {
+      // Throttle IDB writes: the recorder emits a chunk every second.
+      const now = Date.now();
+      if (now - lastSnapshotAtRef.current < 5000) return;
+      lastSnapshotAtRef.current = now;
+      const ctx = snapshotCtxRef.current;
+      return saveSessionRecording({
+        audioBlob: blob,
+        durationSeconds,
+        sessionId: ctx.sessionId,
+        candidateNames: ctx.candidateNames,
+        candidateIds: ctx.candidateIds,
+        transcriptionMode: ctx.transcriptionMode,
+        liveTranscript: ctx.liveTranscript,
+      });
+    },
+    onError: (reason) => {
+      setRecordingWarning(
+        `Recording stopped unexpectedly (${reason}). The audio captured so far was saved — check the recovery notice below or press "Save attempt".`
+      );
+    },
+  });
+
+  // Recover an unsaved recording left behind by a reload / crash.
+  const checkedRecoveryRef = useRef(false);
+  useEffect(() => {
+    if (checkedRecoveryRef.current) return;
+    checkedRecoveryRef.current = true;
+    (async () => {
+      const snap = await loadSessionRecording();
+      if (snap) setRecovered(snap);
+    })();
+  }, []);
+
+  // Keep the screen awake while recording so the OS doesn't kill the mic.
+  useEffect(() => {
+    if (recorder.state !== "recording") return;
+    type WakeLockSentinel = { release: () => Promise<void> };
+    let sentinel: WakeLockSentinel | null = null;
+    let cancelled = false;
+    const request = async () => {
+      const wl = (navigator as unknown as { wakeLock?: { request: (t: "screen") => Promise<WakeLockSentinel> } }).wakeLock;
+      if (!wl) return;
+      try {
+        const s = await wl.request("screen");
+        if (cancelled) { void s.release(); return; }
+        sentinel = s;
+      } catch (err) {
+        console.debug("[SpeakingSession] wakeLock request failed:", err);
+      }
+    };
+    void request();
+    const onVis = () => {
+      if (document.visibilityState === "visible" && !sentinel) void request();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVis);
+      if (sentinel) void sentinel.release().catch(() => undefined);
+    };
+  }, [recorder.state]);
+
+  // Mobile can kill MediaRecorder without unmounting: when the tab becomes
+  // visible again, verify the recorder is still alive and finalize if not.
+  useEffect(() => {
+    const handler = async () => {
+      if (document.visibilityState !== "visible") return;
+      try { await recorder.healthCheck(); } catch { /* ignore */ }
+      const snap = await loadSessionRecording();
+      if (snap && !recorder.audioBlob) setRecovered(snap);
+    };
+    document.addEventListener("visibilitychange", handler);
+    return () => document.removeEventListener("visibilitychange", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recorder.healthCheck, recorder.audioBlob]);
+
+  const pendingBlob = recorder.audioBlob ?? recoveredBlob;
+  const pendingDuration = recorder.audioBlob ? recorder.duration : recoveredDuration;
+
+  const acceptRecovered = () => {
+    if (!recovered) return;
+    setRecoveredBlob(recovered.audioBlob);
+    setRecoveredDuration(recovered.durationSeconds);
+    setLocalAudioUrl(URL.createObjectURL(recovered.audioBlob));
+    if (recovered.candidateNames.length >= 2) {
+      setCandidateNames(recovered.candidateNames);
+      setCandidateIds(recovered.candidateIds.length ? recovered.candidateIds : recovered.candidateNames.map(() => null));
+    }
+    if (recovered.liveTranscript) setLiveTranscript(recovered.liveTranscript);
+    setRecovered(null);
+    setActiveTab("record");
+    toast({ title: "Recording recovered", description: "Check the candidates and press \"Save attempt\" to queue it." });
+  };
+
+  const downloadRecovered = () => {
+    const blob = recovered?.audioBlob ?? pendingBlob;
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `recovered-recording-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.webm`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  };
+
+  const discardRecovered = async () => {
+    await clearSessionRecording();
+    setRecovered(null);
+  };
+
+
   // Reset form when creating a new session
   const resetForm = useCallback(() => {
     setTitle("");
