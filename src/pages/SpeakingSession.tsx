@@ -39,7 +39,7 @@ import {
 import { SessionMaterialPanel } from "@/components/session/SessionMaterialPanel";
 import { DraftReport, type MultiCandidateResult } from "@/components/DraftReport";
 
-import { SpeakerReviewPanel } from "@/components/SpeakerReviewPanel";
+import { SpeakerReviewWithAudio } from "@/components/SpeakerReviewWithAudio";
 import { MicCheck } from "@/components/MicCheck";
 import { PhaseTimer } from "@/components/PhaseTimer";
 
