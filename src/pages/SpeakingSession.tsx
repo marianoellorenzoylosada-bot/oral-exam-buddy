@@ -39,7 +39,10 @@ import {
 import { SessionMaterialPanel } from "@/components/session/SessionMaterialPanel";
 import { DraftReport, type MultiCandidateResult } from "@/components/DraftReport";
 
-import { SpeakerMappingPanel } from "@/components/SpeakerMappingPanel";
+import { SpeakerReviewPanel } from "@/components/SpeakerReviewPanel";
+import { MicCheck } from "@/components/MicCheck";
+import { PhaseTimer } from "@/components/PhaseTimer";
+
 import { transcribeStoragePath, TranscriptionError, type ScribeWord } from "@/lib/transcribe";
 import { applySpeakerMap, speakerStats, type SpeakerMap, type SpeakerRole } from "@/lib/applySpeakerMap";
 import { supabase } from "@/integrations/supabase/client";
