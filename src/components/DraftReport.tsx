@@ -183,17 +183,25 @@ export function DraftReport({ result, level, levelCode, language, institution, g
     [result]
   );
 
-  // Try to restore a previously auto-saved draft for this exam.
+  const analysisVersion = useMemo(() => fingerprintAnalysis(result), [result]);
+
+  // Try to restore a previously auto-saved draft for this exam. Drafts saved
+  // against an older analysis are ignored (stale after a re-analysis).
   const persisted = useMemo<PersistedDraft | null>(() => {
     if (!draftKey) return null;
     try {
       const raw = localStorage.getItem(DRAFT_STORAGE_PREFIX + draftKey);
       if (!raw) return null;
-      return JSON.parse(raw) as PersistedDraft;
+      const parsed = JSON.parse(raw) as PersistedDraft;
+      if (parsed.analysisVersion !== analysisVersion) {
+        localStorage.removeItem(DRAFT_STORAGE_PREFIX + draftKey);
+        return null;
+      }
+      return parsed;
     } catch {
       return null;
     }
-  }, [draftKey]);
+  }, [draftKey, analysisVersion]);
 
   // Per-candidate draft state
   const [drafts, setDrafts] = useState<MultiCandidateResult["candidates"]>(() =>
