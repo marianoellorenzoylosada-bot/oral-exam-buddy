@@ -1199,7 +1199,8 @@ export default function SpeakingSessionPage() {
                         <p className="text-xs text-muted-foreground">
                           Assign each voice, scroll the full script to check the attribution, then confirm.
                         </p>
-                        <SpeakerReviewPanel
+                        <SpeakerReviewWithAudio
+                          audioPath={attempt.audio_path}
                           words={(attempt.live_words ?? []) as ScribeWord[]}
                           initialMap={attempt.speaker_map}
                           suggestedMap={attempt.speaker_map}
