@@ -47,7 +47,7 @@ import { transcribeStoragePath, TranscriptionError, type ScribeWord } from "@/li
 import { applySpeakerMap, speakerStats, type SpeakerMap, type SpeakerRole } from "@/lib/applySpeakerMap";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSignedAudioUrl } from "@/lib/audioStorage";
 
 const LANGUAGES = SUPPORTED_LANGUAGES;
