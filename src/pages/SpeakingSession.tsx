@@ -1138,14 +1138,14 @@ export default function SpeakingSessionPage() {
                     {attempt.status === "reviewing_speakers" && attempt.speaker_map && (
                       <div className="space-y-3">
                         <p className="text-xs text-muted-foreground">
-                          Confirm who is who, then save the mapping. The analysis uses the labelled transcript.
+                          Assign each voice, scroll the full script to check the attribution, then confirm.
                         </p>
-                        <SpeakerMappingPanel
-                          examId={attempt.id}
+                        <SpeakerReviewPanel
                           words={(attempt.live_words ?? []) as ScribeWord[]}
                           initialMap={attempt.speaker_map}
                           suggestedMap={attempt.speaker_map}
-                          onSaved={(transcript, map) => handleApplySpeakerMap(attempt, map)}
+                          confirming={workingAttemptId === attempt.id}
+                          onConfirm={(map, transcript) => handleConfirmSpeakers(attempt, map, transcript)}
                         />
                         <Button size="sm" variant="ghost" className="text-xs text-muted-foreground" onClick={() => handleAnalyze(attempt)} disabled={processing || workingAttemptId === attempt.id}>
                           {workingAttemptId === attempt.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
@@ -1155,11 +1155,33 @@ export default function SpeakingSessionPage() {
                       </div>
                     )}
 
-                    {attempt.status === "reviewing_report" && (
-                      <Button size="sm" onClick={() => setReviewAttemptId(attempt.id)}>
-                        <FileText className="mr-2 h-4 w-4" /> Review &amp; sign report
-                      </Button>
-                    )}
+                    {attempt.status === "reviewing_report" && (() => {
+                      const stored: any = attempt.analysis_result;
+                      const list: any[] = Array.isArray(stored?.candidates) ? stored.candidates : stored ? [stored] : [];
+                      const missing = list.filter(
+                        (c) => !Array.isArray(c?.partFeedback) || c.partFeedback.length === 0
+                      ).length;
+                      return (
+                        <div className="space-y-2">
+                          {missing > 0 && (
+                            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 space-y-2">
+                              <p className="text-xs text-amber-700 dark:text-amber-300">
+                                The per-part commentary is missing for {missing} candidate(s). Complete it so every
+                                report has the same structure.
+                              </p>
+                              <Button size="sm" variant="outline" onClick={() => handleCompleteBreakdown(attempt)} disabled={processing || workingAttemptId === attempt.id}>
+                                {workingAttemptId === attempt.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                                Complete per-part breakdown
+                              </Button>
+                            </div>
+                          )}
+                          <Button size="sm" onClick={() => setReviewAttemptId(attempt.id)}>
+                            <FileText className="mr-2 h-4 w-4" /> Review &amp; sign report
+                          </Button>
+                        </div>
+                      );
+                    })()}
+
 
                     {(attempt.status === "analyzing" || attempt.status === "done" || attempt.status === "failed") && (
                       <Button size="sm" onClick={() => handleAnalyze(attempt)} disabled={processing || workingAttemptId === attempt.id || attempt.status === "done"}>
