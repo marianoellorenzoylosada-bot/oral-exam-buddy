@@ -706,13 +706,32 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
         {Array.isArray(displayedPartFeedback) && hasPartFeedbackContent(
           displayedPartFeedback as PartFeedback[],
           displayedOverallSummary
-        ) && (
+        ) ? (
           <PartFeedbackSection
             levelCode={exam.level_code}
             partFeedback={displayedPartFeedback as PartFeedback[]}
             overallSummary={displayedOverallSummary}
           />
+        ) : (
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 space-y-2">
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              This report has no per-part commentary. It can be generated from the stored transcript
+              without changing the bands already awarded.
+            </p>
+            {exam.confirmed_at ? (
+              <p className="text-xs text-muted-foreground">
+                The report is confirmed and frozen — use “Correct report” to issue a new version that
+                includes the per-part commentary.
+              </p>
+            ) : (
+              <Button size="sm" variant="outline" onClick={handleGeneratePartFeedback} disabled={generatingParts} className="gap-1.5">
+                {generatingParts ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                Generate per-part commentary
+              </Button>
+            )}
+          </div>
         )}
+
 
         {/* Strengths & Improvements */}
         <div className="grid gap-4 sm:grid-cols-2">
