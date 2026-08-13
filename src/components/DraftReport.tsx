@@ -589,6 +589,19 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         ))}
       </Tabs>
 
+      {/* Restored autosave notice — lets the examiner fall back to the fresh analysis. */}
+      {restoredDraft && !allOfficial && (
+        <div className="flex flex-col gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm sm:flex-row sm:items-center sm:justify-between print:hidden">
+          <span className="text-xs text-amber-700 dark:text-amber-300">
+            Showing your previously saved edits for this recording.
+          </span>
+          <Button variant="outline" size="sm" onClick={handleDiscardAutosave} className="gap-2 shrink-0">
+            <RotateCcw className="h-3.5 w-3.5" /> Discard saved edits and use the latest analysis
+          </Button>
+        </div>
+      )}
+
+
       {/* Status banner */}
       {isOfficial ? (
         <div className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
