@@ -31,6 +31,26 @@ Corrección: en el informe de evaluación el panel deja de ofrecer la corroborac
 - `src/components/ReportDetail.tsx` (línea ~511): reemplazar `SpeakerMappingPanel` por la vista de solo lectura (`SpeakerTranscript`) usando `exam.speaker_map`.
 - Sin cambios de esquema ni de funciones de servidor.
 
+## 4. Enviar los informes por correo o WhatsApp (opcional, fase aparte)
+
+Sí es posible, con dos niveles de esfuerzo muy distintos. No lo incluyo en esta corrección; lo dejo dimensionado para decidir después de la validación.
+
+**Opción A — Compartir por enlace (barata, casi sin estructura)**
+- El PDF se sube al almacenamiento de la app y se genera un enlace firmado con vencimiento (por ejemplo 7 o 30 días).
+- Botones "Enviar por WhatsApp" (abre WhatsApp con el mensaje y el enlace ya escritos) y "Enviar por correo" (abre el correo del examinador con el mensaje armado).
+- Costo: prácticamente nulo. Complejidad: baja. No requiere dominio propio ni aprobación de ningún proveedor. El envío lo hace el examinador desde su propio WhatsApp/correo, así que no hace falta tener los teléfonos de los alumnos en la base.
+
+**Opción B — Envío automático desde la app por correo**
+- Requiere un dominio propio de envío (por ejemplo `notify.tudominio.com`); no existe remitente gratuito. Costo: el del dominio (unos pocos dólares al año) más la infraestructura de envío ya incluida en la plataforma.
+- Los adjuntos no están soportados: el correo lleva un enlace firmado al PDF, no el archivo pegado.
+- Hay que guardar el correo del alumno (o del tutor) en la ficha del candidato, con el consentimiento correspondiente.
+- Complejidad: media. Suma plantilla de correo, registro de envíos y manejo de rebotes.
+
+**WhatsApp automático (no recomendado por ahora)**: enviar sin intervención humana exige la API de WhatsApp Business con proveedor externo, verificación de empresa, plantillas aprobadas y costo por mensaje. Para tu caso, la Opción A cubre el 100% de la necesidad sin ese peso.
+
+Recomendación: Opción A cuando quieras avanzar, y evaluar B solo si querés envío masivo sin intervención del examinador.
+
 ## Fuera de alcance
 
-Configurar un dominio de envío de correos propio (se puede hacer después si querés remitente con tu marca).
+Configurar un dominio de envío de correos propio y el envío automático de informes (queda como fase 4, a decidir después de la validación).
+
