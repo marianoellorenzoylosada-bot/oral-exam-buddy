@@ -700,6 +700,24 @@ export default function SpeakingSessionPage() {
   const showCreateForm = !activeSessionId;
   const showSession = !!activeSessionId && !!session;
 
+  // Signed reports of this session that were saved without the per-part breakdown.
+  const { data: incompleteSigned } = useQuery({
+    queryKey: ["session-signed-missing-parts", activeSessionId],
+    enabled: !!activeSessionId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("exams")
+        .select("id, attempt_id, candidate_name, part_feedback")
+        .eq("session_id", activeSessionId!)
+        .eq("archived", false)
+        .not("confirmed_at", "is", null);
+      if (error) throw error;
+      return (data ?? []).filter(
+        (e: any) => !Array.isArray(e.part_feedback) || e.part_feedback.length === 0
+      ) as Array<{ id: string; attempt_id: string | null; candidate_name: string | null }>;
+    },
+  });
+
   const reviewAttempt = session?.attempts.find((a) => a.id === reviewAttemptId) ?? null;
   const reviewResult: MultiCandidateResult | null = (() => {
     if (!reviewAttempt?.analysis_result) return null;
