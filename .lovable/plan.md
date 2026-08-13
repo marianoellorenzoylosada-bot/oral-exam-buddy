@@ -1,36 +1,33 @@
-# Rehacer el recorrido del oral de Federica y Juana desde la adjudicación de speakers
+# Poder escuchar cualquier momento del audio durante la revisión de speakers
 
-## Se puede: los datos siguen ahí
+Es barato de arreglar. Son dos cosas distintas, ambas del lado de la interfaz.
 
-Verificado en la base para ese par (grabación del 13/08, 14:34):
+## Qué está pasando
 
-- El audio sigue guardado (no venció).
-- La transcripción completa está guardada (10.704 caracteres) y, sobre todo, el **timeline palabra por palabra con diarización sigue disponible (3.802 palabras)** — es lo que necesita el panel de revisión de speakers con colores.
-- La toma está en estado `reviewing_report`, o sea: se puede volver atrás sin perder nada.
-
-También detecté que en los intentos de reparación quedaron **informes duplicados**: Federica tiene dos informes firmados de esa misma grabación (18:53 y 19:47) y Juana uno solo, sin desglose por parte.
+1. **El timestamp no lleva al audio**: el panel de revisión de speakers se monta sin conectarle el reproductor. El panel ya sabe reproducir desde un segundo concreto (`onSeek`), pero en la cola no se le pasa nada, así que los timestamps quedan inertes (el cursor de mano aparece igual porque es un botón).
+2. **El reproductor no deja adelantar**: el audio se reproduce desde un enlace remoto y los archivos grabados en el navegador (`.webm`) no traen la información de duración, así que el navegador no puede saltar a partes avanzadas. Solo avanza escuchando.
 
 ## Qué se va a hacer
 
-### 1. Acción "Rehacer desde la revisión de speakers"
+### 1. Reproductor propio del panel de revisión
 
-En la cola de la Speaking Session, cada toma ya analizada tendrá una acción para **reabrir el recorrido**:
+Dentro del bloque de revisión de speakers, arriba del script, un reproductor fijo (no al final de la página):
 
-- Vuelve al paso de **revisión de speakers**, con el script completo desplazable y resaltado por color, y las correcciones línea por línea.
-- Se descarta el análisis anterior de esa toma (no los informes ya firmados: eso se decide aparte, ver punto 3).
-- Al confirmar speakers se vuelve a correr el análisis y se llega otra vez a "Review & sign", ahora con el desglose por parte verificado para **las dos candidatas** antes de poder firmar.
-- Pide confirmación antes de reabrir, para que no se pierda por accidente un análisis en curso.
+- Barra de progreso completa, arrastrable a cualquier punto, con tiempo actual y total.
+- Botones de retroceder/avanzar 5 segundos y play/pausa.
+- Al hacer clic en cualquier timestamp del script, el audio salta a ese momento y empieza a reproducir ese turno; la línea que suena queda marcada.
 
-### 2. Reabrir esta toma en concreto
+### 2. Audio realmente navegable
 
-Se deja la toma de Federica + Juana lista para rehacer el recorrido: estado de revisión de speakers, mapeo previo precargado como punto de partida (se puede corregir), audio y script intactos.
+Antes de habilitar la reproducción, el audio de esa toma se descarga completo una vez (con un breve "Preparando audio…") y se reproduce desde la copia local. Así el navegador conoce la duración y se puede saltar libremente a cualquier parte, adelante o atrás. Se descarga una sola vez por toma.
 
-### 3. Limpiar los informes viejos de esa grabación
+### 3. Nada más cambia
 
-Los tres informes firmados de esa grabación (dos de Federica, uno de Juana sin desglose) quedan **archivados** — no se borran, dejan de aparecer en la lista de informes — para que al firmar de nuevo quede un único informe correcto por candidata y no haya duplicados confundiendo el historial.
+El resto del recorrido (mapeo, corrección línea por línea, confirmar y analizar, informes, firma) queda exactamente igual. No se toca la base de datos ni el análisis, y no hay costo de IA adicional.
 
 ## Notas técnicas
 
-- Nueva acción en la cola de `SpeakingSession.tsx`: `updateAttempt` con `status: "reviewing_speakers"` y `analysis_result: null`, detrás de un diálogo de confirmación; el panel `SpeakerReviewPanel` ya se monta con `live_words` + `speaker_map` existente, así que no hace falta lógica nueva de revisión.
-- Para la toma `41ab2161…`: misma operación aplicada una vez vía migración de datos, más `archived = true` en los tres `exams` de esa grabación (`37e5b860…`, `9d590429…`, `7f36c7ed…`). Los `exams` con `confirmed_at` están bloqueados para edición por RLS, así que el archivado se hace en la migración, no desde el cliente.
-- Sin cambios de esquema. Costo de IA: una única corrida de análisis nueva para esa toma.
+- Nuevo componente de reproductor (`AttemptAudioPlayer`) usado dentro del bloque `reviewing_speakers` de `src/pages/SpeakingSession.tsx`; recibe `audio_path` y expone `seek(start)`.
+- Descarga vía `supabase.storage.from("exam-audio").download(path)` → `URL.createObjectURL` para tener un origen seekable; se revoca al desmontar. Fallback a la URL firmada actual si la descarga falla.
+- Se pasa `onSeek` a `SpeakerReviewPanel` (la prop ya existe y ya está usada por el script y por la lista de voces).
+- Se mantiene el `<audio>` global existente para el botón "Play" de la cola; sin cambios de esquema ni de edge functions.
