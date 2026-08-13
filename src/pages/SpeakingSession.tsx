@@ -596,6 +596,45 @@ export default function SpeakingSessionPage() {
     }
   };
 
+  /**
+   * Send an already-analyzed attempt back to the speaker review step.
+   * Audio, transcript and word timeline stay untouched; only the pending
+   * (unsigned) analysis is discarded so the examiner can redo the path.
+   */
+  const handleRedoFromSpeakers = async (attempt: SessionAttempt) => {
+    const words = (attempt.live_words ?? []) as ScribeWord[];
+    if (words.length === 0) {
+      setLastError("This recording has no diarized word timeline, so speaker review is unavailable.");
+      return;
+    }
+    if (!window.confirm(
+      "Redo this attempt from speaker review? The pending analysis will be discarded. " +
+      "Audio and transcript are kept, and already signed reports are not modified."
+    )) return;
+    setWorkingAttemptId(attempt.id);
+    setProcessing(true);
+    setProcessingStep("Reopening speaker review…");
+    setLastError(null);
+    try {
+      await updateAttempt.mutateAsync({
+        id: attempt.id,
+        status: "reviewing_speakers",
+        analysis_result: null,
+      });
+      toast({
+        title: "Speaker review reopened",
+        description: "Check the attribution and confirm to run the analysis again.",
+      });
+    } catch (e: any) {
+      setLastError(readError(e));
+    } finally {
+      setProcessing(false);
+      setWorkingAttemptId(null);
+    }
+  };
+
+
+
 
 
   const handlePlayAudio = async (attempt: SessionAttempt) => {
