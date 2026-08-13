@@ -1,43 +1,36 @@
-# Mejoras: revisión de speakers, timer, mic check y el caso Juana Goya
+# Rehacer el recorrido del oral de Federica y Juana desde la adjudicación de speakers
 
-## 1. Revisión de speakers con transcripción completa y colores
+## Se puede: los datos siguen ahí
 
-Hoy el panel de mapeo sólo muestra unas pocas palabras de muestra por voz, sin forma de verificar el resto.
+Verificado en la base para ese par (grabación del 13/08, 14:34):
 
-Nuevo panel de revisión (en la Queue de Speaking Session, paso previo al análisis):
+- El audio sigue guardado (no venció).
+- La transcripción completa está guardada (10.704 caracteres) y, sobre todo, el **timeline palabra por palabra con diarización sigue disponible (3.802 palabras)** — es lo que necesita el panel de revisión de speakers con colores.
+- La toma está en estado `reviewing_report`, o sea: se puede volver atrás sin perder nada.
 
-- Arriba: la asignación global de cada voz detectada a un rol (Examiner, Candidate A/B/C, Speaker unclear), como ahora, con duración, porcentaje y botón de reproducir muestra.
-- Debajo: la **transcripción completa desplazable**, una intervención por línea, con **fondo tipo highlighter** de color distinto por rol (Examiner neutro, Candidate A / B / C con colores propios, "unclear" en rojo suave) y timestamp clicable para escuchar ese punto.
-- Cada línea tiene un selector rápido para **reasignarla individualmente** cuando la atribución automática se equivocó en una frase suelta. La corrección se guarda a nivel de esa intervención y no altera el resto.
-- Botón final **"Confirmar speakers y analizar"**: recién ahí se reconstruye el script definitivo (mapeo global + correcciones por línea) y se pasa al análisis.
-- El mismo componente coloreado se reutiliza en modo **sólo lectura** en el informe final, para leer el script sin poder editarlo.
+También detecté que en los intentos de reparación quedaron **informes duplicados**: Federica tiene dos informes firmados de esa misma grabación (18:53 y 19:47) y Juana uno solo, sin desglose por parte.
 
-## 2. Countdown automático por parte del examen
+## Qué se va a hacer
 
-- Vuelve el timer a la pestaña de grabación de Speaking Session, con las partes y duraciones del nivel de la sesión (PET/FCE, etc.).
-- Cuenta hacia atrás dentro de cada parte y **avanza solo** al cumplirse el tiempo objetivo, con un **chime muy suave** y cambio de color en la barra segmentada (parte cumplida / parte activa / parte pendiente; ámbar si se está pasando del tiempo).
-- Es orientativo: se puede adelantar a la parte siguiente a mano o reiniciar en cualquier momento, y no interrumpe ni condiciona la grabación.
+### 1. Acción "Rehacer desde la revisión de speakers"
 
-## 3. Mic check antes de grabar
+En la cola de la Speaking Session, cada toma ya analizada tendrá una acción para **reabrir el recorrido**:
 
-- Panel de prueba de micrófono visible arriba del botón de grabar, opcional: mide nivel de entrada y permite elegir dispositivo antes de empezar.
-- No bloquea el flujo; se puede grabar directamente sin usarlo.
+- Vuelve al paso de **revisión de speakers**, con el script completo desplazable y resaltado por color, y las correcciones línea por línea.
+- Se descarta el análisis anterior de esa toma (no los informes ya firmados: eso se decide aparte, ver punto 3).
+- Al confirmar speakers se vuelve a correr el análisis y se llega otra vez a "Review & sign", ahora con el desglose por parte verificado para **las dos candidatas** antes de poder firmar.
+- Pide confirmación antes de reabrir, para que no se pierda por accidente un análisis en curso.
 
-## 4. Caso Juana Goya
+### 2. Reabrir esta toma en concreto
 
-Qué pasó, confirmado en los datos: en esa grabación el análisis se pidió para las dos candidatas juntas y el modelo devolvió el desglose por parte del examen sólo para Federica (4 partes) y **vacío para Juana**. Existe un reintento automático que vuelve a pedir el desglose de la candidata faltante, pero falló silenciosamente y el informe se firmó igual, con el resumen general presente y `part_feedback` vacío — de ahí el mensaje "Per-part commentary is unavailable".
+Se deja la toma de Federica + Juana lista para rehacer el recorrido: estado de revisión de speakers, mapeo previo precargado como punto de partida (se puede corregir), audio y script intactos.
 
-Acciones:
+### 3. Limpiar los informes viejos de esa grabación
 
-- **Reparar su informe ahora**: se vuelve a pedir el desglose por parte usando el mismo script (que sigue guardado) y se guarda en su informe como **revisión 1** con el motivo registrado, sin tocar los marks ni el resumen ya firmados.
-- **Evitar que se repita**: el reintento pasa a ser visible y verificado — si tras los reintentos alguna candidata sigue sin desglose, el análisis **no se marca como listo**; queda un aviso claro con botón "Completar desglose" antes de poder firmar.
-- Además, en cualquier informe firmado sin desglose queda disponible una acción para regenerarlo como nueva revisión.
+Los tres informes firmados de esa grabación (dos de Federica, uno de Juana sin desglose) quedan **archivados** — no se borran, dejan de aparecer en la lista de informes — para que al firmar de nuevo quede un único informe correcto por candidata y no haya duplicados confundiendo el historial.
 
 ## Notas técnicas
 
-- Nuevo `SpeakerReviewPanel` (componente compartido) que reemplaza el uso actual de `SpeakerMappingPanel` en `SpeakingSession`, sobre `live_words` (timeline por palabra de Scribe) agrupado en intervenciones; overrides por intervención guardados junto a `speaker_map` en `session_attempts`.
-- `applySpeakerMap` extendido para aceptar overrides por índice de intervención; sin overrides, comportamiento idéntico al actual.
-- `PhaseTimer` extendido con auto-avance y volumen de chime reducido; se monta en la pestaña Record de `SpeakingSession` junto a `MicCheck` (ambos componentes ya existen y hoy sólo se usan en las pantallas antiguas).
-- Guardia en `handleAnalyze`: la escritura de `analysis_result` con estado `reviewing_report` sólo ocurre si todas las candidatas traen `partFeedback`; si no, estado `needs_part_breakdown` con acción de reparación.
-- La reparación del informe de Juana requiere una excepción puntual: las filas con `confirmed_at` están bloqueadas para edición, así que se aplica como revisión controlada (revision 1 + motivo) desde el flujo de revisión existente.
-- Sin cambios de esquema nuevos salvo el campo de overrides dentro del JSON ya existente. Costo de IA adicional: sólo la llamada de reparación por candidata faltante.
+- Nueva acción en la cola de `SpeakingSession.tsx`: `updateAttempt` con `status: "reviewing_speakers"` y `analysis_result: null`, detrás de un diálogo de confirmación; el panel `SpeakerReviewPanel` ya se monta con `live_words` + `speaker_map` existente, así que no hace falta lógica nueva de revisión.
+- Para la toma `41ab2161…`: misma operación aplicada una vez vía migración de datos, más `archived = true` en los tres `exams` de esa grabación (`37e5b860…`, `9d590429…`, `7f36c7ed…`). Los `exams` con `confirmed_at` están bloqueados para edición por RLS, así que el archivado se hace en la migración, no desde el cliente.
+- Sin cambios de esquema. Costo de IA: una única corrida de análisis nueva para esa toma.
