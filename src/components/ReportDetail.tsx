@@ -255,6 +255,47 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
     }
   };
 
+  const [generatingParts, setGeneratingParts] = useState(false);
+
+  /**
+   * Repair path: some analyses came back without the per-part breakdown.
+   * This re-asks the model for THIS candidate only and stores just the
+   * per-part commentary — bands, scores and criteria are left untouched.
+   */
+  const handleGeneratePartFeedback = async () => {
+    setGeneratingParts(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("analyze-exam", {
+        body: {
+          level: exam.level_code,
+          language: langLabel[exam.language] || exam.language,
+          candidateNames: [exam.candidate_name],
+          transcript: exam.transcript,
+        },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      const first = (data as any).candidates?.[0] ?? data;
+      const parts = Array.isArray(first?.partFeedback) ? first.partFeedback : [];
+      if (parts.length === 0) throw new Error("The model did not return a per-part breakdown. Please try again.");
+      const { error: updErr } = await supabase
+        .from("exams")
+        .update({
+          part_feedback: parts as any,
+          overall_summary: exam.overall_summary ?? (typeof first?.overallSummary === "string" ? first.overallSummary : null),
+        })
+        .eq("id", exam.id);
+      if (updErr) throw updErr;
+      queryClient.invalidateQueries({ queryKey: ["exams-reports"] });
+      toast({ title: "Per-part commentary added", description: "The bands and scores were not changed." });
+    } catch (err: any) {
+      toast({ title: "Could not generate the commentary", description: err.message, variant: "destructive" });
+    } finally {
+      setGeneratingParts(false);
+    }
+  };
+
+
   const handleRegrade = async () => {
     if (editTranscript.trim().split(/\s+/).filter(Boolean).length < 30) {
       toast({ title: "Transcript too short", description: "Need at least 30 words to re-analyze.", variant: "destructive" });
