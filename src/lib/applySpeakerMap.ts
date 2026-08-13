@@ -80,3 +80,69 @@ export function speakerStats(words: ScribeWord[] | undefined | null): SpeakerSta
     }))
     .sort((a, b) => a.firstStart - b.firstStart);
 }
+
+/** One grouped intervention (consecutive words of the same diarized speaker). */
+export interface Utterance {
+  /** Stable index in the utterance list. */
+  index: number;
+  /** Diarized speaker id from Scribe. */
+  speakerId: string;
+  text: string;
+  start: number;
+  end: number;
+}
+
+/** Group the word timeline into utterances, preserving the original text. */
+export function buildUtterances(words: ScribeWord[] | undefined | null): Utterance[] {
+  if (!words || words.length === 0) return [];
+  const out: Utterance[] = [];
+  for (const w of words) {
+    const sp = (w.speaker ?? "").toString();
+    if (!sp) continue;
+    const t = (w.text ?? "").trim();
+    if (!t) continue;
+    const last = out[out.length - 1];
+    if (last && last.speakerId === sp) {
+      last.text += (/^[.,!?;:]/.test(t) ? "" : " ") + t;
+      last.end = w.end ?? last.end;
+    } else {
+      out.push({
+        index: out.length,
+        speakerId: sp,
+        text: t,
+        start: w.start ?? 0,
+        end: w.end ?? w.start ?? 0,
+      });
+    }
+  }
+  return out;
+}
+
+/** Resolve the role of an utterance: per-line override wins over the global map. */
+export function roleForUtterance(
+  u: Utterance,
+  map: SpeakerMap,
+  overrides?: Record<number, SpeakerRole>
+): SpeakerRole {
+  return overrides?.[u.index] ?? map[u.speakerId] ?? "Speaker unclear";
+}
+
+/**
+ * Rebuild the labelled transcript from the global mapping plus optional
+ * per-utterance corrections. Without overrides the output matches
+ * `applySpeakerMap`.
+ */
+export function applyUtteranceRoles(
+  utterances: Utterance[],
+  map: SpeakerMap,
+  overrides?: Record<number, SpeakerRole>
+): string {
+  const merged: { role: SpeakerRole; text: string }[] = [];
+  for (const u of utterances) {
+    const role = roleForUtterance(u, map, overrides);
+    const last = merged[merged.length - 1];
+    if (last && last.role === role) last.text += " " + u.text.trim();
+    else merged.push({ role, text: u.text.trim() });
+  }
+  return merged.map((m) => `${m.role}: ${m.text.trim()}`).join("\n");
+}
