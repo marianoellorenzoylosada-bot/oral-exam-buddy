@@ -482,10 +482,10 @@ export default function SpeakingSessionPage() {
 
       // Every candidate of the same recording must get the SAME report shape.
       // If the model skipped the per-part breakdown for someone, ask again for
-      // that candidate only and merge the result in.
+      // that candidate only (up to two passes) and merge the result in.
       const list: any[] = Array.isArray(data?.candidates) ? data.candidates : [data];
       const hasParts = (c: any) => Array.isArray(c?.partFeedback) && c.partFeedback.length > 0;
-      if (list.length > 1 && list.some(hasParts) && !list.every(hasParts)) {
+      for (let pass = 0; pass < 2 && !list.every(hasParts); pass++) {
         setProcessingStep("Completing the per-part breakdown…");
         for (let i = 0; i < list.length; i++) {
           if (hasParts(list[i])) continue;
@@ -495,12 +495,25 @@ export default function SpeakingSessionPage() {
               [attempt.candidate_ids?.[i] ?? null]
             );
             const fixed = Array.isArray(single?.candidates) ? single.candidates[0] : single;
-            if (hasParts(fixed)) list[i] = { ...list[i], partFeedback: fixed.partFeedback, overallSummary: list[i].overallSummary || fixed.overallSummary };
+            if (hasParts(fixed)) {
+              list[i] = {
+                ...list[i],
+                partFeedback: fixed.partFeedback,
+                overallSummary: list[i].overallSummary || fixed.overallSummary,
+              };
+            }
           } catch (retryErr) {
             console.warn("[SpeakingSession] part breakdown retry failed:", retryErr);
           }
         }
-        if (Array.isArray(data?.candidates)) data.candidates = list;
+      }
+      if (Array.isArray(data?.candidates)) data.candidates = list;
+
+      const missing = list.filter((c) => !hasParts(c)).length;
+      if (missing > 0) {
+        setLastError(
+          `The per-part breakdown is still missing for ${missing} candidate(s). Use "Complete per-part breakdown" in the queue before signing the reports.`
+        );
       }
 
       // Hold the analysis for examiner review — reports are only created on sign-off.
@@ -509,7 +522,8 @@ export default function SpeakingSessionPage() {
         status: "reviewing_report",
         analysis_result: data,
       });
-      setReviewAttemptId(attempt.id);
+      if (missing === 0) setReviewAttemptId(attempt.id);
+
       toast({ title: "Analysis ready", description: "Review the report, then confirm and sign it." });
 
 
