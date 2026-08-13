@@ -238,6 +238,26 @@ export function DraftReport({ result, level, levelCode, language, institution, g
     persisted?.officialStatus ?? result.candidates.map(() => false)
   );
 
+  // True while the on-screen state comes from a restored autosave.
+  const [restoredDraft, setRestoredDraft] = useState<boolean>(!!persisted);
+
+  /** Drop the autosaved edits and go back to the latest AI analysis. */
+  const handleDiscardAutosave = () => {
+    if (draftKey) {
+      try { localStorage.removeItem(DRAFT_STORAGE_PREFIX + draftKey); } catch { /* ignore */ }
+    }
+    setDrafts(JSON.parse(JSON.stringify(normalizedCandidates)));
+    setSharedDraft({ transcript: result.transcript, examinerNotes: result.examinerNotes });
+    setAllOverrides(Object.fromEntries(normalizedCandidates.map((_, i) => [i, {}])));
+    setAllAcceptedStrengths(normalizedCandidates.map((c) => c.strengths.map(() => true)));
+    setAllAcceptedImprovements(normalizedCandidates.map((c) => c.areasForImprovement.map(() => true)));
+    setRestoredDraft(false);
+    toast({
+      title: "Saved edits discarded",
+      description: "The review now shows the most recent AI analysis.",
+    });
+  };
+
   // Auto-save: persist editable state to localStorage whenever anything changes.
   // Debounced lightly via microtask coalescing — localStorage is sync but small.
   useEffect(() => {
@@ -251,13 +271,14 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         allAcceptedImprovements,
         officialStatus,
         savedAt: Date.now(),
+        analysisVersion,
       };
       localStorage.setItem(DRAFT_STORAGE_PREFIX + draftKey, JSON.stringify(payload));
     } catch (err) {
       // Quota exceeded or disabled — silently ignore; sign & save still works.
       console.warn("[DraftReport] autosave failed:", err);
     }
-  }, [draftKey, drafts, sharedDraft, allOverrides, allAcceptedStrengths, allAcceptedImprovements, officialStatus]);
+  }, [draftKey, drafts, sharedDraft, allOverrides, allAcceptedStrengths, allAcceptedImprovements, officialStatus, analysisVersion]);
 
   // Notify the user once if we restored from autosave (only on initial mount).
   useEffect(() => {
