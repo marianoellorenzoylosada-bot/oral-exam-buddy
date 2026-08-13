@@ -17,8 +17,14 @@ import {
 import {
   Mic, Square, Plus, Save, Loader2, AlertCircle, RefreshCw, Play, Pause, Trash2,
   Upload, Users, FileText, Image, ChevronLeft, Headphones, CheckCircle2, ArrowRight,
+  Download, AlertTriangle,
 } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
+import {
+  saveSessionRecording, loadSessionRecording, clearSessionRecording,
+  type SessionRecordingSnapshot,
+} from "@/lib/sessionRecordingDb";
 import { useToast } from "@/hooks/use-toast";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { LiveTranscript } from "@/components/LiveTranscript";
@@ -60,7 +66,7 @@ export default function SpeakingSessionPage() {
   const { toast } = useToast();
   const online = useOnlineStatus();
   const qc = useQueryClient();
-  const recorder = useAudioRecorder();
+  
 
   // The active session id lives in the URL so that returning from the camera /
   // file picker (which can reload the tab on mobile) keeps the session open.
@@ -112,6 +118,141 @@ export default function SpeakingSessionPage() {
   const [localAudioPlaying, setLocalAudioPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const localAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // ── Crash / screen-lock protection ────────────────────────────────────────
+  // The recorder keeps audio in memory only, so we mirror it into IndexedDB
+  // while recording. A screen lock, tab kill or reload can then be recovered.
+  const [recovered, setRecovered] = useState<SessionRecordingSnapshot | null>(null);
+  const [recoveredBlob, setRecoveredBlob] = useState<Blob | null>(null);
+  const [recoveredDuration, setRecoveredDuration] = useState(0);
+  const [recordingWarning, setRecordingWarning] = useState<string | null>(null);
+
+  // Latest context the snapshot should be stored with (ref so the recorder
+  // callbacks stay stable).
+  const snapshotCtxRef = useRef({
+    sessionId: activeSessionId,
+    candidateNames,
+    candidateIds,
+    transcriptionMode,
+    liveTranscript,
+  });
+  useEffect(() => {
+    snapshotCtxRef.current = { sessionId: activeSessionId, candidateNames, candidateIds, transcriptionMode, liveTranscript };
+  }, [activeSessionId, candidateNames, candidateIds, transcriptionMode, liveTranscript]);
+
+  const lastSnapshotAtRef = useRef(0);
+  const recorder = useAudioRecorder({
+    onChunk: (blob, durationSeconds) => {
+      // Throttle IDB writes: the recorder emits a chunk every second.
+      const now = Date.now();
+      if (now - lastSnapshotAtRef.current < 5000) return;
+      lastSnapshotAtRef.current = now;
+      const ctx = snapshotCtxRef.current;
+      return saveSessionRecording({
+        audioBlob: blob,
+        durationSeconds,
+        sessionId: ctx.sessionId,
+        candidateNames: ctx.candidateNames,
+        candidateIds: ctx.candidateIds,
+        transcriptionMode: ctx.transcriptionMode,
+        liveTranscript: ctx.liveTranscript,
+      });
+    },
+    onError: (reason) => {
+      setRecordingWarning(
+        `Recording stopped unexpectedly (${reason}). The audio captured so far was saved — check the recovery notice below or press "Save attempt".`
+      );
+    },
+  });
+
+  // Recover an unsaved recording left behind by a reload / crash.
+  const checkedRecoveryRef = useRef(false);
+  useEffect(() => {
+    if (checkedRecoveryRef.current) return;
+    checkedRecoveryRef.current = true;
+    (async () => {
+      const snap = await loadSessionRecording();
+      if (snap) setRecovered(snap);
+    })();
+  }, []);
+
+  // Keep the screen awake while recording so the OS doesn't kill the mic.
+  useEffect(() => {
+    if (recorder.state !== "recording") return;
+    type WakeLockSentinel = { release: () => Promise<void> };
+    let sentinel: WakeLockSentinel | null = null;
+    let cancelled = false;
+    const request = async () => {
+      const wl = (navigator as unknown as { wakeLock?: { request: (t: "screen") => Promise<WakeLockSentinel> } }).wakeLock;
+      if (!wl) return;
+      try {
+        const s = await wl.request("screen");
+        if (cancelled) { void s.release(); return; }
+        sentinel = s;
+      } catch (err) {
+        console.debug("[SpeakingSession] wakeLock request failed:", err);
+      }
+    };
+    void request();
+    const onVis = () => {
+      if (document.visibilityState === "visible" && !sentinel) void request();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVis);
+      if (sentinel) void sentinel.release().catch(() => undefined);
+    };
+  }, [recorder.state]);
+
+  // Mobile can kill MediaRecorder without unmounting: when the tab becomes
+  // visible again, verify the recorder is still alive and finalize if not.
+  useEffect(() => {
+    const handler = async () => {
+      if (document.visibilityState !== "visible") return;
+      try { await recorder.healthCheck(); } catch { /* ignore */ }
+      const snap = await loadSessionRecording();
+      if (snap && !recorder.audioBlob) setRecovered(snap);
+    };
+    document.addEventListener("visibilitychange", handler);
+    return () => document.removeEventListener("visibilitychange", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recorder.healthCheck, recorder.audioBlob]);
+
+  const pendingBlob = recorder.audioBlob ?? recoveredBlob;
+  const pendingDuration = recorder.audioBlob ? recorder.duration : recoveredDuration;
+
+  const acceptRecovered = () => {
+    if (!recovered) return;
+    setRecoveredBlob(recovered.audioBlob);
+    setRecoveredDuration(recovered.durationSeconds);
+    setLocalAudioUrl(URL.createObjectURL(recovered.audioBlob));
+    if (recovered.candidateNames.length >= 2) {
+      setCandidateNames(recovered.candidateNames);
+      setCandidateIds(recovered.candidateIds.length ? recovered.candidateIds : recovered.candidateNames.map(() => null));
+    }
+    if (recovered.liveTranscript) setLiveTranscript(recovered.liveTranscript);
+    setRecovered(null);
+    setActiveTab("record");
+    toast({ title: "Recording recovered", description: "Check the candidates and press \"Save attempt\" to queue it." });
+  };
+
+  const downloadRecovered = () => {
+    const blob = recovered?.audioBlob ?? pendingBlob;
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `recovered-recording-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.webm`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  };
+
+  const discardRecovered = async () => {
+    await clearSessionRecording();
+    setRecovered(null);
+  };
+
 
   // Reset form when creating a new session
   const resetForm = useCallback(() => {
@@ -176,6 +317,12 @@ export default function SpeakingSessionPage() {
       return;
     }
     try {
+      await clearSessionRecording();
+      setRecovered(null);
+      setRecoveredBlob(null);
+      setRecoveredDuration(0);
+      setRecordingWarning(null);
+      lastSnapshotAtRef.current = 0;
       await recorder.start();
       setLiveTranscript("");
       setLiveWords([]);
@@ -194,7 +341,7 @@ export default function SpeakingSessionPage() {
   };
 
   const handleSaveAttempt = async () => {
-    const blob = recorder.audioBlob;
+    const blob = pendingBlob;
     if (!blob || !activeSessionId) {
       toast({ title: "No recording", description: "Record audio before saving.", variant: "destructive" });
       return;
@@ -209,12 +356,16 @@ export default function SpeakingSessionPage() {
         candidateNames: candidateNames.filter((n) => n.trim()),
         candidateIds,
         audioBlob: blob,
-        durationSeconds: recorder.duration,
+        durationSeconds: pendingDuration,
         transcriptionMode: transcriptionMode,
         liveTranscript: transcriptionMode === "live" ? liveTranscript : undefined,
         liveWords: transcriptionMode === "live" ? liveWords : undefined,
       });
       recorder.reset();
+      await clearSessionRecording();
+      setRecoveredBlob(null);
+      setRecoveredDuration(0);
+      setRecordingWarning(null);
       setLiveTranscript("");
       setLiveWords([]);
       toast({ title: "Attempt saved", description: "It was added to the queue for this session." });
@@ -763,6 +914,44 @@ export default function SpeakingSessionPage() {
                 <CardDescription>Record the full speaking test. The attempt is queued after you stop.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+                {recovered && (
+                  <Alert>
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Unsaved recording found</AlertTitle>
+                    <AlertDescription className="space-y-3">
+                      <p>
+                        A recording of {formatTime(recovered.durationSeconds)} was left behind
+                        {recovered.candidateNames.filter(Boolean).length
+                          ? ` (${recovered.candidateNames.filter(Boolean).join(" & ")})`
+                          : ""}. It was backed up automatically on this device.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" onClick={acceptRecovered} className="gap-2">
+                          <RefreshCw className="h-4 w-4" /> Recover
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={downloadRecovered} className="gap-2">
+                          <Download className="h-4 w-4" /> Download audio
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={discardRecovered} className="gap-2">
+                          <Trash2 className="h-4 w-4" /> Discard
+                        </Button>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {recordingWarning && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Recording interrupted</AlertTitle>
+                    <AlertDescription>{recordingWarning}</AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="rounded-md border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+                  Keep the app in the foreground and don't lock the phone while recording — the screen is kept awake automatically, but some phones still stop the microphone when locked. A backup copy is saved on this device every few seconds, so an interrupted recording can be recovered here.
+                </div>
+
                 <div className="flex items-center justify-center gap-4 py-6">
                   {recorder.state !== "recording" ? (
                     <Button size="lg" onClick={handleStartRecording} className="gap-2">
@@ -775,9 +964,9 @@ export default function SpeakingSessionPage() {
                   )}
                 </div>
 
-                {recorder.audioBlob && recorder.state !== "recording" && (
+                {pendingBlob && recorder.state !== "recording" && (
                   <div className="space-y-4">
-                    <div className="flex items-center justify-center gap-3">
+                    <div className="flex flex-wrap items-center justify-center gap-3">
                       <Button variant="outline" onClick={() => {
                         if (localAudioRef.current) {
                           if (localAudioPlaying) {
@@ -790,10 +979,19 @@ export default function SpeakingSessionPage() {
                         {localAudioPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                         {localAudioPlaying ? "Pause" : "Play back"}
                       </Button>
-                      <Button variant="outline" onClick={recorder.reset} className="gap-2"><Trash2 className="h-4 w-4" /> Discard</Button>
+                      <Button variant="outline" onClick={downloadRecovered} className="gap-2">
+                        <Download className="h-4 w-4" /> Download audio
+                      </Button>
+                      <Button variant="outline" onClick={() => {
+                        recorder.reset();
+                        setRecoveredBlob(null);
+                        setRecoveredDuration(0);
+                        setRecordingWarning(null);
+                        void clearSessionRecording();
+                      }} className="gap-2"><Trash2 className="h-4 w-4" /> Discard</Button>
                       <Button onClick={handleSaveAttempt} disabled={createAttempt.isPending} className="gap-2">
                         {createAttempt.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                        Save attempt
+                        Save attempt ({formatTime(pendingDuration)})
                       </Button>
                     </div>
                     {localAudioUrl && (
