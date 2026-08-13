@@ -78,6 +78,22 @@ interface PersistedDraft {
   allAcceptedImprovements: boolean[][];
   officialStatus: boolean[];
   savedAt: number;
+  /** Fingerprint of the AI analysis the edits were made on. */
+  analysisVersion?: string;
+}
+
+/**
+ * Fingerprint of the incoming analysis. When an attempt is re-analysed (e.g. to
+ * complete a missing per-part breakdown), the fingerprint changes and any older
+ * autosaved draft is discarded so the fresh analysis is never overwritten.
+ */
+function fingerprintAnalysis(result: MultiCandidateResult): string {
+  return result.candidates
+    .map(
+      (c) =>
+        `${c.candidateName}~${c.partFeedback?.length ?? 0}~${(c.overallSummary ?? "").length}~${c.criteria?.length ?? 0}~${c.strengths?.length ?? 0}`
+    )
+    .join("|") + `#${(result.transcript ?? "").length}`;
 }
 
 function EditableScore({ value, max, onChange }: { value: number; max: number; onChange: (v: number) => void }) {
@@ -167,17 +183,25 @@ export function DraftReport({ result, level, levelCode, language, institution, g
     [result]
   );
 
-  // Try to restore a previously auto-saved draft for this exam.
+  const analysisVersion = useMemo(() => fingerprintAnalysis(result), [result]);
+
+  // Try to restore a previously auto-saved draft for this exam. Drafts saved
+  // against an older analysis are ignored (stale after a re-analysis).
   const persisted = useMemo<PersistedDraft | null>(() => {
     if (!draftKey) return null;
     try {
       const raw = localStorage.getItem(DRAFT_STORAGE_PREFIX + draftKey);
       if (!raw) return null;
-      return JSON.parse(raw) as PersistedDraft;
+      const parsed = JSON.parse(raw) as PersistedDraft;
+      if (parsed.analysisVersion !== analysisVersion) {
+        localStorage.removeItem(DRAFT_STORAGE_PREFIX + draftKey);
+        return null;
+      }
+      return parsed;
     } catch {
       return null;
     }
-  }, [draftKey]);
+  }, [draftKey, analysisVersion]);
 
   // Per-candidate draft state
   const [drafts, setDrafts] = useState<MultiCandidateResult["candidates"]>(() =>
@@ -214,6 +238,26 @@ export function DraftReport({ result, level, levelCode, language, institution, g
     persisted?.officialStatus ?? result.candidates.map(() => false)
   );
 
+  // True while the on-screen state comes from a restored autosave.
+  const [restoredDraft, setRestoredDraft] = useState<boolean>(!!persisted);
+
+  /** Drop the autosaved edits and go back to the latest AI analysis. */
+  const handleDiscardAutosave = () => {
+    if (draftKey) {
+      try { localStorage.removeItem(DRAFT_STORAGE_PREFIX + draftKey); } catch { /* ignore */ }
+    }
+    setDrafts(JSON.parse(JSON.stringify(normalizedCandidates)));
+    setSharedDraft({ transcript: result.transcript, examinerNotes: result.examinerNotes });
+    setAllOverrides(Object.fromEntries(normalizedCandidates.map((_, i) => [i, {}])));
+    setAllAcceptedStrengths(normalizedCandidates.map((c) => c.strengths.map(() => true)));
+    setAllAcceptedImprovements(normalizedCandidates.map((c) => c.areasForImprovement.map(() => true)));
+    setRestoredDraft(false);
+    toast({
+      title: "Saved edits discarded",
+      description: "The review now shows the most recent AI analysis.",
+    });
+  };
+
   // Auto-save: persist editable state to localStorage whenever anything changes.
   // Debounced lightly via microtask coalescing — localStorage is sync but small.
   useEffect(() => {
@@ -227,13 +271,14 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         allAcceptedImprovements,
         officialStatus,
         savedAt: Date.now(),
+        analysisVersion,
       };
       localStorage.setItem(DRAFT_STORAGE_PREFIX + draftKey, JSON.stringify(payload));
     } catch (err) {
       // Quota exceeded or disabled — silently ignore; sign & save still works.
       console.warn("[DraftReport] autosave failed:", err);
     }
-  }, [draftKey, drafts, sharedDraft, allOverrides, allAcceptedStrengths, allAcceptedImprovements, officialStatus]);
+  }, [draftKey, drafts, sharedDraft, allOverrides, allAcceptedStrengths, allAcceptedImprovements, officialStatus, analysisVersion]);
 
   // Notify the user once if we restored from autosave (only on initial mount).
   useEffect(() => {
@@ -543,6 +588,19 @@ export function DraftReport({ result, level, levelCode, language, institution, g
           </TabsContent>
         ))}
       </Tabs>
+
+      {/* Restored autosave notice — lets the examiner fall back to the fresh analysis. */}
+      {restoredDraft && !allOfficial && (
+        <div className="flex flex-col gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm sm:flex-row sm:items-center sm:justify-between print:hidden">
+          <span className="text-xs text-amber-700 dark:text-amber-300">
+            Showing your previously saved edits for this recording.
+          </span>
+          <Button variant="outline" size="sm" onClick={handleDiscardAutosave} className="gap-2 shrink-0">
+            <RotateCcw className="h-3.5 w-3.5" /> Discard saved edits and use the latest analysis
+          </Button>
+        </div>
+      )}
+
 
       {/* Status banner */}
       {isOfficial ? (

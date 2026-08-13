@@ -506,6 +506,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      fill_missing_part_feedback: {
+        Args: {
+          _exam_id: string
+          _overall_summary?: string
+          _part_feedback: Json
+        }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

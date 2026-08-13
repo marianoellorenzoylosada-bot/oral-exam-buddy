@@ -278,14 +278,25 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
       const first = (data as any).candidates?.[0] ?? data;
       const parts = Array.isArray(first?.partFeedback) ? first.partFeedback : [];
       if (parts.length === 0) throw new Error("The model did not return a per-part breakdown. Please try again.");
-      const { error: updErr } = await supabase
-        .from("exams")
-        .update({
-          part_feedback: parts as any,
-          overall_summary: exam.overall_summary ?? (typeof first?.overallSummary === "string" ? first.overallSummary : null),
-        })
-        .eq("id", exam.id);
-      if (updErr) throw updErr;
+      const summary =
+        exam.overall_summary ?? (typeof first?.overallSummary === "string" ? first.overallSummary : null);
+      if (exam.confirmed_at) {
+        // Confirmed reports are frozen: this repair path only fills the empty
+        // per-part commentary, never bands, scores or criteria.
+        const { data: filled, error: rpcErr } = await supabase.rpc("fill_missing_part_feedback", {
+          _exam_id: exam.id,
+          _part_feedback: parts as any,
+          _overall_summary: summary,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!filled) throw new Error("This report already has per-part commentary.");
+      } else {
+        const { error: updErr } = await supabase
+          .from("exams")
+          .update({ part_feedback: parts as any, overall_summary: summary })
+          .eq("id", exam.id);
+        if (updErr) throw updErr;
+      }
       queryClient.invalidateQueries({ queryKey: ["exams-reports"] });
       toast({ title: "Per-part commentary added", description: "The bands and scores were not changed." });
     } catch (err: any) {
@@ -759,17 +770,15 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
               This report has no per-part commentary. It can be generated from the stored transcript
               without changing the bands already awarded.
             </p>
-            {exam.confirmed_at ? (
+            {exam.confirmed_at && (
               <p className="text-xs text-muted-foreground">
-                The report is confirmed and frozen — use “Correct report” to issue a new version that
-                includes the per-part commentary.
+                The report stays frozen: only the missing per-part commentary and overall summary are added.
               </p>
-            ) : (
-              <Button size="sm" variant="outline" onClick={handleGeneratePartFeedback} disabled={generatingParts} className="gap-1.5">
-                {generatingParts ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                Generate per-part commentary
-              </Button>
             )}
+            <Button size="sm" variant="outline" onClick={handleGeneratePartFeedback} disabled={generatingParts} className="gap-1.5">
+              {generatingParts ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              Generate per-part commentary
+            </Button>
           </div>
         )}
 

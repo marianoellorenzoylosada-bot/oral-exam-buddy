@@ -47,7 +47,7 @@ import { transcribeStoragePath, TranscriptionError, type ScribeWord } from "@/li
 import { applySpeakerMap, speakerStats, type SpeakerMap, type SpeakerRole } from "@/lib/applySpeakerMap";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSignedAudioUrl } from "@/lib/audioStorage";
 
 const LANGUAGES = SUPPORTED_LANGUAGES;
@@ -700,6 +700,24 @@ export default function SpeakingSessionPage() {
   const showCreateForm = !activeSessionId;
   const showSession = !!activeSessionId && !!session;
 
+  // Signed reports of this session that were saved without the per-part breakdown.
+  const { data: incompleteSigned } = useQuery({
+    queryKey: ["session-signed-missing-parts", activeSessionId],
+    enabled: !!activeSessionId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("exams")
+        .select("id, attempt_id, candidate_name, part_feedback")
+        .eq("session_id", activeSessionId!)
+        .eq("archived", false)
+        .not("confirmed_at", "is", null);
+      if (error) throw error;
+      return (data ?? []).filter(
+        (e: any) => !Array.isArray(e.part_feedback) || e.part_feedback.length === 0
+      ) as Array<{ id: string; attempt_id: string | null; candidate_name: string | null }>;
+    },
+  });
+
   const reviewAttempt = session?.attempts.find((a) => a.id === reviewAttemptId) ?? null;
   const reviewResult: MultiCandidateResult | null = (() => {
     if (!reviewAttempt?.analysis_result) return null;
@@ -1186,6 +1204,24 @@ export default function SpeakingSessionPage() {
                         <Button size="sm" variant="ghost" className="text-destructive" onClick={() => deleteAttempt.mutate(attempt)}><Trash2 className="h-4 w-4" /></Button>
                       </div>
                     </div>
+
+                    {(() => {
+                      const broken = (incompleteSigned ?? []).filter((e) => e.attempt_id === attempt.id);
+                      if (broken.length === 0) return null;
+                      return (
+                        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 space-y-1">
+                          <p className="text-xs text-amber-700 dark:text-amber-300">
+                            Signed report{broken.length > 1 ? "s" : ""} without per-part feedback:{" "}
+                            {broken.map((e) => e.candidate_name || "candidate").join(", ")}.
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Open it in Reports and use “Generate per-part commentary” to complete it.
+                          </p>
+                        </div>
+                      );
+                    })()}
+
+
 
                     {attempt.status === "recorded" && (
                       <Button size="sm" onClick={() => handleTranscribe(attempt)} disabled={processing || workingAttemptId === attempt.id}>
