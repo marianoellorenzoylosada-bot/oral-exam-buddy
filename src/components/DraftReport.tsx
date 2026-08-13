@@ -78,6 +78,22 @@ interface PersistedDraft {
   allAcceptedImprovements: boolean[][];
   officialStatus: boolean[];
   savedAt: number;
+  /** Fingerprint of the AI analysis the edits were made on. */
+  analysisVersion?: string;
+}
+
+/**
+ * Fingerprint of the incoming analysis. When an attempt is re-analysed (e.g. to
+ * complete a missing per-part breakdown), the fingerprint changes and any older
+ * autosaved draft is discarded so the fresh analysis is never overwritten.
+ */
+function fingerprintAnalysis(result: MultiCandidateResult): string {
+  return result.candidates
+    .map(
+      (c) =>
+        `${c.candidateName}~${c.partFeedback?.length ?? 0}~${(c.overallSummary ?? "").length}~${c.criteria?.length ?? 0}~${c.strengths?.length ?? 0}`
+    )
+    .join("|") + `#${(result.transcript ?? "").length}`;
 }
 
 function EditableScore({ value, max, onChange }: { value: number; max: number; onChange: (v: number) => void }) {
