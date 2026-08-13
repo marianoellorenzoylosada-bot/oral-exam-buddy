@@ -66,7 +66,7 @@ export default function SpeakingSessionPage() {
   const { toast } = useToast();
   const online = useOnlineStatus();
   const qc = useQueryClient();
-  const recorder = useAudioRecorder();
+  
 
   // The active session id lives in the URL so that returning from the camera /
   // file picker (which can reload the tab on mobile) keeps the session open.
