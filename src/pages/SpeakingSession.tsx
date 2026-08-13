@@ -1234,9 +1234,19 @@ export default function SpeakingSessionPage() {
                               </Button>
                             </div>
                           )}
-                          <Button size="sm" onClick={() => setReviewAttemptId(attempt.id)}>
-                            <FileText className="mr-2 h-4 w-4" /> Review &amp; sign report
-                          </Button>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button size="sm" onClick={() => setReviewAttemptId(attempt.id)}>
+                              <FileText className="mr-2 h-4 w-4" /> Review &amp; sign report
+                            </Button>
+                            <Button
+                              size="sm" variant="outline"
+                              onClick={() => handleRedoFromSpeakers(attempt)}
+                              disabled={processing || workingAttemptId === attempt.id}
+                            >
+                              <RefreshCw className="mr-2 h-4 w-4" /> Redo from speaker review
+                            </Button>
+                          </div>
+
                         </div>
                       );
                     })()}
