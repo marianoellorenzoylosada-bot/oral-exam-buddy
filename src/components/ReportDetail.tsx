@@ -824,20 +824,6 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
           </div>
         )}
 
-        {/* Transcript */}
-        {exam.transcript && (
-          <div>
-            <h3 className="font-display font-semibold text-sm mb-1">Transcript</h3>
-            <SpeakerTranscript
-              transcript={exam.transcript}
-              hidden={anonymize}
-              maxHeight="12rem"
-              words={words}
-              onSeek={audioUrl && !audioGone ? seekAudio : undefined}
-            />
-          </div>
-        )}
-
         {/* Recommendations */}
         {recommendations.length > 0 && (
           <div>
@@ -855,6 +841,31 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
             ))}
           </div>
         )}
+
+        {/* Full transcript — collapsible, at the end of the report. */}
+        {exam.transcript && (
+          <Accordion type="single" collapsible>
+            <AccordionItem value="transcript" className="border rounded-lg px-3">
+              <AccordionTrigger className="text-sm font-display py-2 hover:no-underline">
+                <span className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-muted-foreground" /> Full transcript
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="pb-2">
+                  <SpeakerTranscript
+                    transcript={exam.transcript}
+                    hidden={anonymize}
+                    maxHeight="20rem"
+                    words={words}
+                    onSeek={audioUrl && !audioGone ? seekAudio : undefined}
+                  />
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        )}
+
 
         {/* Export + Delete */}
         <div className="flex justify-between">
