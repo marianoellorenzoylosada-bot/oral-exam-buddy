@@ -145,6 +145,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
   // Shared audio storage path across all candidates in this session (upload once).
   const [audioStoragePath, setAudioStoragePath] = useState<string | null>(audioPath ?? null);
   const [audioUploadFailed, setAudioUploadFailed] = useState(false);
+  const playerRef = useRef<AttemptAudioPlayerHandle | null>(null);
   // Per-candidate group/institution resolved from the roster (pairs can be mixed-group).
   const [candidateMeta, setCandidateMeta] = useState<Record<string, { group: string; institution: string }>>({});
 
