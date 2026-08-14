@@ -29,7 +29,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { getRecommendations } from "@/lib/practiceData";
 import { generateReportPdf } from "@/lib/generateReportPdf";
 import { generateStudentPdf } from "@/lib/generateStudentPdf";
-import { PartFeedbackSection, hasPartFeedbackContent } from "@/components/PartFeedbackSection";
+import { TeacherPartsSection } from "@/components/TeacherPartsSection";
+import { buildTeacherReportModel } from "@/lib/teacherReportModel";
 import type { PartFeedback } from "@/lib/partFeedback";
 import { useToast } from "@/hooks/use-toast";
 import { useRoles } from "@/hooks/useRoles";
@@ -171,7 +172,7 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
     : [];
   const strengths = Array.isArray(displayedStrengths) ? (displayedStrengths as string[]) : [];
   const improvements = Array.isArray(displayedImprovements) ? (displayedImprovements as string[]) : [];
-  const recommendations = getRecommendations(criteria, exam.level_code, 2);
+  const recommendations = getRecommendations(criteria, exam.level_code, 3, improvements);
 
   const displayName = anonymize ? mask(exam.candidate_name) : (exam.candidate_name || null);
   const displayInstitution = anonymize ? mask(exam.institution) : (exam.institution || "—");
@@ -645,18 +646,6 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
           </div>
         )}
 
-        {/* Speaker transcript — read-only in the final report. */}
-        {words.length > 0 && (
-          <div>
-            <h3 className="font-display font-semibold text-sm mb-2">Speaker transcript</h3>
-            <SpeakerTranscript
-              transcript={exam.transcript || ""}
-              words={words}
-              onSeek={audioUrl && !audioGone ? seekAudio : undefined}
-              maxHeight="16rem"
-            />
-          </div>
-        )}
 
 
         {/* Criteria */}
