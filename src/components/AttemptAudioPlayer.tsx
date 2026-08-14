@@ -29,7 +29,7 @@ interface Props {
  * makes arbitrary seeking (forward included) reliable.
  */
 export const AttemptAudioPlayer = forwardRef<AttemptAudioPlayerHandle, Props>(
-  function AttemptAudioPlayer({ audioPath }, ref) {
+  function AttemptAudioPlayer({ audioPath, localBlob }, ref) {
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const [url, setUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
@@ -46,7 +46,18 @@ export const AttemptAudioPlayer = forwardRef<AttemptAudioPlayerHandle, Props>(
       setCurrent(0);
       setDuration(0);
       setPlaying(false);
-      if (!audioPath) return;
+
+      if (!audioPath) {
+        // Not uploaded yet: play the local recording directly.
+        if (localBlob) {
+          objectUrl = URL.createObjectURL(localBlob);
+          setUrl(objectUrl);
+        }
+        return () => {
+          cancelled = true;
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+        };
+      }
 
       (async () => {
         setLoading(true);
