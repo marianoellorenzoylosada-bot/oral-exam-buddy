@@ -29,7 +29,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { getRecommendations } from "@/lib/practiceData";
 import { generateReportPdf } from "@/lib/generateReportPdf";
 import { generateStudentPdf } from "@/lib/generateStudentPdf";
-import { PartFeedbackSection, hasPartFeedbackContent } from "@/components/PartFeedbackSection";
+import { TeacherPartsSection } from "@/components/TeacherPartsSection";
+import { buildTeacherReportModel } from "@/lib/teacherReportModel";
 import type { PartFeedback } from "@/lib/partFeedback";
 import { useToast } from "@/hooks/use-toast";
 import { useRoles } from "@/hooks/useRoles";
@@ -171,7 +172,7 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
     : [];
   const strengths = Array.isArray(displayedStrengths) ? (displayedStrengths as string[]) : [];
   const improvements = Array.isArray(displayedImprovements) ? (displayedImprovements as string[]) : [];
-  const recommendations = getRecommendations(criteria, exam.level_code, 2);
+  const recommendations = getRecommendations(criteria, exam.level_code, 3, improvements);
 
   const displayName = anonymize ? mask(exam.candidate_name) : (exam.candidate_name || null);
   const displayInstitution = anonymize ? mask(exam.institution) : (exam.institution || "—");
@@ -195,6 +196,11 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
     partFeedback: Array.isArray(displayedPartFeedback) ? (displayedPartFeedback as PartFeedback[]) : undefined,
     overallSummary: displayedOverallSummary,
   };
+
+  // Single source of truth: the on-screen report and the teacher PDF are both
+  // rendered from this model, so they can never show different content.
+  const teacherModel = buildTeacherReportModel(teacherPdfData);
+
 
   const studentPdfData = {
     title: exam.title,
@@ -645,24 +651,14 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
           </div>
         )}
 
-        {/* Speaker transcript — read-only in the final report. */}
-        {words.length > 0 && (
-          <div>
-            <h3 className="font-display font-semibold text-sm mb-2">Speaker transcript</h3>
-            <SpeakerTranscript
-              transcript={exam.transcript || ""}
-              words={words}
-              onSeek={audioUrl && !audioGone ? seekAudio : undefined}
-              maxHeight="16rem"
-            />
-          </div>
-        )}
 
 
-        {/* Criteria */}
+        {/* Marks — compact table. The narrative lives inside each exam part below. */}
         {criteria.length > 0 && (
           <div className="space-y-3">
-            <h3 className="font-display font-semibold text-sm">Assessment Criteria</h3>
+            <h3 className="font-display font-semibold text-sm">
+              {teacherModel.criteriaOnly ? "Assessment Criteria" : "Marks"}
+            </h3>
             {criteria.map((c, i) => {
               const pct = (c.score / c.maxScore) * 100;
               return (
@@ -693,10 +689,14 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
                     </span>
                   </div>
                   <Progress value={pct} className="h-2 mb-1" />
-                  <p className="text-xs text-muted-foreground">
-                    <QuotedAudio text={c.feedback} words={words} onSeek={audioUrl && !audioGone ? seekAudio : undefined} />
-                  </p>
-                  {i < criteria.length - 1 && <Separator className="mt-3" />}
+                  {teacherModel.criteriaOnly && (
+                    <>
+                      <p className="text-xs text-muted-foreground">
+                        <QuotedAudio text={c.feedback} words={words} onSeek={audioUrl && !audioGone ? seekAudio : undefined} />
+                      </p>
+                      {i < criteria.length - 1 && <Separator className="mt-3" />}
+                    </>
+                  )}
                 </div>
               );
             })}
@@ -713,6 +713,7 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
             )}
           </div>
         )}
+
 
         <Dialog open={approveOpen} onOpenChange={setApproveOpen}>
           <DialogContent>
@@ -754,15 +755,12 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
           </DialogContent>
         </Dialog>
 
-        {/* Per-part feedback (only when stored on the report). */}
-        {Array.isArray(displayedPartFeedback) && hasPartFeedbackContent(
-          displayedPartFeedback as PartFeedback[],
-          displayedOverallSummary
-        ) ? (
-          <PartFeedbackSection
-            levelCode={exam.level_code}
-            partFeedback={displayedPartFeedback as PartFeedback[]}
-            overallSummary={displayedOverallSummary}
+        {/* Part → relevant criteria → evidence (same model as the teacher PDF). */}
+        {!teacherModel.criteriaOnly || teacherModel.overallSummary ? (
+          <TeacherPartsSection
+            model={teacherModel}
+            words={words}
+            onSeek={audioUrl && !audioGone ? seekAudio : undefined}
           />
         ) : (
           <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 space-y-2">
@@ -781,6 +779,7 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
             </Button>
           </div>
         )}
+
 
 
         {/* Strengths & Improvements */}
@@ -825,20 +824,6 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
           </div>
         )}
 
-        {/* Transcript */}
-        {exam.transcript && (
-          <div>
-            <h3 className="font-display font-semibold text-sm mb-1">Transcript</h3>
-            <SpeakerTranscript
-              transcript={exam.transcript}
-              hidden={anonymize}
-              maxHeight="12rem"
-              words={words}
-              onSeek={audioUrl && !audioGone ? seekAudio : undefined}
-            />
-          </div>
-        )}
-
         {/* Recommendations */}
         {recommendations.length > 0 && (
           <div>
@@ -856,6 +841,31 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
             ))}
           </div>
         )}
+
+        {/* Full transcript — collapsible, at the end of the report. */}
+        {exam.transcript && (
+          <Accordion type="single" collapsible>
+            <AccordionItem value="transcript" className="border rounded-lg px-3">
+              <AccordionTrigger className="text-sm font-display py-2 hover:no-underline">
+                <span className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-muted-foreground" /> Full transcript
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="pb-2">
+                  <SpeakerTranscript
+                    transcript={exam.transcript}
+                    hidden={anonymize}
+                    maxHeight="20rem"
+                    words={words}
+                    onSeek={audioUrl && !audioGone ? seekAudio : undefined}
+                  />
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        )}
+
 
         {/* Export + Delete */}
         <div className="flex justify-between">

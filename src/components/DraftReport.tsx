@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,17 +10,17 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  FileText, CheckCircle2, AlertTriangle, RotateCcw, Printer, ShieldCheck,
-  BookOpen, ExternalLink, Home, Loader2, Download, PenLine, Users, Info, GraduationCap,
+  FileText, CheckCircle2, AlertTriangle, RotateCcw, ShieldCheck,
+  BookOpen, ExternalLink, Home, Loader2, PenLine, Users, Info, Volume2, ListChecks,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { SpeakerTranscript } from "@/components/SpeakerTranscript";
+import { AttemptAudioPlayer, type AttemptAudioPlayerHandle } from "@/components/AttemptAudioPlayer";
 import { PartFeedbackSection, hasPartFeedbackContent } from "@/components/PartFeedbackSection";
 import { useToast } from "@/hooks/use-toast";
 import { getRecommendations } from "@/lib/practiceData";
 import { supabase } from "@/integrations/supabase/client";
-import { generateReportPdf } from "@/lib/generateReportPdf";
-import { generateStudentPdf } from "@/lib/generateStudentPdf";
 import { useAuth } from "@/hooks/useAuth";
 import { computeWeightedSpeakingScore } from "@/lib/speakingScore";
 import type { PartFeedback } from "@/lib/partFeedback";
@@ -145,6 +145,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
   // Shared audio storage path across all candidates in this session (upload once).
   const [audioStoragePath, setAudioStoragePath] = useState<string | null>(audioPath ?? null);
   const [audioUploadFailed, setAudioUploadFailed] = useState(false);
+  const playerRef = useRef<AttemptAudioPlayerHandle | null>(null);
   // Per-candidate group/institution resolved from the roster (pairs can be mixed-group).
   const [candidateMeta, setCandidateMeta] = useState<Record<string, { group: string; institution: string }>>({});
 
@@ -438,10 +439,13 @@ export function DraftReport({ result, level, levelCode, language, institution, g
       });
       toast({ title: `Report confirmed for ${candidateName}`, description: "Saved to your records." });
 
-      // Auto-advance to next unconfirmed candidate
+      // Auto-advance to next unconfirmed candidate; when the whole attempt is
+      // signed, hand control back to the exam queue.
       const nextUnconfirmed = officialStatus.findIndex((v, i) => i !== activeCandidate && !v);
       if (nextUnconfirmed >= 0) {
         setActiveCandidate(nextUnconfirmed);
+      } else if (sessionId) {
+        navigate("/speaking-session");
       }
     } catch (err: any) {
       console.error("Save error:", err);
@@ -452,74 +456,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
   };
 
 
-  /** Collect the reviewed data of one candidate for the PDF generators. */
-  const buildPdfData = (index: number) => {
-    const d = drafts[index];
-    const accS = allAcceptedStrengths[index] || [];
-    const accI = allAcceptedImprovements[index] || [];
-    const candidateName =
-      d.candidateName || candidateNames[index] || `Candidate ${String.fromCharCode(65 + index)}`;
-    // Pairs/trios can mix groups: resolve this candidate's own group + institution.
-    const candId = candidateIds?.[index] ?? null;
-    const meta = candId ? candidateMeta[candId] : undefined;
-    return {
-      title: `${levelCode} ${language} Oral — ${candidateName}`,
-      candidateName,
-      institution: meta?.institution || institutionName,
-      group: meta?.group || group || "",
-      levelCode,
-      language,
-      overallBand: d.overallBand,
-      overallScore: d.overallScore,
-      criteria: d.criteria,
-      strengths: d.strengths.filter((_, i) => accS[i] !== false),
-      areasForImprovement: d.areasForImprovement.filter((_, i) => accI[i] !== false),
-      examinerNotes: sharedDraft.examinerNotes,
-      transcript: sharedDraft.transcript,
-      date: new Date().toLocaleDateString(),
-      partFeedback: d.partFeedback,
-      overallSummary: d.overallSummary,
-    };
-  };
 
-  const teacherPdf = (index: number, output: "save" | "print" = "save") =>
-    generateReportPdf({ ...buildPdfData(index), output });
-
-  const studentPdf = (index: number, output: "save" | "print" = "save") => {
-    const base = buildPdfData(index);
-    generateStudentPdf({
-      title: base.title,
-      candidateName: base.candidateName,
-      levelCode: base.levelCode,
-      language: base.language,
-      overallBand: base.overallBand,
-      overallScore: base.overallScore,
-      criteria: base.criteria,
-      strengths: base.strengths,
-      areasForImprovement: base.areasForImprovement,
-      date: base.date,
-      partFeedback: base.partFeedback,
-      overallSummary: base.overallSummary,
-      output,
-    });
-  };
-
-  /** Print uses the PDF layout so nothing is clipped by the on-screen cards. */
-  const handlePrint = () => teacherPdf(activeCandidate, "print");
-
-  const handleDownloadPdf = () => teacherPdf(activeCandidate);
-  const handleDownloadStudentPdf = () => studentPdf(activeCandidate);
-
-  const handleDownloadAll = () => {
-    drafts.forEach((_, i) => {
-      teacherPdf(i);
-      studentPdf(i);
-    });
-    toast({
-      title: "Reports downloaded",
-      description: `Teacher and student PDFs generated for ${drafts.length} candidate${drafts.length > 1 ? "s" : ""}.`,
-    });
-  };
 
 
   return (
@@ -532,36 +469,31 @@ export function DraftReport({ result, level, levelCode, language, institution, g
           </div>
           <div className="min-w-0">
             <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">
-              {allOfficial ? "Official Assessment Reports" : "Draft Assessment Reports"}
+              {allOfficial ? "Signed assessments" : "Examiner review"}
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
               {allOfficial
-                ? "All candidates reviewed and signed."
-                : `${officialStatus.filter(Boolean).length}/${officialStatus.length} candidates confirmed · Review each candidate below.`}
+                ? "All candidates reviewed and signed. The final reports live in Reports."
+                : `${officialStatus.filter(Boolean).length}/${officialStatus.length} candidates confirmed · Audit the AI assessment against the recording, then approve.`}
             </p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          {sessionId && (
+            <Button variant="outline" size="sm" onClick={() => navigate("/speaking-session")} className="gap-2">
+              <ListChecks className="h-4 w-4" /> Back to exam queue
+            </Button>
+          )}
           {allOfficial && (
+            <Button variant="outline" size="sm" onClick={() => navigate("/reports")} className="gap-2">
+              <FileText className="h-4 w-4" /> Open Reports
+            </Button>
+          )}
+          {allOfficial && !sessionId && (
             <Button variant="outline" size="sm" onClick={() => navigate("/")} className="gap-2">
               <Home className="h-4 w-4" /> Dashboard
             </Button>
           )}
-          <Button variant="outline" size="sm" onClick={handleDownloadPdf} className="gap-2">
-            <Download className="h-4 w-4" /> Teacher PDF
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleDownloadStudentPdf} className="gap-2">
-            <GraduationCap className="h-4 w-4" /> Student PDF
-          </Button>
-          {drafts.length > 1 && (
-            <Button variant="outline" size="sm" onClick={handleDownloadAll} className="gap-2">
-              <Download className="h-4 w-4" /> Download all
-            </Button>
-          )}
-          <Button variant="outline" size="sm" onClick={handlePrint} className="gap-2">
-            <Printer className="h-4 w-4" /> Print
-          </Button>
-
           {!allOfficial && (
             <Button variant="outline" size="sm" onClick={onReset} className="gap-2">
               <RotateCcw className="h-4 w-4" /> New Exam
@@ -614,6 +546,50 @@ export function DraftReport({ result, level, levelCode, language, institution, g
           <span className="font-medium">Draft — Scores and feedback are editable for {draft.candidateName || candidateNames[activeCandidate]}. Click "Confirm &amp; Sign" when ready.</span>
         </div>
       )}
+
+      {/* Audit tools: listen to the recording and read the full script while reviewing. */}
+      {(audioStoragePath || audioPath || audioBlob || sharedDraft.transcript) && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="font-display text-lg flex items-center gap-2">
+              <Volume2 className="h-5 w-5 text-primary" /> Evidence
+            </CardTitle>
+            <CardDescription>
+              Listen to any moment and check the script before approving. Click a line to jump to that point.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <AttemptAudioPlayer
+              ref={playerRef}
+              audioPath={audioStoragePath || audioPath || null}
+              localBlob={audioBlob ?? null}
+            />
+            {sharedDraft.transcript && (
+              <Accordion type="single" collapsible defaultValue="script">
+                <AccordionItem value="script" className="border rounded-lg px-3">
+                  <AccordionTrigger className="text-sm font-display py-2 hover:no-underline">
+                    <span className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-muted-foreground" /> Full script
+                    </span>
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <div className="pb-2">
+                      <SpeakerTranscript
+                        transcript={sharedDraft.transcript}
+                        maxHeight="24rem"
+                        words={scribeWords}
+                        onSeek={(start) => playerRef.current?.seek(start)}
+                      />
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+
 
       {/* Overall Score (deterministic, weighted) */}
       {(() => {
@@ -830,18 +806,6 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         </Card>
       )}
 
-      {/* Transcript (shared) */}
-      {sharedDraft.transcript && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-display text-lg">Transcript</CardTitle>
-            <CardDescription>AI-generated transcription with speaker labels</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <SpeakerTranscript transcript={sharedDraft.transcript} maxHeight="24rem" words={scribeWords} />
-          </CardContent>
-        </Card>
-      )}
 
       {/* Recommended Practice */}
       {(() => {

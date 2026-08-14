@@ -1,5 +1,4 @@
 import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 import type { PartFeedback } from "@/lib/partFeedback";
 import { getPartsForLevel } from "@/lib/partFeedback";
 import { toTextList } from "@/lib/toText";
@@ -39,293 +38,287 @@ const MUTED: [number, number, number] = [100, 116, 139];
 const SUCCESS: [number, number, number] = [5, 150, 105];
 const WARNING: [number, number, number] = [217, 119, 6];
 
+const NO_EVIDENCE = /^\s*(no evidence|not covered|n\/?a|insufficient)\b/i;
+const useful = (t?: string) => !!(t && t.trim().length > 2 && !NO_EVIDENCE.test(t));
+
+/** Short label for the marks strip: "Grammar and Vocabulary" → "Grammar & Voc." */
+function shortName(name: string): string {
+  return name
+    .replace(/\band\b/gi, "&")
+    .replace(/Management/i, "Mgmt")
+    .replace(/Vocabulary/i, "Voc.")
+    .replace(/Interactive Communication/i, "Interaction")
+    .replace(/Pronunciation/i, "Pron.")
+    .trim();
+}
+
+interface PartBlock {
+  heading: string;
+  /** Main feedback sentence(s). */
+  body: string;
+  /** Concrete next step. */
+  next?: string;
+}
+
 /**
- * Friendly student-facing PDF. Strips examiner notes, transcript and
- * confidence scores; rephrases tone in second person; keeps the score,
- * key takeaways and practice suggestions.
+ * Student-facing feedback on a single A4 page.
+ * Learning-oriented: organised by exam part, concrete evidence, what to do next.
+ * No transcript, no per-criterion breakdown inside each part.
+ * When content exceeds one page it is trimmed by priority
+ * (parts > strengths/areas > practice links) instead of spilling to page 2.
  */
 export function generateStudentPdf(input: StudentReportData): Blob | void {
-  // Guard against AI-provided objects rendering as "(object) (object)".
-  const data: StudentReportData = {
-    ...input,
-    strengths: toTextList(input.strengths),
-    areasForImprovement: toTextList(input.areasForImprovement),
-  };
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-  const pageW = doc.internal.pageSize.getWidth();
-  const margin = 18;
-  let y = margin;
+  const strengths = toTextList(input.strengths).filter(useful);
+  const improvements = toTextList(input.areasForImprovement).filter(useful);
 
-  // --- Header ---
-  doc.setFillColor(...BRAND);
-  doc.rect(0, 0, pageW, 28, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(18);
-  doc.setFont("helvetica", "bold");
-  doc.text("Your Speaking Feedback", margin, 13);
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  doc.text(`${data.levelCode} · ${data.language}`, margin, 19);
-  doc.text(data.date, pageW - margin, 19, { align: "right" });
-
-  y = 38;
-  doc.setTextColor(0, 0, 0);
-  doc.setFontSize(13);
-  doc.setFont("helvetica", "bold");
-  doc.text(`Hi ${data.candidateName || "there"},`, margin, y);
-  y += 6;
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(...MUTED);
-  const intro = doc.splitTextToSize(
-    `Here's a friendly summary of your recent ${data.title} speaking session. Use it to celebrate what's going well and to focus your practice on what will help you most.`,
-    pageW - margin * 2,
+  const levelParts = getPartsForLevel(input.levelCode);
+  const byLabel = new Map(
+    (input.partFeedback ?? [])
+      .filter((p) => !!p && typeof p.part === "string")
+      .map((p) => [p.part.trim().toLowerCase(), p])
   );
-  intro.forEach((line: string) => { doc.text(line, margin, y); y += 5; });
-  y += 4;
 
-  // --- Overall band ---
-  const boxH = 24;
-  doc.setFillColor(240, 245, 255);
-  doc.roundedRect(margin, y, pageW - margin * 2, boxH, 3, 3, "F");
-  doc.setFillColor(...BRAND);
-  doc.roundedRect(margin + 4, y + 3, 26, boxH - 6, 3, 3, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(18);
-  doc.setFont("helvetica", "bold");
-  doc.text(data.overallBand, margin + 17, y + boxH / 2 + 2, { align: "center" });
-
-  doc.setTextColor(0, 0, 0);
-  doc.setFontSize(12);
-  doc.text("Your overall band", margin + 36, y + 9);
-  doc.setFontSize(10);
-  doc.setTextColor(...MUTED);
-  doc.text(`Score: ${data.overallScore.toFixed(1)} / 5.0`, margin + 36, y + 16);
-  y += boxH + 8;
-
-  // --- Per-skill scores (no confidence, simpler labels) ---
-  if (data.criteria.length > 0) {
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    doc.text("How you did, skill by skill", margin, y);
-    y += 2;
-
-    autoTable(doc, {
-      startY: y,
-      margin: { left: margin, right: margin },
-      head: [["Skill", "Band"]],
-      body: data.criteria.map((c) => [c.name, `${c.score} / ${c.maxScore}`]),
-      headStyles: { fillColor: BRAND, fontSize: 9, fontStyle: "bold" },
-      bodyStyles: { fontSize: 9, cellPadding: 3 },
-      columnStyles: {
-        0: { cellWidth: "auto", fontStyle: "bold" },
-        1: { cellWidth: 30, halign: "center", fontStyle: "bold" },
-      },
+  const partBlocks: PartBlock[] = [];
+  for (const { part, title } of levelParts) {
+    const pf = byLabel.get(part.toLowerCase());
+    if (!pf) continue;
+    const pieces: string[] = [];
+    if (useful(pf.commentary)) pieces.push(pf.commentary!.trim());
+    // Fold the per-criterion notes into one flowing sentence list (no headings).
+    const cb = (pf.criteriaBreakdown ?? []).filter((c) => useful(c?.comment));
+    for (const c of cb) pieces.push(c.comment.trim());
+    const body = pieces.join(" ");
+    if (!body && !useful(pf.improvement)) continue;
+    partBlocks.push({
+      heading: [part, pf.title || title].filter(Boolean).join(" — "),
+      body,
+      next: useful(pf.improvement) ? pf.improvement!.trim() : undefined,
     });
-    y = (doc as any).lastAutoTable.finalY + 8;
   }
 
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = 14;
+  const contentW = pageW - margin * 2;
+  const bottomLimit = pageH - 14; // leave room for the footer
 
-  // --- Feedback by exam part (student-friendly) ---
-  const meaningfulParts = (data.partFeedback ?? []).filter((p) => {
-    const c = (p?.commentary ?? "").trim();
-    const hasBreakdown = Array.isArray(p?.criteriaBreakdown) && p!.criteriaBreakdown!.length > 0;
-    return !!(c || hasBreakdown);
-  });
+  /** Measure how tall a text block will be at a given size/width. */
+  const measure = (text: string, size: number, width: number, lh: number, style: "normal" | "bold" | "italic" = "normal") => {
+    doc.setFontSize(size);
+    doc.setFont("helvetica", style);
+    return doc.splitTextToSize(text, width).length * lh;
+  };
 
-  if (meaningfulParts.length > 0) {
-    const parts = getPartsForLevel(data.levelCode);
-    const byLabel = new Map(meaningfulParts.map((p) => [p.part.toLowerCase(), p]));
-    const contentW = pageW - margin * 2;
+  /** Trim a text to at most `maxLines` lines at the given width. */
+  const clamp = (text: string, size: number, width: number, maxLines: number, style: "normal" | "bold" | "italic" = "normal") => {
+    doc.setFontSize(size);
+    doc.setFont("helvetica", style);
+    const lines: string[] = doc.splitTextToSize(text, width);
+    if (lines.length <= maxLines) return text;
+    return lines.slice(0, maxLines).join(" ").replace(/[\s,;:.]+$/, "") + "…";
+  };
 
-    if (y > 240) { doc.addPage(); y = margin; }
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(12);
+  // ── Fitting pass ───────────────────────────────────────────────
+  // Progressively tighter layouts; the first one that fits is used.
+  const configs = [
+    { partLines: 4, listItems: 3, itemLines: 2, links: 3, showNext: true },
+    { partLines: 3, listItems: 3, itemLines: 2, links: 3, showNext: true },
+    { partLines: 3, listItems: 3, itemLines: 1, links: 2, showNext: true },
+    { partLines: 2, listItems: 2, itemLines: 1, links: 2, showNext: true },
+    { partLines: 2, listItems: 2, itemLines: 1, links: 1, showNext: false },
+    { partLines: 1, listItems: 2, itemLines: 1, links: 1, showNext: false },
+  ];
+
+  const halfW = (contentW - 6) / 2;
+  const HEADER_H = 26;
+  const MARKS_H = 12;
+
+  const planFor = (cfg: typeof configs[number]) => {
+    const parts = partBlocks.map((p) => ({
+      heading: p.heading,
+      body: p.body ? clamp(p.body, 8.5, contentW - 3, cfg.partLines) : "",
+      next: cfg.showNext && p.next ? clamp(p.next, 8, contentW - 8, 1) : undefined,
+    }));
+    const s = strengths.slice(0, cfg.listItems).map((t) => clamp(t, 8, halfW - 5, cfg.itemLines));
+    const i = improvements.slice(0, cfg.listItems).map((t) => clamp(t, 8, halfW - 5, cfg.itemLines));
+    const links = (input.practice ?? []).slice(0, cfg.links);
+
+    let h = HEADER_H + 6 + MARKS_H + 4;
+    if (parts.length > 0) {
+      h += 6; // section heading
+      for (const p of parts) {
+        h += 5.5; // part heading
+        if (p.body) h += measure(p.body, 8.5, contentW - 3, 4);
+        if (p.next) h += 5;
+        h += 2;
+      }
+    }
+    if (s.length > 0 || i.length > 0) {
+      h += 6;
+      const colH = (items: string[]) =>
+        items.reduce((acc, t) => acc + measure(`•  ${t}`, 8, halfW - 5, 4), 0);
+      h += Math.max(colH(s), colH(i)) + 2;
+    }
+    if (links.length > 0) {
+      h += 6 + links.length * 8;
+    }
+    return { parts, s, i, links, height: h };
+  };
+
+  let plan = planFor(configs[0]);
+  for (const cfg of configs) {
+    plan = planFor(cfg);
+    if (margin + plan.height <= bottomLimit) break;
+  }
+
+  // ── Drawing ────────────────────────────────────────────────────
+  let y = margin;
+
+  // Header band
+  doc.setFillColor(...BRAND);
+  doc.rect(0, 0, pageW, HEADER_H, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(15);
+  doc.setFont("helvetica", "bold");
+  doc.text(`${input.candidateName || "Your"} — Speaking Feedback`, margin, 11);
+  doc.setFontSize(8.5);
+  doc.setFont("helvetica", "normal");
+  doc.text(`${input.levelCode} · ${input.language} · ${input.date}`, margin, 17.5);
+
+  // Band chip on the right
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(pageW - margin - 34, 5, 34, 16, 2, 2, "F");
+  doc.setTextColor(...BRAND);
+  doc.setFontSize(13);
+  doc.setFont("helvetica", "bold");
+  doc.text(input.overallBand || "—", pageW - margin - 17, 12.5, { align: "center" });
+  doc.setFontSize(7.5);
+  doc.setFont("helvetica", "normal");
+  doc.text(`${input.overallScore.toFixed(1)} / 5.0`, pageW - margin - 17, 18, { align: "center" });
+
+  y = HEADER_H + 6;
+
+  // Compact marks strip
+  if (input.criteria.length > 0) {
+    doc.setDrawColor(225, 232, 240);
+    doc.setFillColor(246, 249, 255);
+    doc.roundedRect(margin, y, contentW, MARKS_H, 2, 2, "FD");
+    const cellW = contentW / input.criteria.length;
+    input.criteria.forEach((c, i) => {
+      const cx = margin + cellW * i + cellW / 2;
+      doc.setFontSize(6.8);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(...MUTED);
+      doc.text(shortName(c.name), cx, y + 4.6, { align: "center", maxWidth: cellW - 2 });
+      doc.setFontSize(9.5);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(...BRAND);
+      doc.text(`${c.score}/${c.maxScore}`, cx, y + 9.8, { align: "center" });
+    });
+    y += MARKS_H + 4;
+  }
+
+  // Feedback by part
+  if (plan.parts.length > 0) {
+    doc.setFontSize(10.5);
     doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
     doc.text("Your feedback, part by part", margin, y);
     y += 6;
 
-    for (const { part, title } of parts) {
-      const pf = byLabel.get(part.toLowerCase());
-      if (!pf) continue;
-
-      if (y > 260) { doc.addPage(); y = margin; }
-
-      // Friendly heading
-      doc.setFillColor(...BRAND);
-      doc.roundedRect(margin, y, contentW, 7, 1.5, 1.5, "F");
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(10);
+    for (const p of plan.parts) {
+      doc.setFontSize(9);
       doc.setFont("helvetica", "bold");
-      doc.text(`In ${part} — ${pf.title || title}`, margin + 3, y + 5);
-      y += 10;
+      doc.setTextColor(...BRAND);
+      doc.text(p.heading, margin, y);
+      y += 4.5;
 
-      if (pf.commentary && pf.commentary.trim()) {
-        doc.setTextColor(0, 0, 0);
-        doc.setFont("helvetica", "italic");
-        doc.setFontSize(9);
-        const cLines = doc.splitTextToSize(pf.commentary.trim(), contentW);
-        cLines.forEach((line: string) => {
-          if (y > 275) { doc.addPage(); y = margin; }
-          doc.text(line, margin, y);
+      if (p.body) {
+        doc.setFontSize(8.5);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(20, 20, 20);
+        doc.splitTextToSize(p.body, contentW - 3).forEach((line: string) => {
+          doc.text(line, margin + 3, y);
           y += 4;
         });
-        y += 2;
       }
 
-      if (Array.isArray(pf.criteriaBreakdown) && pf.criteriaBreakdown.length > 0) {
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(9);
-        for (const cb of pf.criteriaBreakdown) {
-          if (y > 272) { doc.addPage(); y = margin; }
-          const labelWidth = 55;
-          doc.setFont("helvetica", "bold");
-          doc.setTextColor(...BRAND);
-          doc.text(`• ${cb.criterion}:`, margin + 2, y);
-          doc.setFont("helvetica", "normal");
-          doc.setTextColor(0, 0, 0);
-          const commentLines = doc.splitTextToSize(cb.comment || "—", contentW - labelWidth - 4);
-          commentLines.forEach((line: string, i: number) => {
-            if (y > 275) { doc.addPage(); y = margin; }
-            doc.text(line, margin + 2 + labelWidth, y);
-            if (i < commentLines.length - 1) y += 4;
-          });
-          y += 4.5;
-        }
-      }
-
-      if (pf.improvement && pf.improvement.trim()) {
-        if (y > 268) { doc.addPage(); y = margin; }
-        doc.setFillColor(255, 247, 230);
-        doc.setDrawColor(...WARNING);
-        const impLines = doc.splitTextToSize(`Try this next: ${pf.improvement.trim()}`, contentW - 6);
-        const boxH = impLines.length * 4 + 4;
-        doc.roundedRect(margin, y, contentW, boxH, 1.5, 1.5, "FD");
+      if (p.next) {
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "bolditalic");
         doc.setTextColor(...WARNING);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(9);
-        let ty = y + 4;
-        impLines.forEach((line: string, i: number) => {
-          if (i === 0) {
-            doc.setFont("helvetica", "bold");
-          } else {
-            doc.setFont("helvetica", "normal");
-            doc.setTextColor(80, 60, 20);
-          }
-          doc.text(line, margin + 3, ty);
-          ty += 4;
-        });
-        y += boxH + 3;
+        doc.text(`Try this next: ${p.next}`, margin + 3, y + 0.5, { maxWidth: contentW - 8 });
+        y += 5;
       }
-
-      y += 3;
+      y += 2;
     }
+  }
 
-    if (data.overallSummary && data.overallSummary.trim()) {
-      if (y > 245) { doc.addPage(); y = margin; }
-      doc.setTextColor(0, 0, 0);
-      doc.setFontSize(11);
-      doc.setFont("helvetica", "bold");
-      doc.text("The big picture", margin, y);
-      y += 5;
-      doc.setFontSize(9);
+  // Strengths / Areas in two columns
+  if (plan.s.length > 0 || plan.i.length > 0) {
+    doc.setFontSize(9.5);
+    doc.setFont("helvetica", "bold");
+    if (plan.s.length > 0) {
+      doc.setTextColor(...SUCCESS);
+      doc.text("What you did well", margin, y);
+    }
+    if (plan.i.length > 0) {
+      doc.setTextColor(...WARNING);
+      doc.text("What to practise next", margin + halfW + 6, y);
+    }
+    const listTop = y + 5;
+
+    const drawCol = (items: string[], x: number) => {
+      let cy = listTop;
+      doc.setFontSize(8);
       doc.setFont("helvetica", "normal");
-      const sLines = doc.splitTextToSize(data.overallSummary.trim(), pageW - margin * 2);
-      sLines.forEach((line: string) => {
-        if (y > 275) { doc.addPage(); y = margin; }
-        doc.text(line, margin, y);
-        y += 4;
-      });
-      y += 4;
-    }
+      doc.setTextColor(20, 20, 20);
+      for (const t of items) {
+        doc.splitTextToSize(`•  ${t}`, halfW - 5).forEach((line: string) => {
+          doc.text(line, x, cy);
+          cy += 4;
+        });
+      }
+      return cy;
+    };
+    const leftEnd = drawCol(plan.s, margin + 2);
+    const rightEnd = drawCol(plan.i, margin + halfW + 8);
+    y = Math.max(leftEnd, rightEnd) + 2;
   }
 
-  // --- What you did well ---
-  if (data.strengths.length > 0) {
-    if (y > 240) { doc.addPage(); y = margin; }
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(...SUCCESS);
-    doc.text("What you did well", margin, y);
-    y += 5;
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(0, 0, 0);
-    data.strengths.forEach((s) => {
-      const text = `•  ${s}`;
-      const lines = doc.splitTextToSize(text, pageW - margin * 2 - 4);
-      lines.forEach((line: string) => {
-        if (y > 275) { doc.addPage(); y = margin; }
-        doc.text(line, margin + 2, y);
-        y += 4.5;
-      });
-    });
-    y += 4;
-  }
-
-  // --- What to practise next ---
-  if (data.areasForImprovement.length > 0) {
-    if (y > 240) { doc.addPage(); y = margin; }
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(...WARNING);
-    doc.text("What to practise next", margin, y);
-    y += 5;
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(0, 0, 0);
-    data.areasForImprovement.forEach((a) => {
-      const text = `•  ${a}`;
-      const lines = doc.splitTextToSize(text, pageW - margin * 2 - 4);
-      lines.forEach((line: string) => {
-        if (y > 275) { doc.addPage(); y = margin; }
-        doc.text(line, margin + 2, y);
-        y += 4.5;
-      });
-    });
-    y += 4;
-  }
-
-  // --- Practice links ---
-  if (data.practice && data.practice.length > 0) {
-    if (y > 250) { doc.addPage(); y = margin; }
-    doc.setFontSize(11);
+  // Practice links
+  if (plan.links.length > 0) {
+    doc.setFontSize(9.5);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(...BRAND);
-    doc.text("Try these to keep improving", margin, y);
+    doc.text("Keep improving with these", margin, y);
     y += 5;
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(...MUTED);
-    data.practice.forEach((p) => {
-      if (y > 275) { doc.addPage(); y = margin; }
-      doc.setTextColor(0, 0, 0);
+    doc.setFontSize(8);
+    for (const p of plan.links) {
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(20, 20, 20);
       doc.text(`•  ${p.title}`, margin + 2, y);
-      y += 4;
+      y += 3.8;
       doc.setTextColor(...BRAND);
       doc.textWithLink(`   ${p.url}`, margin + 2, y, { url: p.url });
-      y += 5;
-    });
+      y += 4.2;
+    }
   }
 
-  // --- Footer ---
-  const totalPages = doc.getNumberOfPages();
-  for (let p = 1; p <= totalPages; p++) {
-    doc.setPage(p);
-    doc.setFontSize(7);
-    doc.setTextColor(...MUTED);
-    doc.text(
-      "© 2026 OralAssess AI · Student feedback summary · Discuss with your teacher for full details.",
-      pageW / 2,
-      doc.internal.pageSize.getHeight() - 8,
-      { align: "center" }
-    );
-    doc.text(`${p} / ${totalPages}`, pageW - margin, doc.internal.pageSize.getHeight() - 8, { align: "right" });
-  }
+  // Footer
+  doc.setFontSize(6.8);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(...MUTED);
+  doc.text(
+    "© 2026 OralAssess AI · Student feedback summary · Discuss with your teacher for full details.",
+    pageW / 2,
+    pageH - 8,
+    { align: "center" }
+  );
 
-  const safeName = (data.candidateName || "student").replace(/\s+/g, "_");
-  const filename = `Student_Feedback_${safeName}_${data.date.replace(/\//g, "-")}.pdf`;
+  const safeName = (input.candidateName || "student").replace(/\s+/g, "_");
+  const filename = `Student_Feedback_${safeName}_${input.date.replace(/\//g, "-")}.pdf`;
   if (input.output === "blob") {
     return doc.output("blob") as Blob;
   }
@@ -337,5 +330,3 @@ export function generateStudentPdf(input: StudentReportData): Blob | void {
   }
   doc.save(filename);
 }
-
-

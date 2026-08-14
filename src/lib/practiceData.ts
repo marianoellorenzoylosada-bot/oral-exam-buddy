@@ -53,38 +53,124 @@ export const PRACTICE_LINKS: PracticeLink[] = [
   { level: "C2", skill: "Interaction", title: "Debate & Persuasion", url: "https://www.bbc.co.uk/learningenglish/english/features/english-at-work", source: "BBC Learning English" },
 ];
 
-/** Given criteria scores and a CEFR level, return the top N recommended links for the weakest skills. */
+// ── Need-specific resources ──
+// Matched against the language of the "areas for improvement" so the links
+// target the actual weakness, not just the lowest-scoring criterion.
+interface NeedRule {
+  /** Keywords found in examiner/AI feedback. */
+  match: RegExp;
+  skill: string;
+  links: { title: string; url: string; source: PracticeLink["source"] }[];
+}
+
+const NEED_RULES: NeedRule[] = [
+  {
+    match: /\b(tense|past simple|present perfect|conditional|verb form|agreement|article|preposition)\b/i,
+    skill: "Grammar accuracy",
+    links: [
+      { title: "Grammar practice by level", url: "https://learnenglish.britishcouncil.org/grammar", source: "British Council" },
+      { title: "English Grammar in Use — practice", url: "https://www.cambridgeenglish.org/learning-english/activities-for-learners/", source: "Cambridge" },
+    ],
+  },
+  {
+    match: /\b(collocation|word combination|natural expression|phrasal verb|idiom)\b/i,
+    skill: "Collocations & natural language",
+    links: [
+      { title: "The English We Speak (idioms & collocations)", url: "https://www.bbc.co.uk/learningenglish/english/features/the-english-we-speak", source: "BBC Learning English" },
+      { title: "Vocabulary activities for learners", url: "https://www.cambridgeenglish.org/learning-english/activities-for-learners/", source: "Cambridge" },
+    ],
+  },
+  {
+    match: /\b(vocabulary|lexical|word choice|range of words|repetiti)\w*/i,
+    skill: "Vocabulary range",
+    links: [
+      { title: "Vocabulary by level", url: "https://learnenglish.britishcouncil.org/vocabulary", source: "British Council" },
+      { title: "6 Minute Vocabulary", url: "https://www.bbc.co.uk/learningenglish/english/features/6-minute-english", source: "BBC Learning English" },
+    ],
+  },
+  {
+    match: /\b(discourse|linker|cohesion|organis|organiz|connector|structure of the answer|extend)\w*/i,
+    skill: "Discourse management",
+    links: [
+      { title: "Speaking: organising your ideas", url: "https://learnenglish.britishcouncil.org/skills/speaking", source: "British Council" },
+      { title: "Linking words and discourse markers", url: "https://www.bbc.co.uk/learningenglish/english/features/6-minute-grammar", source: "BBC Learning English" },
+    ],
+  },
+  {
+    match: /\b(pronunciation|stress|intonation|sound|accent|unclear speech)\b/i,
+    skill: "Pronunciation",
+    links: [
+      { title: "Tim's Pronunciation Workshop", url: "https://www.bbc.co.uk/learningenglish/english/features/pronunciation", source: "BBC Learning English" },
+      { title: "Pronunciation practice", url: "https://learnenglish.britishcouncil.org/pronunciation", source: "British Council" },
+    ],
+  },
+  {
+    match: /\b(interact|turn|initiat|respond|collaborat|negotiat|partner)\w*/i,
+    skill: "Interactive communication",
+    links: [
+      { title: "Speaking: taking part in a discussion", url: "https://learnenglish.britishcouncil.org/skills/speaking", source: "British Council" },
+      { title: "Speaking exam preparation activities", url: "https://www.cambridgeenglish.org/learning-english/exam-preparation/", source: "Cambridge" },
+    ],
+  },
+  {
+    match: /\b(fluen|hesitat|pause|pace|slow)\w*/i,
+    skill: "Fluency",
+    links: [
+      { title: "Speaking fluency practice", url: "https://learnenglish.britishcouncil.org/skills/speaking", source: "British Council" },
+      { title: "6 Minute English", url: "https://www.bbc.co.uk/learningenglish/english/features/6-minute-english", source: "BBC Learning English" },
+    ],
+  },
+];
+
+/**
+ * Recommended practice links.
+ * Prefers resources matched to the detected weaknesses (`needs`, e.g. the
+ * areas-for-improvement text); falls back to the weakest criteria and finally
+ * to level-generic links.
+ */
 export function getRecommendations(
   criteria: { name: string; score: number; maxScore: number }[],
   level: string,
-  count = 2
+  count = 2,
+  needs: string[] = []
 ): PracticeLink[] {
-  // Sort criteria by percentage (lowest first)
-  const sorted = [...criteria].sort((a, b) => (a.score / a.maxScore) - (b.score / b.maxScore));
-  const weakest = sorted.slice(0, count);
-
   // Normalize level (strip "diagnostic" → default to B1)
   const normalizedLevel = ["A1", "A2", "B1", "B2", "C1", "C2"].includes(level) ? level : "B1";
-
   const results: PracticeLink[] = [];
-  for (const w of weakest) {
-    // Find a matching link by skill name substring
-    const match = PRACTICE_LINKS.find(
-      (l) => l.level === normalizedLevel && w.name.toLowerCase().includes(l.skill.toLowerCase().split(" ")[0].toLowerCase())
-    );
-    if (match && !results.find((r) => r.url === match.url)) {
-      results.push(match);
+  const push = (l: PracticeLink) => {
+    if (results.length < count && !results.some((r) => r.url === l.url)) results.push(l);
+  };
+
+  // 1) Needs detected in the feedback text.
+  const needText = needs.join(" \n ");
+  if (needText.trim()) {
+    for (const rule of NEED_RULES) {
+      if (results.length >= count) break;
+      if (!rule.match.test(needText)) continue;
+      const link = rule.links[0];
+      push({ ...link, skill: rule.skill, level: normalizedLevel });
     }
   }
 
-  // If we didn't find enough, pad with generic links for the level
-  if (results.length < count) {
-    for (const link of PRACTICE_LINKS.filter((l) => l.level === normalizedLevel)) {
-      if (!results.find((r) => r.url === link.url)) {
-        results.push(link);
-        if (results.length >= count) break;
-      }
+  // 2) Weakest criteria by score.
+  const sorted = [...criteria].sort((a, b) => a.score / a.maxScore - b.score / b.maxScore);
+  for (const w of sorted) {
+    if (results.length >= count) break;
+    const rule = NEED_RULES.find((r) => r.match.test(w.name));
+    if (rule) {
+      push({ ...rule.links[0], skill: rule.skill, level: normalizedLevel });
+      continue;
     }
+    const match = PRACTICE_LINKS.find(
+      (l) => l.level === normalizedLevel && w.name.toLowerCase().includes(l.skill.toLowerCase().split(" ")[0])
+    );
+    if (match) push(match);
+  }
+
+  // 3) Pad with level-generic links.
+  for (const link of PRACTICE_LINKS.filter((l) => l.level === normalizedLevel)) {
+    if (results.length >= count) break;
+    push(link);
   }
 
   return results.slice(0, count);
