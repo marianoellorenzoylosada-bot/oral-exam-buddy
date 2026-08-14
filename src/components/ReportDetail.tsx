@@ -197,6 +197,11 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
     overallSummary: displayedOverallSummary,
   };
 
+  // Single source of truth: the on-screen report and the teacher PDF are both
+  // rendered from this model, so they can never show different content.
+  const teacherModel = buildTeacherReportModel(teacherPdfData);
+
+
   const studentPdfData = {
     title: exam.title,
     candidateName: anonymize ? "Student" : (exam.candidate_name || "Student"),
