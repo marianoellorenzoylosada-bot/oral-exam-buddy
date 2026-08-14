@@ -97,7 +97,7 @@ const NEED_RULES: NeedRule[] = [
     ],
   },
   {
-    match: /\b(pronunciation|stress|intonation|sound|/?accent|unclear speech)\b/i,
+    match: /\b(pronunciation|stress|intonation|sound|accent|unclear speech)\b/i,
     skill: "Pronunciation",
     links: [
       { title: "Tim's Pronunciation Workshop", url: "https://www.bbc.co.uk/learningenglish/english/features/pronunciation", source: "BBC Learning English" },
