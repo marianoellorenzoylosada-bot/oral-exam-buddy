@@ -750,15 +750,12 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
           </DialogContent>
         </Dialog>
 
-        {/* Per-part feedback (only when stored on the report). */}
-        {Array.isArray(displayedPartFeedback) && hasPartFeedbackContent(
-          displayedPartFeedback as PartFeedback[],
-          displayedOverallSummary
-        ) ? (
-          <PartFeedbackSection
-            levelCode={exam.level_code}
-            partFeedback={displayedPartFeedback as PartFeedback[]}
-            overallSummary={displayedOverallSummary}
+        {/* Part → relevant criteria → evidence (same model as the teacher PDF). */}
+        {!teacherModel.criteriaOnly || teacherModel.overallSummary ? (
+          <TeacherPartsSection
+            model={teacherModel}
+            words={words}
+            onSeek={audioUrl && !audioGone ? seekAudio : undefined}
           />
         ) : (
           <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 space-y-2">
@@ -777,6 +774,7 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
             </Button>
           </div>
         )}
+
 
 
         {/* Strengths & Improvements */}
