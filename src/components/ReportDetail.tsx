@@ -648,10 +648,12 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
 
 
 
-        {/* Criteria */}
+        {/* Marks — compact table. The narrative lives inside each exam part below. */}
         {criteria.length > 0 && (
           <div className="space-y-3">
-            <h3 className="font-display font-semibold text-sm">Assessment Criteria</h3>
+            <h3 className="font-display font-semibold text-sm">
+              {teacherModel.criteriaOnly ? "Assessment Criteria" : "Marks"}
+            </h3>
             {criteria.map((c, i) => {
               const pct = (c.score / c.maxScore) * 100;
               return (
@@ -682,10 +684,14 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
                     </span>
                   </div>
                   <Progress value={pct} className="h-2 mb-1" />
-                  <p className="text-xs text-muted-foreground">
-                    <QuotedAudio text={c.feedback} words={words} onSeek={audioUrl && !audioGone ? seekAudio : undefined} />
-                  </p>
-                  {i < criteria.length - 1 && <Separator className="mt-3" />}
+                  {teacherModel.criteriaOnly && (
+                    <>
+                      <p className="text-xs text-muted-foreground">
+                        <QuotedAudio text={c.feedback} words={words} onSeek={audioUrl && !audioGone ? seekAudio : undefined} />
+                      </p>
+                      {i < criteria.length - 1 && <Separator className="mt-3" />}
+                    </>
+                  )}
                 </div>
               );
             })}
@@ -702,6 +708,7 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
             )}
           </div>
         )}
+
 
         <Dialog open={approveOpen} onOpenChange={setApproveOpen}>
           <DialogContent>
