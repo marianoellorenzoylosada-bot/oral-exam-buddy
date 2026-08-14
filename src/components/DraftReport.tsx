@@ -438,10 +438,13 @@ export function DraftReport({ result, level, levelCode, language, institution, g
       });
       toast({ title: `Report confirmed for ${candidateName}`, description: "Saved to your records." });
 
-      // Auto-advance to next unconfirmed candidate
+      // Auto-advance to next unconfirmed candidate; when the whole attempt is
+      // signed, hand control back to the exam queue.
       const nextUnconfirmed = officialStatus.findIndex((v, i) => i !== activeCandidate && !v);
       if (nextUnconfirmed >= 0) {
         setActiveCandidate(nextUnconfirmed);
+      } else if (sessionId) {
+        navigate("/speaking-session");
       }
     } catch (err: any) {
       console.error("Save error:", err);
@@ -542,6 +545,50 @@ export function DraftReport({ result, level, levelCode, language, institution, g
           <span className="font-medium">Draft — Scores and feedback are editable for {draft.candidateName || candidateNames[activeCandidate]}. Click "Confirm &amp; Sign" when ready.</span>
         </div>
       )}
+
+      {/* Audit tools: listen to the recording and read the full script while reviewing. */}
+      {(uploadedPath || audioPath || audioBlob || sharedDraft.transcript) && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="font-display text-lg flex items-center gap-2">
+              <Volume2 className="h-5 w-5 text-primary" /> Evidence
+            </CardTitle>
+            <CardDescription>
+              Listen to any moment and check the script before approving. Click a line to jump to that point.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <AttemptAudioPlayer
+              ref={playerRef}
+              audioPath={uploadedPath || audioPath || null}
+              localBlob={audioBlob ?? null}
+            />
+            {sharedDraft.transcript && (
+              <Accordion type="single" collapsible defaultValue="script">
+                <AccordionItem value="script" className="border rounded-lg px-3">
+                  <AccordionTrigger className="text-sm font-display py-2 hover:no-underline">
+                    <span className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-muted-foreground" /> Full script
+                    </span>
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <div className="pb-2">
+                      <SpeakerTranscript
+                        transcript={sharedDraft.transcript}
+                        maxHeight="24rem"
+                        words={scribeWords}
+                        onSeek={(start) => playerRef.current?.seek(start)}
+                      />
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+
 
       {/* Overall Score (deterministic, weighted) */}
       {(() => {
@@ -758,18 +805,6 @@ export function DraftReport({ result, level, levelCode, language, institution, g
         </Card>
       )}
 
-      {/* Transcript (shared) */}
-      {sharedDraft.transcript && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-display text-lg">Transcript</CardTitle>
-            <CardDescription>AI-generated transcription with speaker labels</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <SpeakerTranscript transcript={sharedDraft.transcript} maxHeight="24rem" words={scribeWords} />
-          </CardContent>
-        </Card>
-      )}
 
       {/* Recommended Practice */}
       {(() => {
