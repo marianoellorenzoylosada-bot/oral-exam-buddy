@@ -86,7 +86,7 @@ export const AttemptAudioPlayer = forwardRef<AttemptAudioPlayerHandle, Props>(
         cancelled = true;
         if (objectUrl) URL.revokeObjectURL(objectUrl);
       };
-    }, [audioPath]);
+    }, [audioPath, localBlob]);
 
     useImperativeHandle(ref, () => ({
       seek: (seconds: number) => {
@@ -115,7 +115,7 @@ export const AttemptAudioPlayer = forwardRef<AttemptAudioPlayerHandle, Props>(
       el.currentTime = Math.min(Math.max(0, el.currentTime + delta), duration || el.currentTime + delta);
     };
 
-    if (!audioPath) return null;
+    if (!audioPath && !localBlob) return null;
 
     return (
       <div className="rounded-md border bg-muted/20 p-2.5 space-y-2">
