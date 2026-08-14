@@ -18,6 +18,8 @@ function fmt(s: number) {
 
 interface Props {
   audioPath: string | null;
+  /** Not-yet-uploaded recording (used in the draft review before signing). */
+  localBlob?: Blob | null;
 }
 
 /**
