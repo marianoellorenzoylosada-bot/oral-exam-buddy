@@ -437,6 +437,7 @@ PRIORITY RULES (read carefully):
 
 IMPORTANT:
 - In "strengths" and "areasForImprovement", quote the candidate VERBATIM using straight double quotes (e.g. "I have went to the park yesterday"). Each item must contain at least one verbatim quote followed by a brief comment.
+- CONTEXTUAL QUOTES: every verbatim quote (in strengths, areasForImprovement, criterion feedback and per-part commentary) must include 3–4 words of the candidate's own surrounding context BEFORE and AFTER the key evidence, so the quote can be located and understood in the recording. Quote a full natural stretch of speech (e.g. "and then I have went to the park yesterday with my cousin") rather than an isolated fragment ("have went"). Keep the words exactly as transcribed; never paraphrase inside the quotation marks.
 - Identify each speaker. The Examiner is the teacher; assess only the candidates.
 - Score each candidate INDEPENDENTLY on the 5 Cambridge criteria below.
 - Use the 0–5 scale in 0.5 increments. Half-bands are valid (e.g. 2.5, 3.5, 4.5).
