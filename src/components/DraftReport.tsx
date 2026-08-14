@@ -548,7 +548,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
       )}
 
       {/* Audit tools: listen to the recording and read the full script while reviewing. */}
-      {(uploadedPath || audioPath || audioBlob || sharedDraft.transcript) && (
+      {(audioStoragePath || audioPath || audioBlob || sharedDraft.transcript) && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="font-display text-lg flex items-center gap-2">
@@ -561,7 +561,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
           <CardContent className="space-y-3">
             <AttemptAudioPlayer
               ref={playerRef}
-              audioPath={uploadedPath || audioPath || null}
+              audioPath={audioStoragePath || audioPath || null}
               localBlob={audioBlob ?? null}
             />
             {sharedDraft.transcript && (
