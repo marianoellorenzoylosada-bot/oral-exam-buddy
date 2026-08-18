@@ -37,6 +37,7 @@ import { useRoles } from "@/hooks/useRoles";
 import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { SpeakerTranscript } from "@/components/SpeakerTranscript";
+import { SpeakerReviewPanel } from "@/components/SpeakerReviewPanel";
 import { QuotedAudio, type ScribeWord } from "@/components/QuotedAudio";
 import { computeWeightedSpeakingScore } from "@/lib/speakingScore";
 import { createShareablePdfLink, buildShareMessage, openWhatsAppShare, openEmailShare } from "@/lib/shareReport";
@@ -71,6 +72,8 @@ export type Exam = {
   previous_analyses?: any;
   regrade_count?: number | null;
   speaker_map?: any;
+  split_points?: any;
+  speaker_overrides?: any;
   part_feedback?: any;
   overall_summary?: string | null;
   confirmed_at?: string | null;
@@ -126,6 +129,10 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
   const previousAnalyses: any[] = Array.isArray(exam.previous_analyses) ? exam.previous_analyses : [];
 
   const [audioUnavailable, setAudioUnavailable] = useState(false);
+  const [fixSpeakersOpen, setFixSpeakersOpen] = useState(false);
+  const [correctedSpeakers, setCorrectedSpeakers] = useState<
+    { map: any; splitPoints: number[]; overrides: Record<number, string> } | null
+  >(null);
 
   useEffect(() => {
     const path = exam.audio_path ?? `${exam.id}.wav`;
@@ -373,6 +380,9 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
           overall_summary: typeof first.overallSummary === "string" ? first.overallSummary : null,
           revision: (exam.revision ?? 0) + 1,
           revision_reason: correctionReason.trim(),
+          speaker_map: (correctedSpeakers?.map ?? exam.speaker_map ?? null) as any,
+          split_points: (correctedSpeakers?.splitPoints ?? exam.split_points ?? []) as any,
+          speaker_overrides: (correctedSpeakers?.overrides ?? exam.speaker_overrides ?? {}) as any,
         });
         if (insertErr) throw insertErr;
         toast({ title: "Corrected version created", description: "The original report remains unchanged and the new version is in your records." });
@@ -407,6 +417,13 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
               ? (first.partFeedback as any)
               : null,
             overall_summary: typeof first.overallSummary === "string" ? first.overallSummary : null,
+            ...(correctedSpeakers
+              ? {
+                  speaker_map: correctedSpeakers.map as any,
+                  split_points: correctedSpeakers.splitPoints as any,
+                  speaker_overrides: correctedSpeakers.overrides as any,
+                }
+              : {}),
           })
           .eq("id", exam.id);
         if (updErr) throw updErr;
@@ -414,6 +431,7 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
       }
 
       setRegradeOpen(false);
+      setCorrectedSpeakers(null);
       setExtraObservation("");
       setCorrectionReason("");
       queryClient.invalidateQueries({ queryKey: ["exams-reports"] });
@@ -864,6 +882,45 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
               </AccordionContent>
             </AccordionItem>
           </Accordion>
+        )}
+
+        {/* Correct script attribution (needs the diarized word timeline). */}
+        {words.length > 0 && (
+          <div className="rounded-lg border p-3 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-display font-semibold">Script attribution</p>
+                <p className="text-xs text-muted-foreground">
+                  If a turn mixes two voices or is assigned to the wrong speaker, fix it here and
+                  re-analyze with the corrected script.
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setFixSpeakersOpen((v) => !v)} className="gap-2">
+                <Users className="h-4 w-4" /> {fixSpeakersOpen ? "Hide" : "Correct attribution"}
+              </Button>
+            </div>
+            {fixSpeakersOpen && (
+              <SpeakerReviewPanel
+                words={words}
+                initialMap={exam.speaker_map ?? null}
+                suggestedMap={exam.speaker_map ?? null}
+                initialSplitPoints={(exam.split_points ?? null) as any}
+                initialOverrides={(exam.speaker_overrides ?? null) as any}
+                onSeek={audioUrl && !audioGone ? seekAudio : undefined}
+                onConfirm={(map, transcript, edits) => {
+                  setEditTranscript(transcript);
+                  setEditNotes(exam.examiner_notes ?? "");
+                  setCorrectedSpeakers({ map, ...edits });
+                  setFixSpeakersOpen(false);
+                  setRegradeOpen(true);
+                  toast({
+                    title: "Corrected script ready",
+                    description: "Review the reason and run the analysis to apply it.",
+                  });
+                }}
+              />
+            )}
+          </div>
         )}
 
 
