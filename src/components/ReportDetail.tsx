@@ -22,7 +22,7 @@ import {
 import {
   Printer, CheckCircle2, AlertTriangle, ShieldCheck, BookOpen,
   ExternalLink, Download, Trash2, EyeOff, Volume2, Info, Clock, GraduationCap,
-  RefreshCw, History, Loader2, Share2, MessageCircle, Mail, Copy, FileText,
+  RefreshCw, History, Loader2, Share2, MessageCircle, Mail, Copy, FileText, Users,
 
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
