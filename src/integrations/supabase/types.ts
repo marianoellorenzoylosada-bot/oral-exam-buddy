@@ -129,6 +129,8 @@ export type Database = {
           revision_reason: string | null
           session_id: string | null
           speaker_map: Json | null
+          speaker_overrides: Json
+          split_points: Json
           status: string
           strengths: Json
           title: string
@@ -166,6 +168,8 @@ export type Database = {
           revision_reason?: string | null
           session_id?: string | null
           speaker_map?: Json | null
+          speaker_overrides?: Json
+          split_points?: Json
           status?: string
           strengths?: Json
           title: string
@@ -203,6 +207,8 @@ export type Database = {
           revision_reason?: string | null
           session_id?: string | null
           speaker_map?: Json | null
+          speaker_overrides?: Json
+          split_points?: Json
           status?: string
           strengths?: Json
           title?: string
@@ -305,6 +311,8 @@ export type Database = {
           recorded_at: string
           session_id: string
           speaker_map: Json | null
+          speaker_overrides: Json
+          split_points: Json
           status: string
           transcript: string
           transcription_mode: Database["public"]["Enums"]["transcription_mode"]
@@ -324,6 +332,8 @@ export type Database = {
           recorded_at?: string
           session_id: string
           speaker_map?: Json | null
+          speaker_overrides?: Json
+          split_points?: Json
           status?: string
           transcript?: string
           transcription_mode?: Database["public"]["Enums"]["transcription_mode"]
@@ -343,6 +353,8 @@ export type Database = {
           recorded_at?: string
           session_id?: string
           speaker_map?: Json | null
+          speaker_overrides?: Json
+          split_points?: Json
           status?: string
           transcript?: string
           transcription_mode?: Database["public"]["Enums"]["transcription_mode"]
