@@ -81,50 +81,85 @@ export function speakerStats(words: ScribeWord[] | undefined | null): SpeakerSta
     .sort((a, b) => a.firstStart - b.firstStart);
 }
 
-/** One grouped intervention (consecutive words of the same diarized speaker). */
-export interface Utterance {
-  /** Stable index in the utterance list. */
+/** One token of an utterance, with its index in the original word array. */
+export interface UtteranceToken {
   index: number;
-  /** Diarized speaker id from Scribe. */
-  speakerId: string;
   text: string;
   start: number;
   end: number;
 }
 
-/** Group the word timeline into utterances, preserving the original text. */
-export function buildUtterances(words: ScribeWord[] | undefined | null): Utterance[] {
+/** One grouped intervention (consecutive words of the same diarized speaker). */
+export interface Utterance {
+  /** Position in the utterance list (changes when turns are split). */
+  index: number;
+  /** Index of the first word in the original word array — stable identity. */
+  startWord: number;
+  /** Diarized speaker id from Scribe. */
+  speakerId: string;
+  text: string;
+  start: number;
+  end: number;
+  /** Words of this turn, for split-at-word editing. */
+  tokens: UtteranceToken[];
+  /** True when this turn starts at a manual split point. */
+  manualStart?: boolean;
+}
+
+/**
+ * Group the word timeline into utterances, preserving the original text.
+ * `splitPoints` holds word indices that must force the start of a new turn,
+ * letting the examiner cut a turn that actually mixes two voices.
+ */
+export function buildUtterances(
+  words: ScribeWord[] | undefined | null,
+  splitPoints?: Iterable<number> | null
+): Utterance[] {
   if (!words || words.length === 0) return [];
+  const splits = new Set<number>(splitPoints ?? []);
   const out: Utterance[] = [];
-  for (const w of words) {
+  words.forEach((w, wi) => {
     const sp = (w.speaker ?? "").toString();
-    if (!sp) continue;
+    if (!sp) return;
     const t = (w.text ?? "").trim();
-    if (!t) continue;
+    if (!t) return;
+    const token: UtteranceToken = {
+      index: wi,
+      text: t,
+      start: w.start ?? 0,
+      end: w.end ?? w.start ?? 0,
+    };
     const last = out[out.length - 1];
-    if (last && last.speakerId === sp) {
+    if (last && last.speakerId === sp && !splits.has(wi)) {
       last.text += (/^[.,!?;:]/.test(t) ? "" : " ") + t;
-      last.end = w.end ?? last.end;
+      last.end = token.end;
+      last.tokens.push(token);
     } else {
       out.push({
         index: out.length,
+        startWord: wi,
         speakerId: sp,
         text: t,
-        start: w.start ?? 0,
-        end: w.end ?? w.start ?? 0,
+        start: token.start,
+        end: token.end,
+        tokens: [token],
+        manualStart: splits.has(wi),
       });
     }
-  }
+  });
   return out;
 }
 
-/** Resolve the role of an utterance: per-line override wins over the global map. */
+/**
+ * Resolve the role of an utterance: per-line override wins over the global map.
+ * Overrides are keyed by `startWord` so they survive splitting and merging.
+ */
 export function roleForUtterance(
   u: Utterance,
   map: SpeakerMap,
   overrides?: Record<number, SpeakerRole>
 ): SpeakerRole {
-  return overrides?.[u.index] ?? map[u.speakerId] ?? "Speaker unclear";
+  return overrides?.[u.startWord] ?? map[u.speakerId] ?? "Speaker unclear";
 }
 
 /**
@@ -146,3 +181,4 @@ export function applyUtteranceRoles(
   }
   return merged.map((m) => `${m.role}: ${m.text.trim()}`).join("\n");
 }
+
