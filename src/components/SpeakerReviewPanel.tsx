@@ -5,7 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Play, Users, CheckCircle2, Loader2 } from "lucide-react";
+import { Play, Users, CheckCircle2, Loader2, Scissors, Undo2, X } from "lucide-react";
 import {
   applyUtteranceRoles, buildUtterances, roleForUtterance, speakerStats,
   type SpeakerMap, type SpeakerRole,
@@ -37,18 +37,34 @@ interface Props {
   suggestedMap?: SpeakerMap | null;
   /** Plays the audio from a given second. */
   onSeek?: (start: number, end: number) => void;
-  /** Confirms the review: receives the final map and the rebuilt transcript. */
-  onConfirm: (map: SpeakerMap, transcript: string) => void | Promise<void>;
+  /** Manual split points (word indices) saved from a previous review. */
+  initialSplitPoints?: number[] | null;
+  /** Per-line role corrections (keyed by first word index) from a previous review. */
+  initialOverrides?: Record<number, SpeakerRole> | null;
+  /** Confirms the review: receives the final map, transcript and manual edits. */
+  onConfirm: (
+    map: SpeakerMap,
+    transcript: string,
+    edits: { splitPoints: number[]; overrides: Record<number, SpeakerRole> }
+  ) => void | Promise<void>;
   confirming?: boolean;
   /** Read-only mode: colored transcript only, no editing. */
   readOnly?: boolean;
 }
 
 export function SpeakerReviewPanel({
-  words, initialMap, suggestedMap, onSeek, onConfirm, confirming, readOnly,
+  words, initialMap, suggestedMap, initialSplitPoints, initialOverrides,
+  onSeek, onConfirm, confirming, readOnly,
 }: Props) {
   const stats = useMemo(() => speakerStats(words), [words]);
-  const utterances = useMemo(() => buildUtterances(words), [words]);
+  const [splitPoints, setSplitPoints] = useState<number[]>(
+    () => Array.from(new Set(initialSplitPoints ?? [])).sort((a, b) => a - b)
+  );
+  const [splitMode, setSplitMode] = useState<number | null>(null);
+  const utterances = useMemo(
+    () => buildUtterances(words, splitPoints),
+    [words, splitPoints]
+  );
 
   const [map, setMap] = useState<SpeakerMap>(() => {
     const m: SpeakerMap = {};
@@ -57,7 +73,9 @@ export function SpeakerReviewPanel({
     }
     return m;
   });
-  const [overrides, setOverrides] = useState<Record<number, SpeakerRole>>({});
+  const [overrides, setOverrides] = useState<Record<number, SpeakerRole>>(
+    () => ({ ...(initialOverrides ?? {}) })
+  );
 
   if (stats.length === 0 || utterances.length === 0) {
     return (
@@ -70,7 +88,27 @@ export function SpeakerReviewPanel({
   const overrideCount = Object.keys(overrides).length;
 
   const handleConfirm = () => {
-    onConfirm(map, applyUtteranceRoles(utterances, map, overrides));
+    onConfirm(map, applyUtteranceRoles(utterances, map, overrides), {
+      splitPoints: [...splitPoints].sort((a, b) => a - b),
+      overrides,
+    });
+  };
+
+  /** Cut a turn right before `wordIndex`, so a mixed turn becomes two lines. */
+  const splitAt = (wordIndex: number) => {
+    setSplitPoints((prev) => (prev.includes(wordIndex) ? prev : [...prev, wordIndex]));
+    setSplitMode(null);
+  };
+
+  /** Undo a manual cut: this turn joins the previous one again. */
+  const mergeWithPrevious = (startWord: number) => {
+    setSplitPoints((prev) => prev.filter((i) => i !== startWord));
+    setOverrides((o) => {
+      if (!(startWord in o)) return o;
+      const next = { ...o };
+      delete next[startWord];
+      return next;
+    });
   };
 
   return (
@@ -88,7 +126,8 @@ export function SpeakerReviewPanel({
         <>
           <p className="text-[11px] text-muted-foreground">
             Assign each detected voice to a role, then scroll the full script to check the
-            attribution. Any single line that is wrong can be reassigned on its own.
+            attribution. Any single line that is wrong can be reassigned on its own, and a
+            line that actually mixes two voices can be split with "Split".
           </p>
 
           <ul className="space-y-2">
@@ -136,9 +175,11 @@ export function SpeakerReviewPanel({
           <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
             Full script
           </p>
-          {overrideCount > 0 && (
+          {(overrideCount > 0 || splitPoints.length > 0) && (
             <span className="text-[11px] text-muted-foreground">
-              {overrideCount} line{overrideCount === 1 ? "" : "s"} corrected
+              {overrideCount > 0 && <>{overrideCount} line{overrideCount === 1 ? "" : "s"} corrected</>}
+              {overrideCount > 0 && splitPoints.length > 0 && " · "}
+              {splitPoints.length > 0 && <>{splitPoints.length} split{splitPoints.length === 1 ? "" : "s"}</>}
             </span>
           )}
         </div>
@@ -148,7 +189,7 @@ export function SpeakerReviewPanel({
               const role = roleForUtterance(u, map, overrides);
               const style = ROLE_STYLES[role];
               return (
-                <li key={u.index} className={cn("px-3 py-2", style.row)}>
+                <li key={u.startWord} className={cn("px-3 py-2", style.row)}>
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2">
                       <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider", style.tag)}>
@@ -162,12 +203,32 @@ export function SpeakerReviewPanel({
                       >
                         {onSeek ? "▶ " : ""}{fmtTs(u.start)}
                       </button>
+                      {!readOnly && u.tokens.length > 1 && (
+                        <Button
+                          type="button" size="sm" variant="ghost"
+                          className="h-6 px-1.5 gap-1 text-[10px]"
+                          onClick={() => setSplitMode((m) => (m === u.startWord ? null : u.startWord))}
+                        >
+                          {splitMode === u.startWord
+                            ? <><X className="h-3 w-3" /> Cancel</>
+                            : <><Scissors className="h-3 w-3" /> Split</>}
+                        </Button>
+                      )}
+                      {!readOnly && u.manualStart && (
+                        <Button
+                          type="button" size="sm" variant="ghost"
+                          className="h-6 px-1.5 gap-1 text-[10px]"
+                          onClick={() => mergeWithPrevious(u.startWord)}
+                        >
+                          <Undo2 className="h-3 w-3" /> Merge back
+                        </Button>
+                      )}
                     </div>
                     {!readOnly && (
                       <Select
                         value={role}
                         onValueChange={(v) =>
-                          setOverrides((o) => ({ ...o, [u.index]: v as SpeakerRole }))
+                          setOverrides((o) => ({ ...o, [u.startWord]: v as SpeakerRole }))
                         }
                       >
                         <SelectTrigger className="h-7 w-[150px] text-[11px]">
@@ -181,7 +242,33 @@ export function SpeakerReviewPanel({
                       </Select>
                     )}
                   </div>
-                  <p className="mt-1 text-sm leading-relaxed text-foreground">{u.text}</p>
+                  {splitMode === u.startWord ? (
+                    <div className="mt-1 space-y-1">
+                      <p className="text-[11px] text-muted-foreground">
+                        Tap the first word said by the other speaker — the turn splits there.
+                      </p>
+                      <p className="text-sm leading-relaxed">
+                        {u.tokens.map((t, ti) => (
+                          <button
+                            key={t.index}
+                            type="button"
+                            disabled={ti === 0}
+                            onClick={() => splitAt(t.index)}
+                            className={cn(
+                              "rounded px-0.5",
+                              ti === 0
+                                ? "text-muted-foreground"
+                                : "hover:bg-primary hover:text-primary-foreground"
+                            )}
+                          >
+                            {t.text}
+                          </button>
+                        ))}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-sm leading-relaxed text-foreground">{u.text}</p>
+                  )}
                 </li>
               );
             })}
