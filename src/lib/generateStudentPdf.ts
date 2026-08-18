@@ -2,6 +2,7 @@ import jsPDF from "jspdf";
 import type { PartFeedback } from "@/lib/partFeedback";
 import { getPartsForLevel } from "@/lib/partFeedback";
 import { toTextList } from "@/lib/toText";
+import { toSecondPerson } from "@/lib/secondPerson";
 
 interface CriterionData {
   name: string;
@@ -68,8 +69,9 @@ interface PartBlock {
  * (parts > strengths/areas > practice links) instead of spilling to page 2.
  */
 export function generateStudentPdf(input: StudentReportData): Blob | void {
-  const strengths = toTextList(input.strengths).filter(useful);
-  const improvements = toTextList(input.areasForImprovement).filter(useful);
+  const you = (t: string) => toSecondPerson(t, input.candidateName);
+  const strengths = toTextList(input.strengths).filter(useful).map(you);
+  const improvements = toTextList(input.areasForImprovement).filter(useful).map(you);
 
   const levelParts = getPartsForLevel(input.levelCode);
   const byLabel = new Map(
@@ -83,16 +85,16 @@ export function generateStudentPdf(input: StudentReportData): Blob | void {
     const pf = byLabel.get(part.toLowerCase());
     if (!pf) continue;
     const pieces: string[] = [];
-    if (useful(pf.commentary)) pieces.push(pf.commentary!.trim());
+    if (useful(pf.commentary)) pieces.push(you(pf.commentary!.trim()));
     // Fold the per-criterion notes into one flowing sentence list (no headings).
     const cb = (pf.criteriaBreakdown ?? []).filter((c) => useful(c?.comment));
-    for (const c of cb) pieces.push(c.comment.trim());
+    for (const c of cb) pieces.push(you(c.comment.trim()));
     const body = pieces.join(" ");
     if (!body && !useful(pf.improvement)) continue;
     partBlocks.push({
       heading: [part, pf.title || title].filter(Boolean).join(" — "),
       body,
-      next: useful(pf.improvement) ? pf.improvement!.trim() : undefined,
+      next: useful(pf.improvement) ? you(pf.improvement!.trim()) : undefined,
     });
   }
 
@@ -122,6 +124,9 @@ export function generateStudentPdf(input: StudentReportData): Blob | void {
   // ── Fitting pass ───────────────────────────────────────────────
   // Progressively tighter layouts; the first one that fits is used.
   const configs = [
+    { partLines: 99, listItems: 3, itemLines: 99, links: 3, showNext: true },
+    { partLines: 99, listItems: 3, itemLines: 3, links: 2, showNext: true },
+    { partLines: 6, listItems: 3, itemLines: 2, links: 2, showNext: true },
     { partLines: 4, listItems: 3, itemLines: 2, links: 3, showNext: true },
     { partLines: 3, listItems: 3, itemLines: 2, links: 3, showNext: true },
     { partLines: 3, listItems: 3, itemLines: 1, links: 2, showNext: true },
@@ -131,14 +136,14 @@ export function generateStudentPdf(input: StudentReportData): Blob | void {
   ];
 
   const halfW = (contentW - 6) / 2;
-  const HEADER_H = 26;
+  const HEADER_H = 30;
   const MARKS_H = 12;
 
   const planFor = (cfg: typeof configs[number]) => {
     const parts = partBlocks.map((p) => ({
       heading: p.heading,
       body: p.body ? clamp(p.body, 8.5, contentW - 3, cfg.partLines) : "",
-      next: cfg.showNext && p.next ? clamp(p.next, 8, contentW - 8, 1) : undefined,
+      next: cfg.showNext && p.next ? clamp(p.next, 8, contentW - 10, cfg.partLines >= 6 ? 3 : 1) : undefined,
     }));
     const s = strengths.slice(0, cfg.listItems).map((t) => clamp(t, 8, halfW - 5, cfg.itemLines));
     const i = improvements.slice(0, cfg.listItems).map((t) => clamp(t, 8, halfW - 5, cfg.itemLines));
@@ -150,7 +155,7 @@ export function generateStudentPdf(input: StudentReportData): Blob | void {
       for (const p of parts) {
         h += 5.5; // part heading
         if (p.body) h += measure(p.body, 8.5, contentW - 3, 4);
-        if (p.next) h += 5;
+        if (p.next) h += measure(`Try this next: ${p.next}`, 8, contentW - 10, 4, "italic") + 1;
         h += 2;
       }
     }
@@ -181,21 +186,40 @@ export function generateStudentPdf(input: StudentReportData): Blob | void {
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(15);
   doc.setFont("helvetica", "bold");
-  doc.text(`${input.candidateName || "Your"} — Speaking Feedback`, margin, 11);
+  doc.text(`${input.candidateName || "Your"} — Your Speaking Feedback`, margin, 11);
   doc.setFontSize(8.5);
   doc.setFont("helvetica", "normal");
   doc.text(`${input.levelCode} · ${input.language} · ${input.date}`, margin, 17.5);
+  doc.setFontSize(8);
+  doc.text("Here is what you did in your speaking exam, and what to work on next.", margin, 23.5, {
+    maxWidth: pageW - margin * 2 - 48,
+  });
 
-  // Band chip on the right
-  doc.setFillColor(255, 255, 255);
-  doc.roundedRect(pageW - margin - 34, 5, 34, 16, 2, 2, "F");
-  doc.setTextColor(...BRAND);
-  doc.setFontSize(13);
-  doc.setFont("helvetica", "bold");
-  doc.text(input.overallBand || "—", pageW - margin - 17, 12.5, { align: "center" });
-  doc.setFontSize(7.5);
+  // Band chip on the right — full caption, wrapped so nothing is cut off.
+  const chipW = 44;
+  const chipX = pageW - margin - chipW;
+  const chipCx = chipX + chipW / 2;
+  const caption = `Performing at ${input.overallBand || "—"} level`;
+  doc.setFontSize(7.2);
   doc.setFont("helvetica", "normal");
-  doc.text(`${input.overallScore.toFixed(1)} / 5.0`, pageW - margin - 17, 18, { align: "center" });
+  const capLines: string[] = doc.splitTextToSize(caption, chipW - 4);
+  const chipH = 9 + capLines.length * 3.2 + 3.4;
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(chipX, 4, chipW, chipH, 2, 2, "F");
+  doc.setTextColor(...BRAND);
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "bold");
+  doc.text(input.overallBand || "—", chipCx, 11.5, { align: "center" });
+  doc.setFontSize(7.2);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(...MUTED);
+  let capY = 15.2;
+  for (const line of capLines) {
+    doc.text(line, chipCx, capY, { align: "center" });
+    capY += 3.2;
+  }
+  doc.setTextColor(...BRAND);
+  doc.text(`${input.overallScore.toFixed(1)} / 5.0`, chipCx, capY + 0.4, { align: "center" });
 
   y = HEADER_H + 6;
 
@@ -248,8 +272,11 @@ export function generateStudentPdf(input: StudentReportData): Blob | void {
         doc.setFontSize(8);
         doc.setFont("helvetica", "bolditalic");
         doc.setTextColor(...WARNING);
-        doc.text(`Try this next: ${p.next}`, margin + 3, y + 0.5, { maxWidth: contentW - 8 });
-        y += 5;
+        doc.splitTextToSize(`Try this next: ${p.next}`, contentW - 10).forEach((line: string) => {
+          y += 4;
+          doc.text(line, margin + 3, y);
+        });
+        y += 1;
       }
       y += 2;
     }
