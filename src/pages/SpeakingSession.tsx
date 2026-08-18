@@ -425,7 +425,8 @@ export default function SpeakingSessionPage() {
   const handleConfirmSpeakers = async (
     attempt: SessionAttempt,
     map: SpeakerMap,
-    rebuiltTranscript: string
+    rebuiltTranscript: string,
+    edits?: { splitPoints: number[]; overrides: Record<number, string> }
   ) => {
     if (!attempt.transcript) return;
     const transcript = rebuiltTranscript.trim() || attempt.transcript;
@@ -434,6 +435,8 @@ export default function SpeakingSessionPage() {
       await updateAttempt.mutateAsync({
         id: attempt.id,
         speaker_map: map,
+        split_points: edits?.splitPoints ?? [],
+        speaker_overrides: (edits?.overrides ?? {}) as any,
         transcript,
         status: "analyzing",
       });
@@ -1241,7 +1244,9 @@ export default function SpeakingSessionPage() {
                           initialMap={attempt.speaker_map}
                           suggestedMap={attempt.speaker_map}
                           confirming={workingAttemptId === attempt.id}
-                          onConfirm={(map, transcript) => handleConfirmSpeakers(attempt, map, transcript)}
+                          initialSplitPoints={attempt.split_points}
+                          initialOverrides={(attempt.speaker_overrides ?? null) as any}
+                          onConfirm={(map, transcript, edits) => handleConfirmSpeakers(attempt, map, transcript, edits)}
                         />
                         <Button size="sm" variant="ghost" className="text-xs text-muted-foreground" onClick={() => handleAnalyze(attempt)} disabled={processing || workingAttemptId === attempt.id}>
                           {workingAttemptId === attempt.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
