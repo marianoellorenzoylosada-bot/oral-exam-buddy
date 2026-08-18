@@ -56,6 +56,10 @@ export interface SessionAttempt {
   live_transcript: string;
   live_words: ScribeWord[] | null;
   speaker_map: SpeakerMap | null;
+  /** Word indices where the examiner manually split a turn. */
+  split_points: number[] | null;
+  /** Per-line role corrections, keyed by the first word index of the turn. */
+  speaker_overrides: Record<string, string> | null;
   /** AI analysis awaiting examiner review (not a confirmed report yet). */
   analysis_result: any | null;
   recorded_at: string;
