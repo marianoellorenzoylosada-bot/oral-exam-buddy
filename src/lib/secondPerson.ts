@@ -67,6 +67,12 @@ export function toSecondPerson(text: string, name?: string): string {
     .replace(/\bhe should\b/gi, "you should")
     .replace(/\bshe\b/gi, "you")
     .replace(/\bhe\b/gi, "you")
+    // Object "her" (after a verb, before an adverb/preposition/punctuation) → "you".
+    .replace(
+      /\bher\b(?=\s+(again|back|to|for|from|with|about|and|that|when|so|too|as|in|on|at|first|clearly|harder|easier|better|more|less)\b)/gi,
+      "you"
+    )
+    .replace(/\bher\b(?=\s*[,.;:!?])/gi, "you")
     .replace(/\bher own\b/gi, "your own")
     .replace(/\bhis own\b/gi, "your own")
     .replace(/\bhis\b/gi, "your")

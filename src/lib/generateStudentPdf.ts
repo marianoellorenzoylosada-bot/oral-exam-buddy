@@ -155,12 +155,12 @@ export function generateStudentPdf(input: StudentReportData): Blob | void {
       for (const p of parts) {
         h += 5.5; // part heading
         if (p.body) h += measure(p.body, 8.5, contentW - 3, 4);
-        if (p.next) h += measure(`Try this next: ${p.next}`, 8, contentW - 10, 4, "italic") + 1;
-        h += 2;
+        if (p.next) h += measure(`Try this next: ${p.next}`, 8, contentW - 10, 4, "italic") + 2;
+        h += 3;
       }
     }
     if (s.length > 0 || i.length > 0) {
-      h += 6;
+      h += 8;
       const colH = (items: string[]) =>
         items.reduce((acc, t) => acc + measure(`•  ${t}`, 8, halfW - 5, 4), 0);
       h += Math.max(colH(s), colH(i)) + 2;
@@ -276,14 +276,15 @@ export function generateStudentPdf(input: StudentReportData): Blob | void {
           y += 4;
           doc.text(line, margin + 3, y);
         });
-        y += 1;
+        y += 2;
       }
-      y += 2;
+      y += 3;
     }
   }
 
   // Strengths / Areas in two columns
   if (plan.s.length > 0 || plan.i.length > 0) {
+    y += 2;
     doc.setFontSize(9.5);
     doc.setFont("helvetica", "bold");
     if (plan.s.length > 0) {
