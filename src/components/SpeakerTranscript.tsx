@@ -145,14 +145,40 @@ function firstTimestamp(text: string, words: ScribeWordLite[], cursor: { i: numb
   return null;
 }
 
-export function SpeakerTranscript({ transcript, hidden, maxHeight = "20rem", words, onSeek }: SpeakerTranscriptProps) {
+export function SpeakerTranscript({
+  transcript,
+  hidden,
+  maxHeight = "20rem",
+  words,
+  onSeek,
+  currentTime,
+  follow = true,
+}: SpeakerTranscriptProps) {
   const lines = useMemo(() => parseTranscript(transcript), [transcript]);
+  const activeRef = useRef<HTMLLIElement | null>(null);
 
   const timestamps = useMemo(() => {
     if (!words || words.length === 0) return [];
     const cursor = { i: 0 };
     return lines.map((l) => firstTimestamp(l.text, words, cursor));
   }, [lines, words]);
+
+  /** Utterance being played right now (last one whose timestamp has passed). */
+  const activeIndex = useMemo(() => {
+    if (currentTime == null || timestamps.length === 0) return -1;
+    let idx = -1;
+    for (let i = 0; i < timestamps.length; i++) {
+      const t = timestamps[i];
+      if (t != null && t <= currentTime + 0.15) idx = i;
+    }
+    return idx;
+  }, [currentTime, timestamps]);
+
+  useEffect(() => {
+    if (!follow || activeIndex < 0) return;
+    activeRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [activeIndex, follow]);
+
 
   if (hidden) {
     return (
