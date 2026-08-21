@@ -872,7 +872,9 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
                     hidden={anonymize}
                     maxHeight="20rem"
                     words={words}
+                    currentTime={audioTime}
                     onSeek={audioUrl && !audioGone ? seekAudio : undefined}
+
                   />
                 </div>
               </AccordionContent>
