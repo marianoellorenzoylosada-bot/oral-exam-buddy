@@ -648,9 +648,17 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
                 </Button>
               </div>
             </div>
-            <audio ref={audioRef} controls className="w-full h-10" src={audioUrl} preload="metadata">
+            <audio
+              ref={audioRef}
+              controls
+              className="w-full h-10"
+              src={audioUrl}
+              preload="metadata"
+              onTimeUpdate={(e) => setAudioTime((e.target as HTMLAudioElement).currentTime)}
+            >
               Your browser does not support audio playback.
             </audio>
+
             {words.length > 0 && (
               <p className="text-[11px] text-muted-foreground">
                 Tip: click any quoted phrase below — or any utterance timestamp — to hear it.
