@@ -129,6 +129,9 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
   const previousAnalyses: any[] = Array.isArray(exam.previous_analyses) ? exam.previous_analyses : [];
 
   const [audioUnavailable, setAudioUnavailable] = useState(false);
+  // Playback position, used to follow the script in the collapsible transcript.
+  const [audioTime, setAudioTime] = useState(0);
+
   const [fixSpeakersOpen, setFixSpeakersOpen] = useState(false);
   const [correctedSpeakers, setCorrectedSpeakers] = useState<
     { map: any; splitPoints: number[]; overrides: Record<number, string> } | null
