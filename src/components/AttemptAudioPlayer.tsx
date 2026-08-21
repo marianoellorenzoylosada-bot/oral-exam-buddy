@@ -1,7 +1,7 @@
 import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { Play, Pause, Rewind, FastForward, Loader2, AlertCircle } from "lucide-react";
+import { Play, Pause, Rewind, FastForward, Loader2, AlertCircle, Download } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getSignedAudioUrl } from "@/lib/audioStorage";
 
@@ -16,11 +16,18 @@ function fmt(s: number) {
   return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
 }
 
+const SPEEDS = [0.75, 1, 1.25, 1.5];
+
 interface Props {
   audioPath: string | null;
   /** Not-yet-uploaded recording (used in the draft review before signing). */
   localBlob?: Blob | null;
+  /** Reports the current playback position (used to follow the script). */
+  onTime?: (seconds: number) => void;
+  /** When set, a download button saves the recording with this file name. */
+  downloadName?: string;
 }
+
 
 /**
  * Seekable player for a stored attempt recording.
@@ -29,14 +36,17 @@ interface Props {
  * makes arbitrary seeking (forward included) reliable.
  */
 export const AttemptAudioPlayer = forwardRef<AttemptAudioPlayerHandle, Props>(
-  function AttemptAudioPlayer({ audioPath, localBlob }, ref) {
+  function AttemptAudioPlayer({ audioPath, localBlob, onTime, downloadName }, ref) {
     const audioRef = useRef<HTMLAudioElement | null>(null);
+    const blobRef = useRef<Blob | null>(null);
     const [url, setUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [playing, setPlaying] = useState(false);
     const [current, setCurrent] = useState(0);
     const [duration, setDuration] = useState(0);
+    const [speed, setSpeed] = useState(1);
+
 
     useEffect(() => {
       let objectUrl: string | null = null;
@@ -50,6 +60,7 @@ export const AttemptAudioPlayer = forwardRef<AttemptAudioPlayerHandle, Props>(
       if (!audioPath) {
         // Not uploaded yet: play the local recording directly.
         if (localBlob) {
+          blobRef.current = localBlob;
           objectUrl = URL.createObjectURL(localBlob);
           setUrl(objectUrl);
         }
@@ -67,8 +78,10 @@ export const AttemptAudioPlayer = forwardRef<AttemptAudioPlayerHandle, Props>(
             .download(audioPath);
           if (cancelled) return;
           if (data && !dlError) {
+            blobRef.current = data;
             objectUrl = URL.createObjectURL(data);
             setUrl(objectUrl);
+
           } else {
             const signed = await getSignedAudioUrl(audioPath);
             if (cancelled) return;
@@ -115,7 +128,37 @@ export const AttemptAudioPlayer = forwardRef<AttemptAudioPlayerHandle, Props>(
       el.currentTime = Math.min(Math.max(0, el.currentTime + delta), duration || el.currentTime + delta);
     };
 
+    const cycleSpeed = () => {
+      const next = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length];
+      setSpeed(next);
+      if (audioRef.current) audioRef.current.playbackRate = next;
+    };
+
+    /** Save the recording locally instead of opening it in a new tab. */
+    const download = () => {
+      const blob = blobRef.current;
+      const name = downloadName || "recording.webm";
+      if (blob) {
+        const href = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = href;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(href), 4000);
+      } else if (url) {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+    };
+
     if (!audioPath && !localBlob) return null;
+
 
     return (
       <div className="rounded-md border bg-muted/20 p-2.5 space-y-2">
