@@ -124,7 +124,7 @@ function ConfidenceBadge({ confidence }: { confidence?: number }) {
     <Tooltip>
       <TooltipTrigger asChild>
         <Badge variant="outline" className={`text-xs gap-1 cursor-help ${color}`}>
-          <Info className="h-3 w-3" /> {label} ({confidence}%)
+          <Info className="h-3 w-3" /> AI confidence: {label} ({confidence}%)
         </Badge>
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-[220px] text-xs">
