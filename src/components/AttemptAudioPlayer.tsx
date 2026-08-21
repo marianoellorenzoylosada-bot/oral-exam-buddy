@@ -186,8 +186,15 @@ export const AttemptAudioPlayer = forwardRef<AttemptAudioPlayerHandle, Props>(
                 const d = (e.target as HTMLAudioElement).duration;
                 if (Number.isFinite(d)) setDuration(d);
               }}
-              onTimeUpdate={(e) => setCurrent((e.target as HTMLAudioElement).currentTime)}
-              onPlay={() => setPlaying(true)}
+              onTimeUpdate={(e) => {
+                const t = (e.target as HTMLAudioElement).currentTime;
+                setCurrent(t);
+                onTime?.(t);
+              }}
+              onPlay={(e) => {
+                (e.target as HTMLAudioElement).playbackRate = speed;
+                setPlaying(true);
+              }}
               onPause={() => setPlaying(false)}
               onEnded={() => setPlaying(false)}
               className="hidden"
@@ -218,7 +225,32 @@ export const AttemptAudioPlayer = forwardRef<AttemptAudioPlayerHandle, Props>(
               <span className="font-mono text-[11px] tabular-nums text-muted-foreground shrink-0">
                 {fmt(current)} / {duration ? fmt(duration) : "--:--"}
               </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 font-mono text-[11px] shrink-0"
+                onClick={cycleSpeed}
+                aria-label="Playback speed"
+                title="Playback speed"
+              >
+                {speed}×
+              </Button>
+              {downloadName && (
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 shrink-0"
+                  onClick={download}
+                  aria-label="Download recording"
+                  title="Download recording"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </Button>
+              )}
             </div>
+
           </>
         )}
       </div>
