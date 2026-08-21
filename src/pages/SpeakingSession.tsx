@@ -1318,6 +1318,13 @@ export default function SpeakingSessionPage() {
                       );
                     })()}
 
+                    {(attempt.status === "analyzing" || attempt.status === "done" || attempt.status === "failed") && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button size="sm" onClick={() => handleAnalyze(attempt)} disabled={processing || workingAttemptId === attempt.id || attempt.status === "done"}>
+                          {workingAttemptId === attempt.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                          {attempt.status === "done" ? "Analyzed" : "Analyze"}
+                        </Button>
+                        {attempt.speaker_map && (attempt.live_words ?? []).length > 0 && (
                           <Button
                             size="sm" variant="outline"
                             onClick={() => handleRedoFromSpeakers(attempt)}
@@ -1328,6 +1335,7 @@ export default function SpeakingSessionPage() {
                         )}
                       </div>
                     )}
+
 
 
 
