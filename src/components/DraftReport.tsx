@@ -563,6 +563,8 @@ export function DraftReport({ result, level, levelCode, language, institution, g
               ref={playerRef}
               audioPath={audioStoragePath || audioPath || null}
               localBlob={audioBlob ?? null}
+              onTime={setAudioTime}
+              downloadName={`${(draft.candidateName || "recording").replace(/\s+/g, "_")}.webm`}
             />
             {sharedDraft.transcript && (
               <Accordion type="single" collapsible defaultValue="script">
@@ -578,6 +580,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
                         transcript={sharedDraft.transcript}
                         maxHeight="24rem"
                         words={scribeWords}
+                        currentTime={audioTime}
                         onSeek={(start) => playerRef.current?.seek(start)}
                       />
                     </div>
@@ -585,6 +588,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
                 </AccordionItem>
               </Accordion>
             )}
+
           </CardContent>
         </Card>
       )}
