@@ -124,7 +124,7 @@ function ConfidenceBadge({ confidence }: { confidence?: number }) {
     <Tooltip>
       <TooltipTrigger asChild>
         <Badge variant="outline" className={`text-xs gap-1 cursor-help ${color}`}>
-          <Info className="h-3 w-3" /> {label} ({confidence}%)
+          <Info className="h-3 w-3" /> AI confidence: {label} ({confidence}%)
         </Badge>
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-[220px] text-xs">
@@ -146,6 +146,9 @@ export function DraftReport({ result, level, levelCode, language, institution, g
   const [audioStoragePath, setAudioStoragePath] = useState<string | null>(audioPath ?? null);
   const [audioUploadFailed, setAudioUploadFailed] = useState(false);
   const playerRef = useRef<AttemptAudioPlayerHandle | null>(null);
+  // Audio position, used to follow the script while auditing.
+  const [audioTime, setAudioTime] = useState(0);
+
   // Per-candidate group/institution resolved from the roster (pairs can be mixed-group).
   const [candidateMeta, setCandidateMeta] = useState<Record<string, { group: string; institution: string }>>({});
 
@@ -563,6 +566,8 @@ export function DraftReport({ result, level, levelCode, language, institution, g
               ref={playerRef}
               audioPath={audioStoragePath || audioPath || null}
               localBlob={audioBlob ?? null}
+              onTime={setAudioTime}
+              downloadName={`${(draft.candidateName || "recording").replace(/\s+/g, "_")}.webm`}
             />
             {sharedDraft.transcript && (
               <Accordion type="single" collapsible defaultValue="script">
@@ -578,6 +583,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
                         transcript={sharedDraft.transcript}
                         maxHeight="24rem"
                         words={scribeWords}
+                        currentTime={audioTime}
                         onSeek={(start) => playerRef.current?.seek(start)}
                       />
                     </div>
@@ -585,6 +591,7 @@ export function DraftReport({ result, level, levelCode, language, institution, g
                 </AccordionItem>
               </Accordion>
             )}
+
           </CardContent>
         </Card>
       )}

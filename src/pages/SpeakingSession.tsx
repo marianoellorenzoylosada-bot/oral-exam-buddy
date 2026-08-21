@@ -703,9 +703,9 @@ export default function SpeakingSessionPage() {
   const showCreateForm = !activeSessionId;
   const showSession = !!activeSessionId && !!session;
 
-  // Signed reports of this session that were saved without the per-part breakdown.
-  const { data: incompleteSigned } = useQuery({
-    queryKey: ["session-signed-missing-parts", activeSessionId],
+  // Signed reports of this session, grouped by attempt: used to mark attempts as completed.
+  const { data: signedReports } = useQuery({
+    queryKey: ["session-signed-reports", activeSessionId],
     enabled: !!activeSessionId,
     queryFn: async () => {
       const { data, error } = await supabase
@@ -715,11 +715,20 @@ export default function SpeakingSessionPage() {
         .eq("archived", false)
         .not("confirmed_at", "is", null);
       if (error) throw error;
-      return (data ?? []).filter(
-        (e: any) => !Array.isArray(e.part_feedback) || e.part_feedback.length === 0
-      ) as Array<{ id: string; attempt_id: string | null; candidate_name: string | null }>;
+      return (data ?? []) as Array<{
+        id: string;
+        attempt_id: string | null;
+        candidate_name: string | null;
+        part_feedback: unknown;
+      }>;
     },
   });
+
+  // Signed reports that were saved without the per-part breakdown.
+  const incompleteSigned = (signedReports ?? []).filter(
+    (e) => !Array.isArray(e.part_feedback) || e.part_feedback.length === 0
+  );
+
 
   const reviewAttempt = session?.attempts.find((a) => a.id === reviewAttemptId) ?? null;
   const reviewResult: MultiCandidateResult | null = (() => {
@@ -1257,8 +1266,24 @@ export default function SpeakingSessionPage() {
                     )}
 
                     {attempt.status === "reviewing_report" && (() => {
+                      const signed = (signedReports ?? []).filter((e) => e.attempt_id === attempt.id);
                       const stored: any = attempt.analysis_result;
                       const list: any[] = Array.isArray(stored?.candidates) ? stored.candidates : stored ? [stored] : [];
+                      // Every candidate of this attempt already has a signed report: the attempt is done.
+                      const completed = signed.length > 0 && signed.length >= attempt.candidate_names.length;
+                      if (completed) {
+                        return (
+                          <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 p-2.5 space-y-2">
+                            <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                              Completed — report{signed.length > 1 ? "s" : ""} signed for{" "}
+                              {signed.map((e) => e.candidate_name || "candidate").join(", ")}.
+                            </p>
+                            <Button size="sm" variant="outline" onClick={() => navigate("/reports")}>
+                              <FileText className="mr-2 h-4 w-4" /> Open in Reports
+                            </Button>
+                          </div>
+                        );
+                      }
                       const missing = list.filter(
                         (c) => !Array.isArray(c?.partFeedback) || c.partFeedback.length === 0
                       ).length;
@@ -1293,7 +1318,6 @@ export default function SpeakingSessionPage() {
                       );
                     })()}
 
-
                     {(attempt.status === "analyzing" || attempt.status === "done" || attempt.status === "failed") && (
                       <div className="flex flex-wrap items-center gap-2">
                         <Button size="sm" onClick={() => handleAnalyze(attempt)} disabled={processing || workingAttemptId === attempt.id || attempt.status === "done"}>
@@ -1311,6 +1335,7 @@ export default function SpeakingSessionPage() {
                         )}
                       </div>
                     )}
+
 
 
 

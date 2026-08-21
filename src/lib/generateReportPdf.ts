@@ -115,78 +115,121 @@ export function generateReportPdf(input: ReportData): Blob | void {
   doc.setTextColor(...MUTED);
   doc.setFontSize(9);
   const metaLine = [model.institution, model.group, model.levelCode, model.language].filter(Boolean).join("  ·  ");
-  if (metaLine) doc.text(metaLine, margin, y);
-  y += 4;
+  if (metaLine) {
+    doc.text(metaLine, margin, y);
+    y += 5;
+  }
 
   // --- Title ---
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(15);
   doc.setFont("helvetica", "bold");
   const titleLines = doc.splitTextToSize(model.title, contentW);
-  titleLines.forEach((line: string, i: number) => {
-    doc.text(line, margin, y + 8 + i * 6);
+  titleLines.forEach((line: string) => {
+    y += 6;
+    doc.text(line, margin, y);
   });
-  y += 12 + (titleLines.length - 1) * 6;
+  y += 2;
 
-  if (model.candidateName) {
+  // Only when the title does not already name the candidate (avoids repetition).
+  if (model.candidateName && !model.title.toLowerCase().includes(model.candidateName.trim().toLowerCase())) {
     doc.setFontSize(11);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(...MUTED);
+    y += 5;
     doc.text(`Candidate: ${model.candidateName}`, margin, y);
-    y += 6;
   }
 
+  y += 6;
+
   // --- Overall score box ---
-  const boxH = 22;
+  const boxH = 20;
   doc.setFillColor(240, 245, 255);
   doc.roundedRect(margin, y, contentW, boxH, 3, 3, "F");
   doc.setFillColor(...BRAND_COLOR);
-  doc.roundedRect(margin + 4, y + 3, 24, boxH - 6, 3, 3, "F");
+  doc.roundedRect(margin + 4, y + 3, 20, boxH - 6, 3, 3, "F");
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(16);
+  doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text(model.overallBand, margin + 16, y + boxH / 2 + 2, { align: "center" });
+  doc.text(model.levelCode || "—", margin + 14, y + boxH / 2 + 1.5, { align: "center" });
 
   doc.setTextColor(0, 0, 0);
-  doc.setFontSize(11);
-  doc.text(`Overall Score: ${model.overallScore.toFixed(1)} / 5.0`, margin + 34, y + 9);
+  doc.setFontSize(10.5);
+  doc.text(
+    `${model.overallBand} · Overall ${model.overallScore.toFixed(1)} / 5.0`,
+    margin + 30,
+    y + 8.5,
+    { maxWidth: contentW - 36 }
+  );
   doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
   doc.setTextColor(...MUTED);
-  doc.text("Diagnostic estimate — not an official Cambridge result.", margin + 34, y + 15);
+  doc.text("Diagnostic estimate — not an official Cambridge result.", margin + 30, y + 14.5);
   y += boxH + 8;
 
-  // --- Compact marks table ---
+  // --- Marks ---
   if (model.marks.length > 0) {
-    heading(model.criteriaOnly ? "Assessment Criteria" : "Marks", [0, 0, 0], 12);
-    y -= 3;
-
-    autoTable(doc, {
-      startY: y,
-      margin: { left: margin, right: margin },
-      head: model.criteriaOnly ? [["Criterion", "Mark", "Feedback"]] : [["Criterion", "Mark"]],
-      body: model.marks.map((m) =>
-        model.criteriaOnly
-          ? [m.name, `${m.score} / ${m.maxScore}`, m.feedback ?? ""]
-          : [m.name, `${m.score} / ${m.maxScore}`]
-      ),
-      headStyles: { fillColor: BRAND_COLOR, fontSize: 8, fontStyle: "bold" },
-      bodyStyles: { fontSize: 8, cellPadding: model.criteriaOnly ? 3 : 1.8 },
-      columnStyles: model.criteriaOnly
-        ? { 0: { cellWidth: 35, fontStyle: "bold" }, 1: { cellWidth: 20, halign: "center" }, 2: { cellWidth: "auto" } }
-        : { 0: { cellWidth: "auto", fontStyle: "bold" }, 1: { cellWidth: 26, halign: "center" } },
-      didParseCell(hookData) {
-        if (hookData.section === "body" && hookData.column.index === 1) {
-          const m = model.marks[hookData.row.index];
-          if (m) {
-            hookData.cell.styles.textColor = scoreColor((m.score / m.maxScore) * 100);
-            hookData.cell.styles.fontStyle = "bold";
+    if (model.criteriaOnly) {
+      // Legacy reports with no per-part content: keep the narrative table.
+      heading("Assessment Criteria", [0, 0, 0], 12);
+      y -= 3;
+      autoTable(doc, {
+        startY: y,
+        margin: { left: margin, right: margin },
+        head: [["Criterion", "Mark", "Feedback"]],
+        body: model.marks.map((m) => [m.name, `${m.score} / ${m.maxScore}`, m.feedback ?? ""]),
+        headStyles: { fillColor: BRAND_COLOR, fontSize: 8, fontStyle: "bold" },
+        bodyStyles: { fontSize: 8, cellPadding: 3 },
+        columnStyles: {
+          0: { cellWidth: 35, fontStyle: "bold" },
+          1: { cellWidth: 20, halign: "center" },
+          2: { cellWidth: "auto" },
+        },
+        didParseCell(hookData) {
+          if (hookData.section === "body" && hookData.column.index === 1) {
+            const m = model.marks[hookData.row.index];
+            if (m) {
+              hookData.cell.styles.textColor = scoreColor((m.score / m.maxScore) * 100);
+              hookData.cell.styles.fontStyle = "bold";
+            }
           }
+        },
+      });
+      y = (doc as any).lastAutoTable.finalY + 8;
+    } else {
+      // Compact marks strip — same presentation as the student report.
+      heading("Marks", [0, 0, 0], 12);
+      y -= 1;
+      const cellW = contentW / model.marks.length;
+      const nameSize = model.marks.length >= 5 ? 6.4 : 7.2;
+      doc.setFontSize(nameSize);
+      doc.setFont("helvetica", "normal");
+      const nameLines = model.marks.map((m) => doc.splitTextToSize(m.name, cellW - 2.5) as string[]);
+      const maxNameLines = nameLines.reduce((mx, l) => Math.max(mx, l.length), 1);
+      const stripH = 4 + maxNameLines * 2.9 + 6;
+      ensure(stripH + 4);
+      doc.setDrawColor(225, 232, 240);
+      doc.setFillColor(246, 249, 255);
+      doc.roundedRect(margin, y, contentW, stripH, 2, 2, "FD");
+      model.marks.forEach((m, i) => {
+        const cx = margin + cellW * i + cellW / 2;
+        doc.setFontSize(nameSize);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...MUTED);
+        let ny = y + 3.8;
+        for (const line of nameLines[i]) {
+          doc.text(line, cx, ny, { align: "center" });
+          ny += 2.9;
         }
-      },
-    });
-
-    y = (doc as any).lastAutoTable.finalY + 8;
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...scoreColor((m.score / m.maxScore) * 100));
+        doc.text(`${m.score}/${m.maxScore}`, cx, y + stripH - 2, { align: "center" });
+      });
+      y += stripH + 8;
+    }
   }
+
 
   // --- Part → relevant criteria → evidence ---
   if (model.parts.length > 0) {
@@ -227,27 +270,27 @@ export function generateReportPdf(input: ReportData): Blob | void {
       }
 
       if (p.improvement) {
-        const impLines = doc.splitTextToSize(`Suggested focus: ${p.improvement}`, contentW - 6);
-        const h = impLines.length * 4 + 4;
+        // Measure with the exact font used for drawing, otherwise the text
+        // overflows the amber box.
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        const impLines: string[] = doc.splitTextToSize(`Suggested focus: ${p.improvement}`, contentW - 10);
+        const h = impLines.length * 4 + 5;
         ensure(h + 3);
         doc.setFillColor(255, 247, 230);
         doc.setDrawColor(...WARNING);
         doc.roundedRect(margin, y, contentW, h, 1.5, 1.5, "FD");
         doc.setFontSize(8);
-        let ty = y + 4;
-        impLines.forEach((line: string, i: number) => {
-          if (i === 0) {
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(...WARNING);
-          } else {
-            doc.setFont("helvetica", "normal");
-            doc.setTextColor(80, 60, 20);
-          }
-          doc.text(line, margin + 3, ty);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(120, 80, 20);
+        let ty = y + 4.5;
+        impLines.forEach((line: string) => {
+          doc.text(line, margin + 4, ty);
           ty += 4;
         });
         y += h + 3;
       }
+
 
       y += 3;
     }

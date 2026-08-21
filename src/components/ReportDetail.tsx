@@ -129,6 +129,9 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
   const previousAnalyses: any[] = Array.isArray(exam.previous_analyses) ? exam.previous_analyses : [];
 
   const [audioUnavailable, setAudioUnavailable] = useState(false);
+  // Playback position, used to follow the script in the collapsible transcript.
+  const [audioTime, setAudioTime] = useState(0);
+
   const [fixSpeakersOpen, setFixSpeakersOpen] = useState(false);
   const [correctedSpeakers, setCorrectedSpeakers] = useState<
     { map: any; splitPoints: number[]; overrides: Record<number, string> } | null
@@ -648,9 +651,17 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
                 </Button>
               </div>
             </div>
-            <audio ref={audioRef} controls className="w-full h-10" src={audioUrl} preload="metadata">
+            <audio
+              ref={audioRef}
+              controls
+              className="w-full h-10"
+              src={audioUrl}
+              preload="metadata"
+              onTimeUpdate={(e) => setAudioTime((e.target as HTMLAudioElement).currentTime)}
+            >
               Your browser does not support audio playback.
             </audio>
+
             {words.length > 0 && (
               <p className="text-[11px] text-muted-foreground">
                 Tip: click any quoted phrase below — or any utterance timestamp — to hear it.
@@ -684,24 +695,9 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
                   <div className="flex justify-between text-sm mb-1">
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{c.name}</span>
-                      {c.confidence != null && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Badge variant="outline" className={`text-xs gap-0.5 cursor-help ${
-                              c.confidence >= 90 ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" :
-                              c.confidence >= 70 ? "border-primary/30 bg-primary/10 text-primary" :
-                              c.confidence >= 50 ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400" :
-                              "border-destructive/30 bg-destructive/10 text-destructive"
-                            }`}>
-                              <Info className="h-3 w-3" /> {c.confidence}%
-                            </Badge>
-                          </TooltipTrigger>
-                          <TooltipContent side="top" className="max-w-[200px] text-xs">
-                            AI confidence in this score
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
+                      {/* AI confidence is an auditing signal: shown in the Draft only. */}
                     </div>
+
                     <span className={`font-bold ${pct >= 80 ? "text-emerald-600" : pct >= 50 ? "text-amber-600" : "text-destructive"}`}>
                       {c.score}/{c.maxScore}
                     </span>
@@ -876,7 +872,9 @@ export function ReportDetail({ exam, anonymize, onClose }: Props) {
                     hidden={anonymize}
                     maxHeight="20rem"
                     words={words}
+                    currentTime={audioTime}
                     onSeek={audioUrl && !audioGone ? seekAudio : undefined}
+
                   />
                 </div>
               </AccordionContent>

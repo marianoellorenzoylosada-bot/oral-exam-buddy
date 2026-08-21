@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +28,11 @@ interface SpeakerTranscriptProps {
   words?: ScribeWordLite[];
   /** If provided, each utterance becomes clickable and seeks the audio. */
   onSeek?: (start: number, end: number) => void;
+  /** Current audio position: highlights and scrolls to the utterance being played. */
+  currentTime?: number;
+  /** Auto-scroll to the highlighted utterance (default true). */
+  follow?: boolean;
+
 }
 
 interface TranscriptLine {
@@ -145,14 +150,40 @@ function firstTimestamp(text: string, words: ScribeWordLite[], cursor: { i: numb
   return null;
 }
 
-export function SpeakerTranscript({ transcript, hidden, maxHeight = "20rem", words, onSeek }: SpeakerTranscriptProps) {
+export function SpeakerTranscript({
+  transcript,
+  hidden,
+  maxHeight = "20rem",
+  words,
+  onSeek,
+  currentTime,
+  follow = true,
+}: SpeakerTranscriptProps) {
   const lines = useMemo(() => parseTranscript(transcript), [transcript]);
+  const activeRef = useRef<HTMLLIElement | null>(null);
 
   const timestamps = useMemo(() => {
     if (!words || words.length === 0) return [];
     const cursor = { i: 0 };
     return lines.map((l) => firstTimestamp(l.text, words, cursor));
   }, [lines, words]);
+
+  /** Utterance being played right now (last one whose timestamp has passed). */
+  const activeIndex = useMemo(() => {
+    if (currentTime == null || timestamps.length === 0) return -1;
+    let idx = -1;
+    for (let i = 0; i < timestamps.length; i++) {
+      const t = timestamps[i];
+      if (t != null && t <= currentTime + 0.15) idx = i;
+    }
+    return idx;
+  }, [currentTime, timestamps]);
+
+  useEffect(() => {
+    if (!follow || activeIndex < 0) return;
+    activeRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [activeIndex, follow]);
+
 
   if (hidden) {
     return (
@@ -178,14 +209,18 @@ export function SpeakerTranscript({ transcript, hidden, maxHeight = "20rem", wor
           const style = STYLES[line.label];
           const ts = timestamps[i] ?? null;
           const canPlay = onSeek && ts !== null;
+          const isActive = i === activeIndex;
           return (
             <li
               key={i}
+              ref={isActive ? activeRef : undefined}
               className={cn(
                 "group border-l-2 px-3 py-2.5 transition-colors hover:bg-muted/40",
-                style.accent
+                style.accent,
+                isActive && "bg-primary/10 ring-1 ring-inset ring-primary/30"
               )}
             >
+
               <div className="flex items-baseline justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
                   <span
