@@ -28,6 +28,11 @@ interface SpeakerTranscriptProps {
   words?: ScribeWordLite[];
   /** If provided, each utterance becomes clickable and seeks the audio. */
   onSeek?: (start: number, end: number) => void;
+  /** Current audio position: highlights and scrolls to the utterance being played. */
+  currentTime?: number;
+  /** Auto-scroll to the highlighted utterance (default true). */
+  follow?: boolean;
+
 }
 
 interface TranscriptLine {
