@@ -1,112 +1,76 @@
-# Feedback, FODA y ruta recomendada sobre tu plan de 8 auditorías
+# Cierre de esta tanda de orales: obtener los informes correctos antes de pulir a fondo
 
-Verificado antes de escribir esto: esquema real de la base, políticas RLS vigentes, `useSpeakingSession.ts`, `SpeakingSession.tsx`, `DraftReport.tsx`, `ReportDetail.tsx`, `Reports.tsx`, `useRoles.ts`, y mediciones reales de tamaño en base y storage.
+Objetivo de esta etapa: que puedas **exportar los informes definitivos (docente y alumno) de esta ronda sin re-analizar nada**, y recién después borrar los datos y encarar el rediseño profundo del flujo. Todo lo que sigue es presentación y navegación: no toca scoring, ni el prompt de la IA, ni la estructura de la base.
 
-## 1. Veredicto general
+## 1. Respuestas a tus dudas (verificado en el código)
 
-La ruta es coherente y está bien priorizada. Casi todo es realizable en Lovable. Hay tres puntos que, tal como están escritos, **no son alcanzables literalmente** y conviene reformular (sección 3). El riesgo principal no es técnico sino de orden: la Auditoría 1 (workspaces + roles) es la única que obliga a reescribir *todas* las políticas de seguridad de la app, y si se hace después de las auditorías 2–6 hay que volver a tocar lo ya pulido.
+- **Los porcentajes al lado de cada área NO son la nota.** Es el campo `confidence` que devuelve la IA: qué tan segura está de ese juicio. Por eso un 2,5 puede mostrar 75 % y dos notas iguales muestran porcentajes distintos. Es información interna que no debería estar visible en un informe: se quita (o se muestra sólo en modo avanzado).
+- **Los porcentajes en la revisión de speakers** son el reparto del tiempo de habla de cada voz detectada por la transcripción. No cambian al reasignar roles porque miden minutos de audio por voz, no roles. Se van a re-etiquetar como "tiempo de habla" y a recalcularse por rol una vez asignados.
+- **Karaoke del audio (palabra en curso resaltada):** barato y sin IA. Los tiempos por palabra ya están guardados (`live_words` / `words_json`); es sincronizar con el evento de avance del reproductor. Es la mejora de mayor impacto por menor costo de toda la lista.
+- **Velocidad de reproducción (0,75× / 1× / 1,25× / 1,5×):** trivial, una propiedad nativa del reproductor. Costo cero.
+- **"Corrected version" y "Correct attribution" en Reports:** te generan confusión con razón. No abren una versión corregida: **crean una nueva**, y permiten editar el script completo de un informe ya firmado. Son herramientas de mantenimiento y no deben estar en el recorrido normal.
+- **"Download audio" que sólo reproduce:** hoy abre el enlace firmado en una pestaña; el navegador reproduce en vez de descargar. Se corrige forzando la descarga.
 
-## 2. Datos duros que faltaban (Auditoría 1.4, respondida)
+## 2. Estrategia recomendada
 
-Medido sobre tus datos actuales:
+**No repares los datos: repará la presentación y exportá.** Los informes firmados ya tienen la información correcta (notas, feedback por parte, evidencias). Lo que está mal es cómo se muestra y cómo se imprime. Entonces:
 
-| Objeto | Tamaño real medido |
-|---|---|
-| Audio por attempt | **10,9 MB promedio** (17 archivos, 185 MB en total) |
-| Duración media de attempt | **13 minutos** (783 s) |
-| Fila de informe firmado (`exams`) | **57 KB** promedio, 72 KB máximo (transcript + `words_json`) |
-| Fila de attempt | 37 KB |
-| Material/foto | 0,95 MB promedio |
-| Estado actual | 5 sesiones, 14 attempts, 29 informes (7 archivados), 58 alumnos, 7 grupos |
-| Política de retención | audio: 15 días desde la firma (`audio_expires_at` + `purge-expired-audio`); base: indefinida |
+1. **Fix pack de cierre** (una tanda, sin migraciones, sin re-análisis): arreglar PDFs, sujeto/nombre, script navegable, audio, y sacar del camino los botones peligrosos.
+2. **Vos exportás** los PDFs docente y alumno de esta ronda y los entregás.
+3. **Recién después** se borra todo y se arranca con la Fase 0 y la arquitectura de workspaces del informe anterior.
 
-Proyección para una institución de 500 alumnos, 2 mocks al año, en parejas → ~500 attempts/año:
+Ventaja: cero riesgo de perder o alterar información, porque no se vuelve a llamar a la IA ni se escriben datos en los informes firmados.
 
-- Audio generado: ~5,5 GB/año, pero con el purgado a 15 días el **almacenamiento pico es de ~200–400 MB**. Costo de storage: despreciable.
-- Base de datos: ~1.000 informes × 57 KB ≈ **57 MB/año**. Despreciable.
-- **El costo real es de procesamiento, no de almacenamiento:** ~6.500 minutos/año de transcripción (ElevenLabs Scribe) más ~1.000 análisis del modelo. Ahí está el 90 % del costo variable y es lo que el pricing por seat/licencia tiene que cubrir.
+## 3. Fix pack de cierre — contenido exacto
 
-Conclusión: la escalabilidad técnica no es un riesgo. El riesgo es de *unit economics*: hay que fijar un límite de minutos por plan antes de vender.
+**PDF del alumno (prioridad máxima, es lo que entregás)**
+- Encabezado: quitar "Your", quitar el nombre repetido, y que el recuadro de nivel no muestre el texto duplicado ni quede apretado.
+- Nombres de criterios completos, sin abreviar.
+- Texto de cada parte: dirigido al alumno de forma coherente y **sin cortes con puntos suspensivos**.
+- "What you did well" / "What to practise next": una sola columna a lo ancho, texto completo.
+- Links en una línea: "Objetivo — nombre del sitio: enlace".
+- Reutilizar los ejemplos y citas concretas del informe docente, reescritos en lenguaje amigable de segunda persona (los datos ya existen, no hace falta IA).
 
-## 3. Lo que hay que corregir del plan
+**PDF docente**
+- Corregir el texto superpuesto del encabezado (nombre + nivel).
+- Tabla de notas compacta, con el mismo estilo que te gustó del PDF del alumno, y sin la columna de confianza.
+- "Suggested focus" contenido dentro del recuadro.
 
-1. **"Resume recording durante unos segundos si el Stop fue accidental" no es implementable de forma fiable tal cual.** Un `MediaRecorder` detenido no se puede reanudar sobre el mismo archivo, y concatenar dos WebM/Opus en el navegador da archivos que ElevenLabs puede rechazar. Alternativa equivalente y segura: el botón `Stop` primero **pausa** (`recorder.pause()`) y muestra "Reanudar / Detener y guardar". El guardado real ocurre en el segundo toque. Se logra el mismo objetivo sin riesgo de audio corrupto.
-2. **"Session Ready" hoy no puede ser un estado real** porque `speaking_sessions.status` sólo admite `open`/`closed` en el código y no hay validación de "material listo". Es viable, pero es una columna nueva más un gate de UI: conviene implementarlo como *estado derivado* (material ≥ 1 y candidatos definidos) antes de gastar una migración.
-3. **"Archived Reports" está bloqueado por seguridad hoy.** La columna `exams.archived` existe, pero la política de UPDATE sólo permite modificar informes con `confirmed_at IS NULL`. Es decir: **un informe firmado no se puede archivar desde la app**. Archivar requiere una función de servidor acotada (como la que ya existe para rellenar el feedback por parte). Sin eso, la Auditoría 5 no se puede completar.
-4. **La "ventana intermedia" de la Auditoría 3 es el Draft Report**, que es también la pantalla de firma: no se puede eliminar sin eliminar la firma. Lo que sí sobra son los saltos y los botones paralelos ("Analyze without confirming speakers", "Back to speaker review" duplicado, "New Exam" dentro del Draft). Necesito que me confirmes si te referías a esa pantalla o a otra.
-5. **Los roles objetivo no coinciden con los existentes.** Hoy hay `admin`, `educator`, `senior`. Tu modelo pide `examiner`, `teacher`, `coordinator`. Y más importante: **hoy los permisos no son por rol, son por dueño**. Todas las tablas filtran por `auth.uid() = user_id`. Un examinador no puede abrir la sesión de otro *ni siquiera si es de su institución*: la fila simplemente no existe para él. Los roles actuales sólo gobiernan Calibration y Team Admin. Por lo tanto "Teacher con lectura de los reportes de sus grupos" **no es un ajuste de permisos: es la introducción del concepto de workspace**. Es el trabajo más grande de todo el plan.
+**Versión para imprimir**
+- Misma corrección de encabezado y tabla: hoy imprime con el nombre repetido y texto superpuesto.
 
-## 4. Análisis FODA
+**Coherencia de sujeto y nombre**
+- Capa de normalización al generar cada informe: el PDF docente siempre en tercera persona con el nombre real; el del alumno siempre en segunda persona. Se aplica al render, así los informes ya firmados quedan bien sin tocar la base.
 
-**Fortalezas**
-- El pipeline crítico (grabar → transcribir → revisar speakers → analizar → firmar) ya funciona de punta a punta con protección contra pérdida de audio.
-- Los informes firmados son inmutables a nivel de base de datos: base sólida para vender confiabilidad académica.
-- El modelo de datos ya tiene `candidate_id`, `groups`, `students`, `revision`, `archived`: la mitad de la estructura que pide tu modelo objetivo ya está.
-- Los datos para Insights (Auditoría 7) **ya existen**: no hace falta IA extra, sólo consultas sobre `criteria` y `candidate_id`.
+**Report en pantalla**
+- Quitar los porcentajes de confianza.
+- Script **navegable y no editable**, junto al audio, desplegable: scroll completo, buscador, timestamps clicables, palabra en curso resaltada y control de velocidad.
+- "Correct attribution" y "Corrected version" pasan a modo avanzado (no desaparecen, dejan de estar en el camino del docente).
+- "Download audio" descarga de verdad.
+- Ampliar un poco el margen de las citas con audio para que la frase entre completa.
 
-**Oportunidades**
-- Insights por grupo y por institución es el diferencial comercial real y es el módulo más barato de construir de todo el plan.
-- El costo de infraestructura es marginal frente al precio de una licencia institucional.
-- El PDF del alumno con ejemplos concretos en lenguaje amigable es reutilización de datos que ya se generan (el docente ya recibe los ejemplos).
+**Cola de trabajo (mínimo necesario para no confundirte al cerrar esta ronda)**
+- Un attempt cuyos informes ya están firmados se marca **"Completed"** y deja de ofrecer "Review & sign" y "Redo from speaker review". Sin esto no se puede distinguir lo hecho de lo pendiente.
+- La revisión de speakers gana un botón **"Volver sin analizar"**, para poder mirar la atribución y salir sin re-analizar.
+- El "Speaker unclear" en todo el script que viste en algunos casos ocurre cuando la revisión se reabre sin el mapa guardado: se corrige recargando el mapa que ya está en la base antes de mostrar el panel.
 
-**Debilidades**
-- Cero multiusuario real: toda la seguridad asume un dueño único por fila.
-- No hay unicidad de firma: se puede firmar el mismo attempt dos veces y generar informes duplicados.
-- El attempt no se cierra al firmar (sólo lo cierra el botón "New Exam"), lo que produce los estados ambiguos que ya viste.
-- Las versiones corregidas no están vinculadas al original (no hay `parent_exam_id`), así que "Version History" hoy es reconstrucción por heurística.
-- Un alumno pertenece a un solo grupo, sin historial: la persistencia académica entre años exige una tabla nueva de inscripciones. Los grupos no tienen `archived`.
-- La lógica de análisis está duplicada en tres lugares y la de Reports envía menos contexto a la IA que la de la cola, con lo que una corrección puede puntuar distinto que el análisis original.
+## 4. Lo que NO se toca en esta tanda
 
-**Amenazas**
-- Migrar a workspaces con datos reales ya cargados: si se hace mal, se pierde visibilidad de informes existentes. Requiere backfill con un workspace personal por usuario.
-- Sin límite de minutos por plan, una institución intensiva puede volver el plan no rentable.
-- Retención de 15 días del audio: si una institución exige auditoría posterior o hay una impugnación de nota, el audio ya no está. Es una decisión de producto a definir por plan, no un detalle técnico.
-- Datos de menores de edad: al vender a instituciones aparecen requisitos de consentimiento y retención que hoy no están documentados.
+- Lógica de evaluación, notas, prompt de la IA.
+- Workspaces, roles, billing (van después, según el informe anterior).
+- Rediseño completo de la cola como bandeja de trabajo con un botón por estado (queda para la Fase 2).
+- El "flag / solicitud de revisión" del script por parte del docente: buena idea, pero pertenece al modelo multiusuario. Se diseña cuando existan los roles.
 
-## 5. Prioridad recomendada (corrige el orden de tu plan)
+## 5. Riesgos
 
-**Fase 0 — Correcciones de integridad (1 tanda, riesgo bajo, imprescindible antes de tocar UI)**
-1. Cerrar el attempt automáticamente cuando todos sus candidatos quedan firmados.
-2. Impedir la doble firma (índice único por attempt + candidato entre informes confirmados) y ocultar "Review & sign" cuando ya existe informe firmado.
-3. Vincular las versiones corregidas al original (`parent_exam_id`) — habilita el "modo avanzado" de la Auditoría 5 sin heurísticas.
-4. Función de servidor acotada para archivar informes firmados — desbloquea Active/Archived.
+- Bajo en general: son cambios de presentación y de visibilidad de botones.
+- Riesgo real único: al marcar attempts como "Completed" hay que estar seguro de que la coincidencia informe↔attempt es correcta, para no ocultar un oral que en realidad quedó a medias. Se resuelve verificando por attempt y candidato antes de ocultar, y dejando siempre visible el attempt si falta algún informe.
+- Los PDFs hay que revisarlos visualmente uno por uno antes de que los entregues; con un caso real de cada tipo (pareja, trío, informe sin feedback por parte) alcanza.
 
-**Fase 1 — Arquitectura de workspaces y roles (tu Auditoría 1, hacerla ANTES de las 2–6)**
-- `workspaces` + `workspace_members(user_id, workspace_id, role)` + función `has_workspace_role()` de tipo security definer.
-- `workspace_id` en `groups`, `students`, `speaking_sessions`, `session_attempts`, `session_materials`, `exams`.
-- Reescritura de las políticas: de "soy el dueño" a "pertenezco al workspace con el rol adecuado".
-- Backfill: un workspace personal por usuario existente → nadie pierde nada y el docente independiente no ve complejidad nueva.
-- Roles finales sugeridos: `coordinator` (total + usuarios), `examiner` (tomar y firmar), `teacher` (grupos/alumnos + lectura de informes de sus grupos). `admin` y `senior` se conservan como roles de plataforma (calibración), no de institución.
+## 6. Necesito que me confirmes tres cosas
 
-**Fase 2 — Workflow oficial (tus Auditorías 2 y 3)**
-- Un solo recorrido: Session Ready → Recording → Queue → Speaker Review → Analyze → Review → Sign → Archived.
-- Guardado automático del attempt con pausa/reanudación segura y toast.
-- Cola como bandeja de trabajo con un único botón por estado.
-- Todo lo de rescate ("Analyze without confirming speakers", reintentos manuales, completar breakdown) pasa a **Advanced / Maintenance** detrás de un flag, no se elimina.
-- Transcript navegable: el componente ya recibe `words` y ya soporta salto al audio; falta scroll completo, buscador y resaltado de la línea en curso. Es trabajo chico y contenido.
+1. **¿Cuántos informes de esta ronda tenés que entregar y son todos del mismo nivel?** Hoy veo 29 informes firmados (7 archivados) — decime si el entregable es todo eso o sólo la última tanda.
+2. **La tabla de notas del PDF docente:** ¿la querés igual a la del PDF del alumno (compacta, nombres completos), o preferís mantener algo más técnico en el docente?
+3. **Las frases naranjas ("Suggested focus"):** ¿las conservamos sólo cuando proponen una acción concreta y las eliminamos cuando son genéricas, o las saco del PDF del alumno por completo y quedan sólo en el docente?
 
-**Fase 3 — Firma y PDFs (tus Auditorías 4 y 6)**
-- Checklist previo a la firma sin clics extra: tres casillas que se marcan solas cuando el examinador ya interactuó con esa sección, y bloqueo suave sólo si alguna quedó sin tocar.
-- PDFs: encabezado que no se superponga, sin cortes en "What you did well" / "What to practice next", enlaces en una línea, y reutilización de los ejemplos concretos del informe docente traducidos a segunda persona amigable.
-
-**Fase 4 — Insights (tu Auditoría 7)**
-- Sólo SQL sobre datos existentes. Recomendado: una vista que aplane `criteria` a filas (alumno, criterio, puntaje, fecha) y sobre ella todo lo demás — evolución, fortalezas, criterio más débil del grupo, distribución.
-
-**Fase 5 — Persistencia académica (tu Auditoría 8)**
-- `academic_years` + `enrollments(student_id, group_id, year_id)` y `archived` en grupos. El alumno ya tiene ID permanente, así que activarlo más adelante no requiere migración grande **si en la Fase 1 ya se agregó `workspace_id`**.
-
-## 6. Cosas no contempladas que conviene incluir
-
-- **Límite de consumo por workspace** (minutos de transcripción / análisis por mes) verificado en el servidor, no en el cliente. Es el prerrequisito real de cualquier billing.
-- **Retención del audio como parámetro por plan** (15 / 90 días) en lugar de constante fija.
-- **Consentimiento y anonimización** para uso institucional con menores; ya existe el toggle de anonimización, falta el registro documental.
-- **Invitaciones de usuarios al workspace** (hoy no hay forma de que un coordinador dé de alta a un examinador).
-- **Cobro local:** Stripe primero como estándar; Mercado Pago sólo si el mercado uruguayo/argentino lo exige. El punto de menor impacto es `workspace_plan` + `entitlements` consultados dentro de las funciones de servidor `analyze-exam` y `transcribe-audio`: así el proveedor de pago se cambia sin tocar el producto.
-
-## 7. Capacidad de Lovable
-
-Todo lo anterior es realizable acá: base de datos con seguridad por filas, funciones de servidor, storage, IA y pagos son parte de la plataforma. La restricción real no es la herramienta sino el **orden y el tamaño de cada tanda**: la Fase 1 toca 6 tablas y todas sus políticas, y debe hacerse en una sola migración revisada, no de a pedazos.
-
-## Próximo paso propuesto
-
-Ejecutar **Fase 0** (4 correcciones de integridad, sin cambios visibles de flujo) y en la misma tanda dejar escrita la migración de la Fase 1 para que la revises antes de aplicarla. Confirmame también a qué pantalla te referías con la "ventana intermedia" de la Auditoría 3.
+Con eso arranco por el PDF del alumno y el PDF docente, que es lo que necesitás para cerrar la ronda.
