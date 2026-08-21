@@ -178,14 +178,18 @@ export function SpeakerTranscript({ transcript, hidden, maxHeight = "20rem", wor
           const style = STYLES[line.label];
           const ts = timestamps[i] ?? null;
           const canPlay = onSeek && ts !== null;
+          const isActive = i === activeIndex;
           return (
             <li
               key={i}
+              ref={isActive ? activeRef : undefined}
               className={cn(
                 "group border-l-2 px-3 py-2.5 transition-colors hover:bg-muted/40",
-                style.accent
+                style.accent,
+                isActive && "bg-primary/10 ring-1 ring-inset ring-primary/30"
               )}
             >
+
               <div className="flex items-baseline justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
                   <span
